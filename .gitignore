@@ -1,0 +1,28 @@
+# .NET / IDE
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.idea/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Secrets - never commit the YouTube API key.
+# Match the key file exactly: a wildcard like *API* also hides every Api-named
+# source file, because git ignores case on Windows.
+appsettings.Local.json
+*.local
+APIKey.txt
+apikey.txt
+*.key
+
+# Runtime cache, regenerated on startup
+closures.cache.json
+

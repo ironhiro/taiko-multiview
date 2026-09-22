@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Not invariant: resolving IANA zone ids such as Asia/Seoul needs the ICU data. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <RootNamespace>TaikoLabs.Api</RootNamespace>
+    <UserSecretsId>b1b1b905-cbaa-47b7-b84b-a62ab0c58a51</UserSecretsId>
+  </PropertyGroup>
+
+</Project>

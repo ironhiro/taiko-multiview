@@ -1,0 +1,76 @@
+<Window x:Class="TaikoLabs.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="TAIKO LABS Multiview"
+        Height="960" Width="1280"
+        MinHeight="360" MinWidth="380"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource ShellBackground}">
+
+    <DockPanel>
+
+        <Border x:Name="Toolbar"
+                DockPanel.Dock="Top"
+                Background="{StaticResource ShellPanel}"
+                BorderBrush="#322A23"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <DockPanel>
+
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Button x:Name="ReloadButton"
+                            Style="{StaticResource ToolbarButton}"
+                            Click="OnReloadClick"
+                            ToolTip="F5">다시 불러오기</Button>
+
+                    <Button x:Name="FullscreenButton"
+                            Style="{StaticResource ToolbarButton}"
+                            Click="OnFullscreenClick"
+                            ToolTip="F11">전체화면</Button>
+
+                    <Button x:Name="DevToolsButton"
+                            Style="{StaticResource ToolbarButton}"
+                            Click="OnDevToolsClick"
+                            ToolTip="F12">개발자 도구</Button>
+                </StackPanel>
+
+                <TextBlock x:Name="StatusText"
+                           DockPanel.Dock="Right"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"
+                           Foreground="{StaticResource ShellTextDim}"
+                           FontSize="12"
+                           TextTrimming="CharacterEllipsis"
+                           Text="시작하는 중..." />
+
+            </DockPanel>
+        </Border>
+
+        <Grid>
+            <wv2:WebView2 x:Name="WebView" DefaultBackgroundColor="#0F0D0B" />
+
+            <Border x:Name="ErrorPanel"
+                    Visibility="Collapsed"
+                    Background="{StaticResource ShellBackground}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="620">
+                    <TextBlock Foreground="{StaticResource ShellAccent}"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,12"
+                               Text="화면을 불러오지 못했습니다" />
+                    <TextBlock x:Name="ErrorText"
+                               Foreground="{StaticResource ShellTextDim}"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               LineHeight="22" />
+                    <Button Style="{StaticResource ToolbarButton}"
+                            HorizontalAlignment="Left"
+                            Margin="0,18,0,0"
+                            Click="OnReloadClick">다시 시도</Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+    </DockPanel>
+</Window>
