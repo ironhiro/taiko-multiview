@@ -90,7 +90,19 @@ if (apiDocs)
 var app = builder.Build();
 var startedAt = DateTimeOffset.UtcNow;
 
+// The container image puts the frontend build in wwwroot, so one server answers both the
+// page and /api on one origin: no CORS, no proxy. Run locally from source there is no
+// build in it, and the Vite dev server serves the page instead.
+var frontendIndex = app.Environment.WebRootPath is { } webRoot ? Path.Combine(webRoot, "index.html") : null;
+var hasFrontend = frontendIndex is not null && File.Exists(frontendIndex);
+
 app.UseCors(CorsPolicy);
+
+if (hasFrontend)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = context => SetCacheHeaders(context.Context) });
+}
 
 if (apiDocs)
 {
@@ -103,9 +115,14 @@ if (apiDocs)
 
     // A visual reading of /api/health, /api/venues and /api/live, in one page.
     app.MapGet("/status", (IWebHostEnvironment env) =>
-            Results.File(Path.Combine(env.WebRootPath, "status.html"), "text/html; charset=utf-8"))
+            Results.File(Path.Combine(env.ContentRootPath, "Status", "status.html"), "text/html; charset=utf-8"))
         .ExcludeFromDescription();
-    app.MapGet("/", () => Results.Redirect("/status")).ExcludeFromDescription();
+
+    // With no frontend here, the bare address has nothing else to show.
+    if (!hasFrontend)
+    {
+        app.MapGet("/", () => Results.Redirect("/status")).ExcludeFromDescription();
+    }
 }
 
 app.MapGet("/api/health", (
@@ -212,7 +229,23 @@ if (app.Configuration.GetValue<bool>("Diagnostics:ClientReports"))
         .WithDescription("앱이 재생 문제를 서버 로그로 보냅니다. 분당 120건 제한.");
 }
 
+if (hasFrontend)
+{
+    // An unknown /api path is an error, not a page; anything else is a client-side route.
+    app.MapFallback("/api/{**rest}", () => Results.NotFound()).ExcludeFromDescription();
+    app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = context => SetCacheHeaders(context.Context) });
+}
+
 app.Run();
+
+// Vite names every built asset after its content, so those never change and can be kept
+// for a year; index.html names them, so it is always revalidated.
+static void SetCacheHeaders(HttpContext context)
+{
+    context.Response.Headers.CacheControl = context.Request.Path.StartsWithSegments("/assets")
+        ? "public, max-age=31536000, immutable"
+        : "no-cache";
+}
 
 static LiveResponse ProjectAll(
     VenueRegistry registry,

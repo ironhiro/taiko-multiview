@@ -1,0 +1,20 @@
+# Only frontend/ and backend/TaikoLabs.Api/ go into the image.
+**/node_modules
+**/bin
+**/obj
+**/dist
+**/.DS_Store
+.git
+.github
+.hallmark
+desktop
+tools
+logs
+scripts
+backend/TaikoLabs.Api.Tests
+frontend/e2e
+frontend/test-results
+frontend/playwright-report
+**/closures.cache.json
+**/appsettings.Local.json
+**/*.local
