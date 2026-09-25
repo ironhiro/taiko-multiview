@@ -63,7 +63,7 @@ jobs:
 
   # Off until the repository is given what it needs (Settings → Secrets and variables → Actions):
   #   secret   AZURE_CREDENTIALS   output of `az ad sp create-for-rbac --sdk-auth` scoped to the resource group
-  #   variable AZURE_RESOURCE_GROUP, AZURE_CONTAINERAPP   e.g. taikolabs / taikolabs-api
+  #   variable AZURE_RESOURCE_GROUP, AZURE_CONTAINERAPP   e.g. rg-taiko-multiview / taiko-multiview-dev
   #   variable DEPLOY_BACKEND = true
   # The container app keeps its own environment variables (the YouTube key among them);
   # this only ships new code and a new venues.json.

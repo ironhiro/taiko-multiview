@@ -230,8 +230,8 @@ dotnet user-secrets set "YouTube:ApiKey" "<키>"
 환경 하나에 컨테이너 하나. 루트의 `Dockerfile` 이 프론트엔드를 빌드해 API의 `wwwroot` 에 포함하므로, 화면과 `/api` 가 같은 주소. 프록시·CORS 설정 불필요.
 
 ```bash
-docker build -t taikolabs .
-docker run -p 8080:8080 -e YouTube__Mode=Mock taikolabs   # http://localhost:8080
+docker build -t taiko-multiview .
+docker run -p 8080:8080 -e YouTube__Mode=Mock taiko-multiview   # http://localhost:8080
 ```
 
 | 환경 변수 | 설명 |
@@ -250,17 +250,17 @@ docker run -p 8080:8080 -e YouTube__Mode=Mock taikolabs   # http://localhost:808
 
 | 리소스 | 이름 |
 | --- | --- |
-| 리소스 그룹 (한국 중부) | `rg-taikolabs` |
-| Container Apps 환경 (개발·실서버 공용) | `cae-taikolabs` |
-| 개발 서버 | `taikolabs-dev` (최소 0 / 최대 1, 0.25 vCPU / 0.5 GiB) |
-| 이미지 | `ghcr.io/ironhiro/taikolabs` (공개) |
+| 리소스 그룹 (한국 중부) | `rg-taiko-multiview` |
+| Container Apps 환경 (개발·실서버 공용) | `cae-taiko-multiview` |
+| 개발 서버 | `taiko-multiview-dev` (최소 0 / 최대 1, 0.25 vCPU / 0.5 GiB)<br>https://taiko-multiview-dev.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io |
+| 이미지 | `ghcr.io/ironhiro/taiko-multiview` (공개) |
 
 새 이미지를 개발 서버에 반영:
 
 ```bash
 # ARM 맥에서도 에뮬레이션 없이 amd64 로 빌드 (Dockerfile 주석 참고)
-docker buildx build --platform linux/amd64 -t ghcr.io/ironhiro/taikolabs:$(git rev-parse --short HEAD) --push .
-az containerapp update -n taikolabs-dev -g rg-taikolabs --image ghcr.io/ironhiro/taikolabs:<태그>
+docker buildx build --platform linux/amd64 -t ghcr.io/ironhiro/taiko-multiview:$(git rev-parse --short HEAD) --push .
+az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview --image ghcr.io/ironhiro/taiko-multiview:<태그>
 ```
 
 유튜브 키 위치는 컨테이너 앱 시크릿 `youtube-api-key`, 연결은 `YouTube__ApiKey=secretref:youtube-api-key`. 키 교체 시 시크릿만 변경.

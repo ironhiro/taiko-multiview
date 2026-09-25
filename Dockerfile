@@ -1,12 +1,12 @@
 # One image for a whole environment: the API, with the frontend build in its wwwroot, so
 # the page and /api share an origin. Build from the repository root:
-#   docker build -t taikolabs .
+#   docker build -t taiko-multiview .
 #
 # Both build stages run on the builder's own platform: the frontend is static files and the
 # API is published framework-dependent (plain IL), so neither depends on the target CPU.
 # Only the last stage, which runs nothing, is the target's - so an amd64 image for Azure
 # builds at native speed on an ARM Mac:
-#   docker buildx build --platform linux/amd64 -t taikolabs .
+#   docker buildx build --platform linux/amd64 -t taiko-multiview .
 
 # Frontend
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
