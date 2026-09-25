@@ -302,6 +302,55 @@ input {
   color: var(--color-ink-2);
 }
 
+/* ----------------------------------------------------------- layout picker */
+
+.layout-picker {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3xs);
+  padding: var(--space-3xs);
+  background: var(--color-paper);
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-control);
+}
+
+.layout-picker__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3xs);
+  padding: var(--space-2xs) 0 var(--space-3xs);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-chip);
+  color: var(--color-ink-3);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.layout-picker__option:hover {
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+}
+
+.layout-picker__option:active {
+  background: var(--color-rule);
+}
+
+.layout-picker__option[aria-pressed='true'] {
+  background: var(--color-paper-3);
+  color: var(--color-accent);
+}
+
+.layout-picker__text {
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* ------------------------------------------------------------ status block */
 
 .rail__status {
@@ -486,11 +535,26 @@ input {
 
 /* ------------------------------------------------------------- grid views */
 
+/* The scrolling area is the size container, so a tile can be sized against both its
+   width and its height: N columns across, and N rows to one screen. */
+.stage__main {
+  container-type: size;
+}
+
 .grid-view {
+  --grid-gap: var(--space-xs);
+  --grid-pad: var(--space-sm);
+  --tile-width: min(
+    calc((100cqw - 2 * var(--grid-pad) - (var(--grid-columns) - 1) * var(--grid-gap)) / var(--grid-columns)),
+    calc((100cqh - 2 * var(--grid-pad) - (var(--grid-columns) - 1) * var(--grid-gap)) / var(--grid-columns) * 16 / 9)
+  );
+
   display: grid;
-  gap: var(--space-xs);
-  padding: var(--space-sm);
+  grid-template-columns: repeat(var(--grid-columns), var(--tile-width));
+  justify-content: center;
   align-content: start;
+  gap: var(--grid-gap);
+  padding: var(--grid-pad);
 }
 
 /* ------------------------------------------------------------------ tiles */
@@ -938,7 +1002,7 @@ input {
     grid-area: views;
   }
 
-  .rail__group--scale {
+  .rail__group--layout {
     display: none;
   }
 

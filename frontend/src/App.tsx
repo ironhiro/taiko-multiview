@@ -5,23 +5,22 @@ import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
 import { accentStyle, idleMessageFor, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, stationsForView, viewOptionsFor, type ViewMode } from './lib/views';
-import { FloorPlanView } from './components/FloorPlanView';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
 import { ChatPanel } from './components/ChatPanel';
-import { SCALE_DEFAULT, SCALE_STEP, ScaleControl, clampScale } from './components/ScaleControl';
+import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
 
 // v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
-const SCALE_STORAGE_KEY = 'taiko-multiview:scale:v2';
+const GRID_STORAGE_KEY = 'taiko-multiview:grid';
 
 export default function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [live, setLive] = useState<LiveResponse | null>(null);
   const [activeVenueId, setActiveVenueId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode | null>(null);
-  const [scale, setScale] = useState<number>(readStoredScale);
+  const [gridSize, setGridSize] = useState<GridSize>(readStoredGridSize);
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -126,8 +125,8 @@ export default function App() {
   }, [load, live?.pollIntervalSeconds]);
 
   useEffect(() => {
-    window.localStorage.setItem(SCALE_STORAGE_KEY, String(scale));
-  }, [scale]);
+    window.localStorage.setItem(GRID_STORAGE_KEY, String(gridSize));
+  }, [gridSize]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -135,12 +134,13 @@ export default function App() {
         return;
       }
 
+      // "+" makes tiles bigger, which means fewer to a row.
       if (event.key === '+' || event.key === '=') {
-        setScale((current) => clampScale(current + SCALE_STEP));
+        setGridSize((current) => stepGridSize(current, -1));
       } else if (event.key === '-') {
-        setScale((current) => clampScale(current - SCALE_STEP));
+        setGridSize((current) => stepGridSize(current, 1));
       } else if (event.key === '0') {
-        setScale(SCALE_DEFAULT);
+        setGridSize(GRID_DEFAULT);
       } else {
         return;
       }
@@ -235,7 +235,6 @@ export default function App() {
 
   // --- render ---------------------------------------------------------------
 
-  const showFloorPlan = view === 'all' && activeVenue?.layout;
 
   return (
     <div
@@ -262,10 +261,7 @@ export default function App() {
 
         {viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
 
-        <div className="rail__group rail__group--scale">
-          <span className="rail__label">화면 크기</span>
-          <ScaleControl scale={scale} onChange={setScale} />
-        </div>
+        <LayoutPicker size={gridSize} onChange={setGridSize} />
 
         <div className="rail__status">
           <div className="rail__readout" aria-live="polite">
@@ -319,33 +315,17 @@ export default function App() {
         )}
 
         <main className="stage__main">
-          {showFloorPlan && activeVenue?.layout ? (
-            <FloorPlanView
-              layout={activeVenue.layout}
-              zones={activeVenue.zones}
-              stations={activeVenue.stations}
-              streamsByStation={streamsByStation}
-              audioStationId={audioStationId}
-              onRequestAudio={handleRequestAudio}
-              chatStationId={chatStationId}
-              onRequestChat={handleRequestChat}
-              scale={scale}
-              lazy={isCompactDevice}
-              idle={idle}
-            />
-          ) : (
-            <GridView
-              stations={stations}
-              streamsByStation={streamsByStation}
-              audioStationId={audioStationId}
-              onRequestAudio={handleRequestAudio}
-              chatStationId={chatStationId}
-              onRequestChat={handleRequestChat}
-              scale={scale}
-              lazy={isCompactDevice}
-              idle={idle}
-            />
-          )}
+          <GridView
+            stations={stations}
+            streamsByStation={streamsByStation}
+            audioStationId={audioStationId}
+            onRequestAudio={handleRequestAudio}
+            chatStationId={chatStationId}
+            onRequestChat={handleRequestChat}
+            gridSize={gridSize}
+            lazy={isCompactDevice}
+            idle={idle}
+          />
         </main>
       </div>
 
@@ -360,7 +340,12 @@ export default function App() {
   );
 }
 
-function readStoredScale(): number {
-  const stored = Number(window.localStorage.getItem(SCALE_STORAGE_KEY));
-  return Number.isFinite(stored) && stored > 0 ? clampScale(stored) : SCALE_DEFAULT;
+function readStoredGridSize(): GridSize {
+  const stored = Number(window.localStorage.getItem(GRID_STORAGE_KEY));
+  return (GRID_SIZES as readonly number[]).includes(stored) ? (stored as GridSize) : GRID_DEFAULT;
+}
+
+function stepGridSize(current: GridSize, step: number): GridSize {
+  const index = GRID_SIZES.indexOf(current) + step;
+  return GRID_SIZES[Math.min(GRID_SIZES.length - 1, Math.max(0, index))];
 }
