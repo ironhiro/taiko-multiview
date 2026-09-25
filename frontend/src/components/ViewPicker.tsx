@@ -12,8 +12,8 @@ interface ViewPickerProps {
  */
 export function ViewPicker({ options, value, onChange }: ViewPickerProps) {
   return (
-    <div className="rail__group">
-      <span className="rail__label" id="view-picker-label">
+    <div className="control-group control-group--views">
+      <span className="control-group__label" id="view-picker-label">
         보기
       </span>
       <div className="choice-list" role="group" aria-labelledby="view-picker-label">

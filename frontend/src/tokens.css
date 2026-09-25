@@ -1,42 +1,57 @@
-/* Hallmark tokens · genre: atmospheric · theme: custom graphite (neutral chrome · venue-driven accent · live-red)
- * axes: paper-band dark / display-style rounded-sans (Pretendard) / accent-hue per venue
- * Every colour and face in styles.css comes through these names. A venue's brand colour
- * arrives as data (--venue-accent) and becomes --color-accent below.
+/* Hallmark tokens · genre: playful · theme: custom "오락실 감성 — cabinet night, 돈·카, buttons you press"
+ * paper: oklch(13% 0.03 270) · 돈 oklch(64% 0.21 27) · 카 oklch(74% 0.14 230)
+ * display: Black Han Sans · body: Pretendard · data: JetBrains Mono
+ * axes: dark / display-heavy (Black Han Sans) / warm+cool roles (돈·카)
+ * The system is written down in design.md at the repository root; read it before changing these.
+ * Roles never swap: 돈 = on air, 카 = what the viewer chose, --venue-accent = a venue's identity only.
  */
 
 :root {
-  /* Graphite chrome with almost no hue of its own: the colour on screen should come
-     from the venue (its logo and accent) and from the red on-air marks, nothing else. */
-  --color-video: oklch(9% 0.003 250);
-  --color-paper: oklch(14% 0.004 250);
-  --color-zone: oklch(16% 0.004 250);
-  --color-paper-2: oklch(18% 0.005 250);
-  --color-paper-3: oklch(22.5% 0.006 250);
-  --color-rule: oklch(28% 0.006 250);
-  --color-rule-strong: oklch(37% 0.008 250);
+  /* Cabinet night: black with the blue of a CRT bezel in it. Higher surfaces are lighter. */
+  --color-video: oklch(8% 0.02 270);
+  --color-paper: oklch(13% 0.03 270);
+  --color-zone: oklch(15% 0.032 270);
+  --color-paper-2: oklch(17% 0.035 270);
+  --color-paper-3: oklch(22% 0.04 270);
+  --color-rule: oklch(30% 0.04 270);
+  --color-rule-strong: oklch(40% 0.045 270);
 
-  /* Text. ink-3 is the floor for anything a person has to read (≥4.5:1 on paper). */
-  --color-ink: oklch(95% 0.003 250);
-  --color-ink-2: oklch(77% 0.006 250);
-  --color-ink-3: oklch(64% 0.007 250);
+  /* Text. ink-3 is the floor for anything a person has to read (≥4.5:1 on paper-2). */
+  --color-ink: oklch(96% 0.01 270);
+  --color-ink-2: oklch(79% 0.02 270);
+  --color-ink-3: oklch(66% 0.025 270);
 
-  /* Focus is plain ink: it must read against any venue colour. */
-  --color-focus: oklch(95% 0.003 250);
-  --color-accent-fallback: oklch(82% 0.02 250);
+  /* 카 — the drum's rim, blue: what the viewer chose. Chosen view and layout, the tile
+     with sound, the open chat, focus. */
+  --color-ka: oklch(74% 0.14 230);
+  --color-ka-deep: oklch(52% 0.13 235);
+  --color-accent: var(--color-ka);
+  --color-focus: var(--color-ka);
+  --color-accent-fallback: var(--color-ink-3);
 
-  /* Red is reserved for "on air". */
-  --color-live: oklch(62% 0.2 25);
-  --color-live-ink: oklch(97% 0.012 25);
-  --color-live-text: oklch(76% 0.13 25);
-  --color-live-wash: oklch(24% 0.05 25);
-  --color-live-edge: oklch(38% 0.1 25);
+  /* 돈 — the drum's face, red: on air, and nothing else. The deep shade carries small white
+     type (the LIVE badge) at ≥4.5:1. */
+  --color-don: oklch(64% 0.21 27);
+  --color-don-deep: oklch(54% 0.2 27);
+  --color-live: var(--color-don-deep);
+  --color-live-ink: oklch(98% 0.01 27);
+  --color-live-text: oklch(75% 0.15 27);
+  --color-live-wash: oklch(22% 0.06 27);
+  --color-live-edge: oklch(40% 0.12 27);
 
-  --color-warn: oklch(80% 0.12 80);
+  --color-warn: oklch(82% 0.13 85);
+
+  /* The base an arcade button sits on: its own face, darker. */
+  --color-button: oklch(26% 0.045 270);
+  --color-button-base: oklch(9% 0.025 270);
+  --color-button-chosen: oklch(24% 0.06 235);
+  --color-button-chosen-base: oklch(12% 0.05 235);
 
   /* Overlay modifiers - only ever laid over video. */
-  --color-scrim: oklch(9% 0.003 250 / 0.78);
-  --color-scrim-soft: oklch(9% 0.003 250 / 0.3);
+  --color-scrim: oklch(8% 0.02 270 / 0.78);
+  --color-scrim-soft: oklch(8% 0.02 270 / 0.3);
 
+  --font-display: 'Black Han Sans', 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   --font-body: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
     'Malgun Gothic', sans-serif;
   --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -53,10 +68,11 @@
   --text-sm: 0.875rem;
   --text-base: 1rem;
   --text-md: 1.25rem;
+  --text-lg: 1.625rem;
   --text-tally: 2.25rem;
 
-  /* Tile type follows the viewport height, since the floor plan scales with it. */
-  --text-tile-label: clamp(0.625rem, 1.3vh, 0.875rem);
+  /* Tile type follows the viewport height, since tiles do. */
+  --text-tile-label: clamp(0.6875rem, 1.35vh, 0.9375rem);
   --text-tile-meta: clamp(0.5625rem, 1.05vh, 0.6875rem);
   --text-tile-body: clamp(0.6875rem, 1.5vh, 0.9375rem);
 
@@ -68,22 +84,14 @@
 
   --rule-hair: 1px;
   --rule-mark: 2px;
+  --press-depth: 3px;
 
-  --radius-tile: 6px;
-  --radius-control: 6px;
-  --radius-chip: 3px;
+  --radius-tile: 12px;
+  --radius-control: 10px;
+  --radius-chip: 4px;
   --radius-pill: 999px;
 
-  --rail-width: 15rem;
   --chat-width: 22rem;
 
   color-scheme: dark;
-}
-
-/* The accent is the open venue's own colour, lifted to at least 72% lightness so a dark
-   brand colour still reads on graphite. Declared on .venue-scope as well as :root because
-   var() resolves where the property is declared, and --venue-accent is set on the app. */
-:root,
-.venue-scope {
-  --color-accent: oklch(from var(--venue-accent, var(--color-accent-fallback)) max(l, 0.72) c h);
 }

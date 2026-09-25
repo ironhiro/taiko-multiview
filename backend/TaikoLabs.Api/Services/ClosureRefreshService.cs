@@ -18,15 +18,7 @@ public sealed class ClosureRefreshService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var tracked = registry.All.Where(venue => !string.IsNullOrWhiteSpace(venue.Definition.NaverPlaceId)).ToList();
-
-        if (tracked.Count == 0)
-        {
-            logger.LogInformation("No venue has a naverPlaceId; using configured closedDates only");
-            return;
-        }
-
-        await RefreshAllAsync(tracked, stoppingToken);
+        await RefreshTrackedAsync(stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -42,8 +34,25 @@ public sealed class ClosureRefreshService(
                 return;
             }
 
-            await RefreshAllAsync(tracked, stoppingToken);
+            await RefreshTrackedAsync(stoppingToken);
         }
+    }
+
+    /// <summary>
+    /// Re-reads which venues to look up on every run: the venue editor can add or clear a
+    /// naverPlaceId while the API is running.
+    /// </summary>
+    private Task RefreshTrackedAsync(CancellationToken ct)
+    {
+        var tracked = registry.All.Where(venue => !string.IsNullOrWhiteSpace(venue.Definition.NaverPlaceId)).ToList();
+
+        if (tracked.Count == 0)
+        {
+            logger.LogInformation("No venue has a naverPlaceId; using configured closedDates only");
+            return Task.CompletedTask;
+        }
+
+        return RefreshAllAsync(tracked, ct);
     }
 
     private async Task RefreshAllAsync(IReadOnlyList<Venue> venues, CancellationToken ct)

@@ -4,7 +4,11 @@ import type { VenueStatus } from './types';
 export interface IdleMessage {
   title: string;
   detail?: string;
+  /** Nothing has been heard from the API yet. */
+  loading?: boolean;
 }
+
+export const LOADING_MESSAGE: IdleMessage = { title: '불러오는 중', loading: true };
 
 /**
  * What an empty cabinet should say. A closed venue is a different thing from a

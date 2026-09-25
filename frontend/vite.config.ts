@@ -12,7 +12,8 @@ export default defineConfig({
       // Dev-time equivalent of the Vercel rewrite below, so the browser only
       // ever talks to one origin and CORS never comes into play.
       '/api': {
-        target: 'http://localhost:5180',
+        // The end-to-end tests point this at their own mock backend.
+        target: process.env.TAIKO_API_PROXY ?? 'http://localhost:5180',
         changeOrigin: true,
       },
     },

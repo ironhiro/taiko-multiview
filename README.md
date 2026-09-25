@@ -52,14 +52,23 @@ dotnet run
 
 ## 동작 방식
 
+### 매장 목록 — `venues.json`
+
+매장 목록은 앱 설정(`appsettings.json`)과 따로 **`backend/TaikoLabs.Api/venues.json`** 에 둔다.
+매장은 늘고 바뀌는 데이터이고, 앱 설정은 앱이 어떻게 도는지이기 때문이다. 시간대·휴무 조회 시각 같은
+운영 값은 계속 `appsettings.json` 의 `Venues` 에 있고, 두 파일이 하나의 `Venues` 설정으로 합쳐진다.
+
+매장을 바꾸는 흐름은 이렇다.
+
+1. 매장 등록기(데스크톱 앱 메뉴 → **매장 등록기**, `Cmd/Ctrl+Shift+E`)로 고쳐 저장한다.
+   **로컬 백엔드와 멀티뷰에는 재시작 없이 곧바로 반영된다.**
+2. `venues.json` 변경을 커밋하고 `main` 에 올린다. 변경 이력이 git 에 남고, 되돌리기도 git 으로 한다.
+3. GitHub Actions 가 테스트를 돌리고, 자동 배포를 켜 두었다면 백엔드를 Azure 에 배포한다
+   (`.github/workflows/ci.yml` 의 `deploy-backend` — 켜는 법은 파일 안 주석에 있다).
+
 ### 매장 추가하기 — 등록기 사용 (권장)
 
-```powershell
-cd tools/TaikoLabs.VenueEditor
-dotnet run
-```
-
-`appsettings.json` 을 자동으로 찾아 연다. 손으로 JSON을 쓰는 것보다 안전한 이유는
+데스크톱 앱의 메뉴에서 연다. `venues.json` 을 자동으로 찾아 연다. 손으로 JSON을 쓰는 것보다 안전한 이유는
 **틀리기 쉬운 두 가지를 실제 데이터로 검증해 주기 때문**이다.
 
 - **채널 조회** — `@핸들` 이나 채널 URL만 붙여넣으면 `channelId` 와 매장 이름을 채운다.
@@ -75,11 +84,12 @@ dotnet run
 배치도 좌표 자체는 편집하지 않는다 — 손으로 입력할 만한 값이 아니고, 새로 추가하는 매장은
 대개 배치도가 없기 때문이다.
 
-저장한 뒤 API를 다시 시작하면 반영된다.
+저장하면 실행 중인 백엔드와 멀티뷰에 곧바로 반영된다. 예전 Avalonia 등록기
+(`tools/TaikoLabs.VenueEditor`)도 같은 파일을 연다.
 
 ### 매장 추가하기 — 직접 편집
 
-`appsettings.json` 의 `Venues:Items` 에 항목을 하나 더 넣어도 된다. 배치도 좌표까지
+`venues.json` 의 `Venues.Items` 에 항목을 하나 더 넣어도 된다. 배치도 좌표까지
 설정에 있으므로 프론트엔드는 건드리지 않는다.
 
 ```json
@@ -110,7 +120,7 @@ dotnet run
 | `layout` | 배치도 좌표. **`null` 이면 그리드 전용 매장** |
 | `naverPlaceId` | 임시휴무 자동 감지용. 없으면 `closedDates` 만 사용 |
 
-설정이 잘못된 매장은 **시작 시 건너뛰고 에러 로그를 남긴다.** 정규식에 `name` 그룹이 없거나,
+설정이 잘못된 매장은 **불러올 때 건너뛰고 에러 로그를 남긴다.** 실행 중에 파일을 고쳐도 마찬가지다. 정규식에 `name` 그룹이 없거나,
 기체가 비어 있거나, 채널 id가 없으면 그 매장만 빠지고 나머지는 정상 동작한다.
 
 ### 제목 파싱
@@ -179,6 +189,18 @@ watch 페이지는 1.2MB쯤 되므로 두 가지로 비용을 줄인다.
 ### 상태 유지
 
 폴링이 실패해도 마지막 성공 스냅샷을 유지한다. 일시적인 유튜브 오류로 화면 전체가 비는 일을 막기 위함이다.
+
+### 백엔드 들여다보기
+
+개발 모드로 실행 중이면 백엔드 주소(기본 `http://localhost:5180`)에서 바로 볼 수 있다.
+
+| 주소 | 내용 |
+|---|---|
+| `/status` | `/api/health`·`/api/venues`·`/api/live`를 합친 상태 화면. 매장별 영업 상태, 기체별 방송, 기체를 못 찾은 방송, 응답 시간. 각 값 아래에 JSON 필드 이름이 붙어 있다. 10초마다 갱신. |
+| `/swagger` | Swagger UI. 엔드포인트 설명과 응답 스키마, 직접 호출해보기 |
+| `/openapi/v1.json` | OpenAPI 문서 |
+
+운영 환경에서는 꺼져 있다. 켜려면 `ApiDocs:Enabled`를 `true`로 설정한다(환경 변수 `ApiDocs__Enabled=true`).
 
 ---
 
@@ -444,6 +466,30 @@ Windows 에는 표준 View 메뉴가 없어 **멀티뷰** 메뉴에 직접 넣�
 `npx tauri icon src-tauri/icons/source.png` 를 다시 돌리면 나머지 포맷이 전부 생성된다.
 
 ---
+
+## 테스트
+
+세 가지다. 코드를 고친 뒤에는 앞의 둘, 배포 전에는 셋 다 돌린다.
+
+```bash
+# 백엔드 — 기체별 방송 선택, 조회 간격, 설정 자동 반영, 영업시간 판정
+dotnet test TaikoLabsMultiview.slnx
+
+# 프론트엔드 로직 — 등록기 저장 왕복·검증·제목 규칙, 라이브 지연 계산, 배치 칸 수
+cd frontend && npm test
+
+# 화면 전체 — Chromium · WebKit · iPhone(WebKit)
+cd frontend && npx playwright install chromium webkit   # 처음 한 번
+cd frontend && npm run test:e2e
+```
+
+- 화면 테스트는 **Mock 모드 백엔드(5190)와 전용 Vite(5174)** 를 직접 띄우므로 개발 중인 5180/5173 과
+  부딪히지 않고, YouTube 로는 요청이 나가지 않는다. PATH 의 `dotnet` 이 .NET 10 이 아니면
+  `DOTNET=/경로/dotnet npm run test:e2e` 로 지정한다.
+- WebKit 을 꼭 포함한다. 데스크톱 셸(macOS)의 엔진이라, 로고가 안 바뀌거나 화면 밖 영상이 멈추는 식의
+  문제는 WebKit 에서만 드러났다.
+- 등록기 화면 테스트는 셸을 흉내 내 실제 `venues.json` 을 읽기만 한다. 파일은 바꾸지 않는다.
+- 사람이 확인해야 하는 항목(로그인, 실제 재생, Windows 빌드, iPhone)은 QA 체크리스트로 따로 관리한다.
 
 ## 알려진 제약
 

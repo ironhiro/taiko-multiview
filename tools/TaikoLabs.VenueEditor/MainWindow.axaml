@@ -207,7 +207,7 @@
                     <StackPanel Margin="4,12,4,4">
                         <TextBlock x:Name="LayoutSummaryText" TextWrapping="Wrap" Margin="0,0,0,12" />
                         <TextBlock Classes="hint"
-                                   Text="이 등록기는 배치도 좌표를 편집하지 않습니다. 기존 매장의 좌표는 저장할 때 그대로 보존되고, 새로 추가한 매장은 배치도 없이 그리드 보기만 제공합니다. 배치도를 넣으려면 appsettings.json 의 layout 항목을 직접 작성하세요." />
+                                   Text="이 등록기는 배치도 좌표를 편집하지 않습니다. 기존 매장의 좌표는 저장할 때 그대로 보존되고, 새로 추가한 매장은 배치도 없이 그리드 보기만 제공합니다. 배치도를 넣으려면 venues.json 의 layout 항목을 직접 작성하세요." />
                         <Button Click="OnClearLayoutClick" Margin="0,16,0,0">이 매장의 배치도 제거</Button>
                     </StackPanel>
                 </TabItem>

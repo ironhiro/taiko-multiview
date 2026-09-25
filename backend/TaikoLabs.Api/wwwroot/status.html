@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서버 상태 · 태고 멀티뷰</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+/* Hallmark · genre: playful · macrostructure: Dashboard under marquee + credit strip · tone: arcade
+ * design-system: design.md (tokens copied from frontend/src/tokens.css) · designed-as-app
+ * pre-emit critique: P4 H5 E4 S5 R4 V4 */
+:root {
+  color-scheme: dark;
+  --color-paper: oklch(13% 0.03 270);
+  --color-paper-2: oklch(17% 0.035 270);
+  --color-paper-3: oklch(22% 0.04 270);
+  --color-rule: oklch(30% 0.04 270);
+  --color-rule-strong: oklch(40% 0.04 270);
+  --color-ink: oklch(96% 0.01 270);
+  --color-ink-2: oklch(79% 0.02 270);
+  --color-ink-3: oklch(66% 0.025 270);
+  --color-don: oklch(64% 0.21 27);
+  --color-don-wash: oklch(64% 0.21 27 / 0.14);
+  --color-ka: oklch(74% 0.14 230);
+  --color-ka-wash: oklch(74% 0.14 230 / 0.14);
+  --color-good: oklch(76% 0.15 150);
+  --color-warn: oklch(82% 0.15 85);
+  --color-warn-wash: oklch(82% 0.15 85 / 0.12);
+  --color-video: oklch(8% 0.02 270);
+  --color-button-base: oklch(9% 0.03 270);
+
+  --font-display: 'Black Han Sans', 'Pretendard Variable', sans-serif;
+  --font-body: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.625rem;
+  --text-xl: 2.25rem;
+
+  --radius-chip: 4px;
+  --radius-control: 10px;
+  --radius-tile: 12px;
+  --press-depth: 3px;
+  --dur-micro: 120ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { overflow-x: clip; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+h1, h2, h3, p { margin: 0; }
+a { color: var(--color-ka); }
+:focus-visible { outline: 2px solid var(--color-ka); outline-offset: 2px; }
+
+.field {
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  color: var(--color-ink-3);
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------------------- marquee */
+.marquee {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-xs) var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-paper-2);
+  border-bottom: 2px solid var(--color-rule);
+}
+.wordmark {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  color: var(--color-ink-2);
+}
+.marquee h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--text-lg);
+  line-height: 1.1;
+}
+.marquee__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+  margin-left: auto;
+  padding-bottom: var(--press-depth);
+}
+
+/* the arcade button */
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  min-height: 2.25rem;
+  padding: 0 var(--space-xs);
+  background: var(--color-paper-3);
+  border: 1px solid var(--color-rule-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-base);
+  color: var(--color-ink);
+  font: 700 var(--text-sm) var(--font-body);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out), box-shadow var(--dur-micro) var(--ease-out), border-color var(--dur-micro) var(--ease-out);
+}
+.btn:hover { border-color: var(--color-ink-3); }
+.btn:active { transform: translateY(var(--press-depth)); box-shadow: 0 0 0 var(--color-button-base); }
+.btn[aria-pressed='true'] { border-color: var(--color-ka); color: var(--color-ka); }
+.btn--mono { font-family: var(--font-data); font-size: var(--text-xs); font-weight: 500; }
+
+/* ------------------------------------------------------------------ main */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  width: 100%;
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: var(--space-md);
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2xs) var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+.section-head h2 { font-size: var(--text-base); font-weight: 800; }
+.section-head p { color: var(--color-ink-3); font-size: var(--text-xs); }
+
+/* how the page is put together */
+.flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+.flow__step {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-tile);
+}
+.flow__step a { font-family: var(--font-data); font-weight: 700; text-decoration: none; }
+.flow__step p { color: var(--color-ink-2); font-size: var(--text-xs); }
+.flow__timing { font-family: var(--font-data); font-size: var(--text-2xs); color: var(--color-ink-3); }
+
+/* ---------------------------------------------------------------- health */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+  gap: var(--space-xs);
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  min-width: 0;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-tile);
+}
+.stat__label { color: var(--color-ink-3); font-size: var(--text-xs); font-weight: 700; }
+.stat__value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  font-family: var(--font-data);
+  font-size: var(--text-base);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.stat--up { border-color: var(--color-good); }
+.stat--down { border-color: var(--color-warn); background: var(--color-warn-wash); }
+
+.lamp {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  background: var(--color-rule-strong);
+}
+.lamp--good { background: var(--color-good); }
+.lamp--don { background: var(--color-don); }
+.lamp--warn { background: var(--color-warn); }
+
+/* ---------------------------------------------------------------- venues */
+.venues { display: flex; flex-direction: column; gap: var(--space-md); }
+
+.venue {
+  --accent: var(--color-rule-strong);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+}
+.venue__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-sm);
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--color-rule);
+}
+.venue__id { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; }
+.venue__logo {
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  object-fit: cover;
+}
+.venue__name {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--text-lg);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.venue__accent { display: flex; align-items: center; gap: var(--space-3xs); }
+.venue__accent .lamp { background: var(--accent); }
+
+.venue__count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3xs);
+  margin-left: auto;
+}
+.venue__count strong {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--text-xl);
+  line-height: 1;
+  color: var(--color-don);
+}
+.venue__count--zero strong { color: var(--color-ink-3); }
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+  gap: 1px;
+  background: var(--color-rule);
+  border-bottom: 1px solid var(--color-rule);
+}
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2xs) var(--space-sm);
+  background: var(--color-paper-2);
+}
+.fact__label { color: var(--color-ink-3); font-size: var(--text-xs); }
+.fact__value { display: flex; align-items: center; gap: var(--space-2xs); font-weight: 700; overflow-wrap: anywhere; }
+
+.chip {
+  display: inline-block;
+  padding: 0 var(--space-2xs);
+  border-radius: var(--radius-chip);
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.chip--open { background: var(--color-paper-3); color: var(--color-good); }
+.chip--closed { background: var(--color-paper-3); color: var(--color-ink-3); }
+.chip--live { background: var(--color-don); color: var(--color-ink); }
+.chip--warn { background: var(--color-warn-wash); color: var(--color-warn); }
+
+.venue__error {
+  padding: var(--space-2xs) var(--space-sm);
+  background: var(--color-warn-wash);
+  border-bottom: 1px solid var(--color-rule);
+  color: var(--color-warn);
+  font-size: var(--text-xs);
+}
+
+.zones { display: flex; flex-direction: column; gap: var(--space-sm); padding: var(--space-sm); }
+.zone__head { display: flex; align-items: baseline; gap: var(--space-2xs); margin-bottom: var(--space-2xs); }
+.zone__head h3 { font-size: var(--text-sm); font-weight: 800; }
+
+.stations {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: var(--space-xs);
+}
+.station {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color-paper);
+  border: 2px solid var(--color-rule);
+  border-radius: var(--radius-tile);
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+}
+.station--live { border-color: var(--color-don); }
+a.station:hover { border-color: var(--color-ka); }
+.station__picture {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  background: var(--color-video);
+}
+.station__picture img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.station__label {
+  position: absolute;
+  top: var(--space-2xs);
+  left: var(--space-2xs);
+  display: flex;
+  gap: var(--space-3xs);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+.station__label span:first-child {
+  padding: 0 var(--space-3xs);
+  border-radius: var(--radius-chip);
+  background: var(--color-paper);
+}
+.station__off {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+}
+.station__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2xs) var(--space-xs);
+}
+.station__title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.station__numbers { font-family: var(--font-data); font-size: var(--text-2xs); color: var(--color-ink-3); }
+
+.unmatched { padding: 0 var(--space-sm) var(--space-sm); }
+.unmatched ul { margin: var(--space-2xs) 0 0; padding-left: var(--space-sm); color: var(--color-ink-2); font-size: var(--text-xs); }
+
+.raw { border-top: 1px solid var(--color-rule); }
+.raw summary {
+  padding: var(--space-2xs) var(--space-sm);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+.raw summary:hover { color: var(--color-ink); }
+.raw__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs); padding: 0 var(--space-sm) var(--space-sm); }
+.raw pre {
+  max-height: 24rem;
+  margin: var(--space-3xs) 0 0;
+  padding: var(--space-xs);
+  overflow: auto;
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-control);
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  color: var(--color-ink-2);
+}
+
+/* ---------------------------------------------------------------- credit */
+.credit {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-md);
+  padding: var(--space-2xs) var(--space-md) calc(var(--space-2xs) + env(safe-area-inset-bottom, 0px));
+  background: var(--color-paper-2);
+  border-top: 2px solid var(--color-rule);
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+}
+.credit__timings { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-sm); font-family: var(--font-data); }
+.credit__actions { display: flex; gap: var(--space-2xs); margin-left: auto; padding-bottom: var(--press-depth); }
+
+.banner {
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-warn-wash);
+  border: 1px solid var(--color-warn);
+  border-radius: var(--radius-tile);
+  color: var(--color-warn);
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .marquee, main { padding-inline: var(--space-sm); }
+  .flow, .raw__grid { grid-template-columns: minmax(0, 1fr); }
+  .marquee__links { margin-left: 0; }
+  .credit { padding-inline: var(--space-sm); }
+  .credit__actions { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 1ms !important; }
+}
+</style>
+</head>
+<body>
+<header class="marquee">
+  <div>
+    <p class="wordmark">태고 멀티뷰</p>
+    <h1>서버 상태</h1>
+  </div>
+  <nav class="marquee__links" aria-label="API">
+    <a class="btn" href="/swagger">Swagger</a>
+    <a class="btn btn--mono" href="/api/health" target="_blank">/api/health</a>
+    <a class="btn btn--mono" href="/api/venues" target="_blank">/api/venues</a>
+    <a class="btn btn--mono" href="/api/live" target="_blank">/api/live</a>
+  </nav>
+</header>
+
+<main>
+  <div id="banner" class="banner" hidden></div>
+
+  <section aria-labelledby="flow-title">
+    <div class="section-head">
+      <h2 id="flow-title">이 페이지가 보여주는 것</h2>
+      <p>세 API를 불러 한 화면에 합칩니다. 회색 글씨는 그 값이 들어 있는 JSON 필드입니다.</p>
+    </div>
+    <div class="flow">
+      <div class="flow__step">
+        <a href="/api/health" target="_blank">/api/health</a>
+        <p>서버가 살아 있는지, 어떤 모드로 도는지.</p>
+        <span class="flow__timing" id="t-health">—</span>
+      </div>
+      <div class="flow__step">
+        <a href="/api/venues" target="_blank">/api/venues</a>
+        <p>venues.json 그대로: 매장, 구역, 기체. 설정을 고칠 때만 바뀝니다.</p>
+        <span class="flow__timing" id="t-venues">—</span>
+      </div>
+      <div class="flow__step">
+        <a href="/api/live" target="_blank">/api/live</a>
+        <p>서버가 폴링해 둔 방송 결과. 매장 설정과 짝지어 아래 카드가 됩니다.</p>
+        <span class="flow__timing" id="t-live">—</span>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="health-title">
+    <div class="section-head">
+      <h2 id="health-title">서버</h2>
+      <span class="field">GET /api/health</span>
+    </div>
+    <div class="stats" id="health"></div>
+  </section>
+
+  <section aria-labelledby="venues-title">
+    <div class="section-head">
+      <h2 id="venues-title">매장</h2>
+      <span class="field">GET /api/venues + GET /api/live</span>
+    </div>
+    <div class="venues" id="venues"></div>
+  </section>
+</main>
+
+<footer class="credit">
+  <div class="credit__timings" id="credit">불러오는 중</div>
+  <div class="credit__actions">
+    <button class="btn" type="button" id="auto" aria-pressed="true">자동 갱신</button>
+    <button class="btn" type="button" id="reload">다시 불러오기</button>
+  </div>
+</footer>
+
+<script>
+const REFRESH_S = 10;
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = (n) => Number(n).toLocaleString('ko-KR');
+
+let venuesCache = null;
+let countdown = REFRESH_S;
+let auto = true;
+const openRaw = new Set();
+
+async function timed(path) {
+  const started = performance.now();
+  const res = await fetch(path, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
+  const body = await res.json();
+  return { body, ms: Math.round(performance.now() - started) };
+}
+
+function duration(seconds) {
+  const s = Math.max(0, Math.round(seconds));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return `${d}일 ${h}시간`;
+  if (h) return `${h}시간 ${m}분`;
+  if (m) return `${m}분 ${s % 60}초`;
+  return `${s}초`;
+}
+
+const ago = (iso) => iso ? `${duration((Date.now() - Date.parse(iso)) / 1000)} 전` : '—';
+const clock = (iso) => iso ? new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+const when = (iso) => iso ? new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+
+const SOURCE = {
+  Api: '유튜브 Data API',
+  Public: '공개 페이지 (키 없음)',
+  Mock: '가짜 데이터 (Mock)',
+  Auto: '자동',
+  Demo: '데모',
+};
+const STATE = {
+  Open: ['영업 중', 'chip--open'],
+  OutsideHours: ['영업 종료', 'chip--closed'],
+  ClosedForHoliday: ['오늘 휴무', 'chip--closed'],
+};
+
+function stat(label, value, field, extra = '') {
+  return `<div class="stat ${extra}"><span class="stat__label">${label}</span><span class="stat__value">${value}</span><span class="field">${field}</span></div>`;
+}
+
+function renderHealth(h) {
+  $('health').innerHTML = [
+    stat('상태', `<span class="lamp lamp--good"></span>${esc(h.status.toUpperCase())}`, 'status', 'stat--up'),
+    stat('가동 시간', duration(h.uptimeSeconds), 'uptimeSeconds'),
+    stat('시작 시각', when(h.startedAt), 'startedAt'),
+    stat('환경', esc(h.environment), 'environment'),
+    stat('유튜브 모드', esc(SOURCE[h.youTubeMode] ?? h.youTubeMode), 'youTubeMode'),
+    stat('API 키', h.hasApiKey ? '<span class="lamp lamp--good"></span>설정됨' : '<span class="lamp lamp--warn"></span>없음', 'hasApiKey'),
+    stat('폴링 간격', `${h.pollIntervalSeconds}초 · 영업 외 ${duration(h.closedPollIntervalSeconds)}`, 'pollIntervalSeconds · closedPollIntervalSeconds'),
+    stat('매장', `${h.venueCount}곳 · v${h.venuesVersion}`, 'venueCount · venuesVersion'),
+  ].join('');
+}
+
+function renderDown(message) {
+  $('health').innerHTML = stat('상태', `<span class="lamp lamp--warn"></span>응답 없음`, esc(message), 'stat--down');
+}
+
+function fact(label, value, field) {
+  return `<div class="fact"><span class="fact__label">${label}</span><span class="fact__value">${value}</span><span class="field">${field}</span></div>`;
+}
+
+function station(st, stream) {
+  if (!stream) {
+    return `<div class="station">
+      <div class="station__picture">
+        <div class="station__label"><span>${esc(st.label)}</span></div>
+        <div class="station__off">방송 없음</div>
+      </div>
+      <div class="station__meta"><span class="field">stations[id=${esc(st.id)}] · 짝지은 stream 없음</span></div>
+    </div>`;
+  }
+  const thumb = stream.thumbnailUrl ?? `https://i.ytimg.com/vi/${stream.videoId}/mqdefault.jpg`;
+  const numbers = [
+    stream.concurrentViewers != null ? `시청 ${num(stream.concurrentViewers)}` : null,
+    stream.actualStartTime ? `시작 ${ago(stream.actualStartTime)}` : null,
+    stream.embeddable === false ? '임베드 불가' : null,
+  ].filter(Boolean).join(' · ');
+  return `<a class="station ${stream.isLive ? 'station--live' : ''}" href="${esc(stream.watchUrl)}" target="_blank" rel="noreferrer noopener">
+    <div class="station__picture">
+      <img src="${esc(thumb)}" alt="" loading="lazy">
+      <div class="station__label"><span>${esc(st.label)}</span>${stream.isLive ? '<span class="chip chip--live">LIVE</span>' : '<span class="chip chip--closed">종료</span>'}</div>
+    </div>
+    <div class="station__meta">
+      <span class="station__title">${esc(stream.title)}</span>
+      <span class="station__numbers">${numbers || '&nbsp;'}</span>
+      <span class="field">streams[stationId=${esc(stream.stationId)}] · ${esc(stream.videoId)}</span>
+    </div>
+  </a>`;
+}
+
+function renderVenue(v, live, index) {
+  const status = live?.venue ?? {};
+  const [stateText, stateClass] = STATE[status.state] ?? ['알 수 없음', 'chip--closed'];
+  const streams = live?.streams ?? [];
+  const byStation = new Map(streams.map((s) => [s.stationId, s]));
+  const liveCount = streams.filter((s) => s.isLive).length;
+
+  const zoneName = new Map((v.zones ?? []).map((z) => [z.id, z.label || z.code || z.id]));
+  const groups = new Map();
+  for (const st of v.stations) {
+    const key = st.zoneId ?? '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(st);
+  }
+
+  const zones = [...groups].map(([zoneId, list]) => `
+    <div class="zone">
+      <div class="zone__head">
+        <h3>${esc(zoneId ? zoneName.get(zoneId) ?? zoneId : '구역 없음')}</h3>
+        <span class="field">${zoneId ? `zones[id=${esc(zoneId)}]` : ''} · 기체 ${list.length}대</span>
+      </div>
+      <div class="stations">${list.map((st) => station(st, byStation.get(st.id))).join('')}</div>
+    </div>`).join('');
+
+  const unmatched = (live?.unmatched ?? []).length
+    ? `<div class="unmatched">
+        <span class="chip chip--warn">기체를 못 찾은 방송 ${live.unmatched.length}</span>
+        <span class="field">unmatched · 제목 규칙엔 맞지만 기체 이름이 등록돼 있지 않음</span>
+        <ul>${live.unmatched.map((s) => `<li><a href="${esc(s.watchUrl)}" target="_blank" rel="noreferrer noopener">${esc(s.title)}</a> → 이름 “${esc(s.name)}”</li>`).join('')}</ul>
+      </div>`
+    : '';
+
+  const opens = status.state !== 'Open' && status.opensAt ? `다음 오픈 ${when(status.opensAt)}` : '';
+  const logo = v.logo ? `<img class="venue__logo" src="${esc(v.logo)}" alt="" onerror="this.removeAttribute('src')">` : '<span class="venue__logo"></span>';
+  const key = v.id;
+
+  return `<article class="venue" style="--accent: ${esc(v.accent ?? '')}">
+    <div class="venue__head">
+      <div class="venue__id">
+        ${logo}
+        <div>
+          <h3 class="venue__name">${esc(v.name)}</h3>
+          <span class="field">venues[${index}] · id ${esc(v.id)}</span>
+        </div>
+      </div>
+      <p class="venue__count ${liveCount ? '' : 'venue__count--zero'}">
+        <strong>${liveCount}</strong><span>/ ${v.stations.length}대 송출 중</span>
+      </p>
+    </div>
+    <div class="facts">
+      ${fact('영업 상태', `<span class="chip ${stateClass}">${stateText}</span>${esc(opens)}`, 'venue.state · venue.opensAt')}
+      ${fact('오늘 영업시간', esc(status.todayHours ?? '—'), 'venue.todayHours')}
+      ${fact('매장 현지 시각', clock(status.localTime), 'venue.localTime')}
+      ${fact('데이터 출처', `${esc(SOURCE[live?.source] ?? live?.source ?? '—')}${live?.isFallbackSource ? ' <span class="chip chip--warn">대체 경로</span>' : ''}`, 'source · isFallbackSource')}
+      ${fact('마지막 확인', live ? `${clock(live.updatedAt)} · ${ago(live.updatedAt)}` : '—', 'updatedAt')}
+      ${fact('매장 색', `<span class="venue__accent"><span class="lamp"></span>${esc(v.accent ?? '—')}</span>`, 'accent')}
+      ${fact('유튜브 채널', v.channelUrl ? `<a href="${esc(v.channelUrl)}" target="_blank" rel="noreferrer noopener">${esc(v.channelId)}</a>` : esc(v.channelId), 'channelId · channelUrl')}
+      ${status.closureReason ? fact('휴무 근거', esc(status.closureReason === 'naver' ? '네이버 플레이스' : '수동 지정'), 'venue.closureReason') : ''}
+    </div>
+    ${live?.error ? `<div class="venue__error">폴링 오류: ${esc(live.error)} <span class="field">error</span></div>` : ''}
+    <div class="zones">${zones}</div>
+    ${unmatched}
+    <details class="raw" data-key="${esc(key)}" ${openRaw.has(key) ? 'open' : ''}>
+      <summary>원본 JSON 보기</summary>
+      <div class="raw__grid">
+        <div><span class="field">/api/venues → venues[${index}]</span><pre>${esc(JSON.stringify(v, null, 2))}</pre></div>
+        <div><span class="field">/api/live → venues[venueId=${esc(v.id)}]</span><pre>${esc(JSON.stringify(live ?? null, null, 2))}</pre></div>
+      </div>
+    </details>
+  </article>`;
+}
+
+async function load() {
+  const banner = $('banner');
+  const timings = [];
+  try {
+    const health = await timed('/api/health');
+    renderHealth(health.body);
+    $('t-health').textContent = `${health.ms}ms`;
+    timings.push(`health ${health.ms}ms`);
+
+    const live = await timed('/api/live');
+    $('t-live').textContent = `${live.ms}ms · ${live.body.pollIntervalSeconds}초마다 폴링`;
+    timings.push(`live ${live.ms}ms`);
+
+    // Venues are refetched only when the server says the file changed, like the app does.
+    if (!venuesCache || venuesCache.version !== live.body.venuesVersion) {
+      const venues = await timed('/api/venues');
+      venuesCache = venues.body;
+      $('t-venues').textContent = `${venues.ms}ms · v${venues.body.version}`;
+      timings.push(`venues ${venues.ms}ms`);
+    }
+
+    const liveById = new Map(live.body.venues.map((v) => [v.venueId, v]));
+    $('venues').innerHTML = venuesCache.venues.map((v, i) => renderVenue(v, liveById.get(v.id), i)).join('');
+    banner.hidden = true;
+  } catch (error) {
+    renderDown(error.message);
+    banner.textContent = `서버에 연결하지 못했습니다: ${error.message}`;
+    banner.hidden = false;
+  }
+  $('credit').innerHTML = `<span>${clock(new Date().toISOString())} 기준</span>${timings.map((t) => `<span>${esc(t)}</span>`).join('')}<span id="next"></span>`;
+  countdown = REFRESH_S;
+  tick();
+}
+
+function tick() {
+  const next = $('next');
+  if (next) next.textContent = auto ? `${countdown}초 뒤 갱신` : '자동 갱신 꺼짐';
+}
+
+document.addEventListener('toggle', (event) => {
+  const el = event.target;
+  if (el.matches?.('details.raw')) {
+    el.open ? openRaw.add(el.dataset.key) : openRaw.delete(el.dataset.key);
+  }
+}, true);
+
+$('auto').addEventListener('click', () => {
+  auto = !auto;
+  $('auto').setAttribute('aria-pressed', String(auto));
+  tick();
+});
+$('reload').addEventListener('click', load);
+
+setInterval(() => {
+  if (!auto || document.hidden) return;
+  countdown -= 1;
+  if (countdown <= 0) load(); else tick();
+}, 1000);
+
+load();
+</script>
+</body>
+</html>

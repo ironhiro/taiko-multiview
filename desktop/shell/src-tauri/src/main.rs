@@ -1,4 +1,4 @@
-// Cross-platform shell for the TAIKO LABS multiview: WebView2 on Windows, WKWebView
+// Cross-platform shell for the Taiko multiview: WebView2 on Windows, WKWebView
 // on macOS, one codebase.
 //
 // The shell exists for one reason. Browsers refuse unmuted autoplay, so a multiview
@@ -106,7 +106,7 @@ fn main() {
             let handle = app.handle().clone();
 
             let mut builder = WebviewWindowBuilder::new(app, WINDOW_LABEL, target.url)
-                .title(format!("TAIKO LABS Multiview - {}", target.description))
+                .title(format!("태고 멀티뷰 — {}", target.description))
                 .inner_size(1280.0, 960.0)
                 .min_inner_size(380.0, 360.0)
                 .center()
@@ -116,7 +116,15 @@ fn main() {
                     open_elsewhere(&handle, url);
                     NewWindowResponse::Deny
                 })
-                .on_page_load(keep_page_in_place);
+                .on_page_load(keep_page_in_place)
+                // The page names the venue on screen; the title keeps saying which
+                // frontend was loaded after it, so that is never a guess.
+                .on_document_title_changed({
+                    let source = target.description.clone();
+                    move |window, title| {
+                        let _ = window.set_title(&format!("{title} — {source}"));
+                    }
+                });
 
             if let Some(agent) = user_agent() {
                 builder = builder.user_agent(&agent);
@@ -151,7 +159,7 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("could not start the TAIKO LABS Multiview shell");
+        .expect("could not start the Taiko Multiview shell");
 }
 
 // ------------------------------------------------------------------- new windows

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schemas.tauri.app/config/2",
-  "productName": "TAIKO LABS Multiview",
+  "productName": "Taiko Multiview",
   "version": "1.0.0",
   "identifier": "app.taikolabs.multiview",
   "build": {

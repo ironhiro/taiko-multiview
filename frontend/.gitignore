@@ -2,3 +2,7 @@ node_modules
 dist
 .vercel
 *.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/

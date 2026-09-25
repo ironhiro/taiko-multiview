@@ -2,6 +2,15 @@ export const GRID_SIZES = [1, 2, 3, 4] as const;
 export type GridSize = (typeof GRID_SIZES)[number];
 export const GRID_DEFAULT: GridSize = 3;
 
+/**
+ * Columns for a chosen N×N layout. Never more than there are cabinets - a 3×3 wall
+ * with one cabinet would be one small tile in a corner - but otherwise the choice
+ * stands: 4×4 on nine cabinets means four to a row.
+ */
+export function gridColumns(size: number, cabinets: number): number {
+  return Math.max(1, Math.min(size, cabinets));
+}
+
 interface LayoutPickerProps {
   size: GridSize;
   onChange: (size: GridSize) => void;
@@ -14,8 +23,8 @@ interface LayoutPickerProps {
  */
 export function LayoutPicker({ size, onChange }: LayoutPickerProps) {
   return (
-    <div className="rail__group rail__group--layout">
-      <span className="rail__label" id="layout-picker-label">
+    <div className="control-group control-group--layout">
+      <span className="control-group__label" id="layout-picker-label">
         배치
       </span>
       <div className="layout-picker" role="group" aria-labelledby="layout-picker-label">

@@ -1,5 +1,5 @@
-/* Hallmark · genre: atmospheric · macrostructure: Map / Diagram · tone: technical · anchor hue: per venue · theme: custom graphite · enrichment: none · nav: N3 side-rail (switcher) · footer: none (app) */
-/* Hallmark · pre-emit critique: P5 H4 E4 S5 R5 V4 */
+/* Hallmark · genre: playful · macrostructure: Catalogue (wall of streams) · tone: arcade · anchor hue: 270 (cabinet night) · theme: custom "오락실 감성" · enrichment: none · nav: N7 brutal slab → marquee · footer: Ft2 inline line → credit strip · design-system: design.md · designed-as-app */
+/* Hallmark · pre-emit critique: P5 H4 E4 S5 R4 V5 */
 
 *,
 *::before,
@@ -28,7 +28,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-p {
+p,
+h1 {
   margin: 0;
 }
 
@@ -39,12 +40,13 @@ input {
   color: inherit;
 }
 
-:where(button, a, input, select):focus-visible {
+:where(button, a, input, select, textarea):focus-visible {
   outline: var(--rule-mark) solid var(--color-focus);
   outline-offset: 2px;
 }
 
-.visually-hidden {
+.visually-hidden,
+.control-group__label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -55,57 +57,93 @@ input {
 
 /* ------------------------------------------------------------------ shell */
 
-/* The floor plan is portrait, so width is the spare dimension: the controls live in a
-   side rail and the whole height goes to the map. */
+/* Marquee over the wall, the credit line under it; the chat takes a column when open. */
 .app {
   display: grid;
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'marquee'
+    'stage'
+    'credit';
   height: 100%;
 }
 
-.rail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  min-height: 0;
-  padding: var(--space-md) var(--space-sm);
-  overflow-y: auto;
-  background: var(--color-paper-2);
-  border-right: var(--rule-hair) solid var(--color-rule);
+.app--chat {
+  grid-template-columns: minmax(0, 1fr) var(--chat-width);
+  grid-template-areas:
+    'marquee marquee'
+    'stage chat'
+    'credit credit';
 }
 
-.rail__brand {
+/* ---------------------------------------------------------------- marquee */
+
+/* One row when it fits; otherwise the views and layouts drop to a second row rather
+   than squeezing the venue tabs, which are the main navigation. */
+.marquee {
+  grid-area: marquee;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs) var(--space-md);
+  min-width: 0;
+  padding: var(--space-xs) var(--space-md) calc(var(--space-xs) + var(--press-depth));
+  background: var(--color-paper-2);
+  border-bottom: var(--rule-mark) solid var(--color-rule);
+}
+
+.marquee__brand {
   display: flex;
   flex-direction: column;
   gap: var(--space-3xs);
-  padding-inline: var(--space-2xs);
+  flex: none;
+  min-width: 0;
 }
 
-/* The app name steps back; the venue being watched is what the header is about. */
 .wordmark {
-  margin: 0;
+  font-family: var(--font-display);
   font-size: var(--text-xs);
-  font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--color-ink-3);
   white-space: nowrap;
 }
 
-.rail__venue {
+.marquee__venue {
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
   min-width: 0;
+  font-weight: 400;
 }
 
-.rail__venue-name {
+.marquee__venue-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: var(--text-md);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  line-height: 1;
   white-space: nowrap;
+}
+
+.marquee__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: none;
+  margin-left: auto;
+}
+
+.control-group {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Sized to its tabs, so the row wraps before a tab is hidden. */
+.control-group--venues {
+  flex: 1 1 auto;
 }
 
 /* Logos arrive in any shape - a square channel picture or a wide wordmark - so the
@@ -123,93 +161,121 @@ input {
 }
 
 .venue-mark--tab {
-  height: 1.25rem;
-  max-width: 2.5rem;
+  height: 1.5rem;
+  max-width: 3rem;
   border-radius: var(--radius-chip);
 }
 
 .venue-mark--swatch {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 1px;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
   background: var(--venue-accent, var(--color-accent-fallback));
 }
 
 .venue-mark--brand.venue-mark--swatch {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
-.rail__group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
-  min-width: 0;
-}
+/* ---------------------------------------------------------- arcade button */
 
-.rail__label {
-  padding-inline: var(--space-2xs);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--color-ink-3);
-}
-
-/* ------------------------------------------------------------ venue list */
-
-.venue-tabs,
-.choice-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--rule-hair);
-}
-
+/* The one signature move: every button sits on a base and sinks into it when pressed. */
 .venue-tab,
-.choice {
-  display: flex;
+.choice,
+.layout-picker__option,
+.btn {
+  position: relative;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2xs);
   min-height: 2.25rem;
-  padding: var(--space-3xs) var(--space-2xs);
-  background: transparent;
-  border: 0;
+  padding: 0 var(--space-xs);
+  background: var(--color-button);
+  border: var(--rule-hair) solid var(--color-rule);
   border-radius: var(--radius-control);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-base);
   color: var(--color-ink-2);
-  text-align: left;
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color var(--dur-micro) var(--ease-out),
+    transform var(--dur-micro) var(--ease-out),
     color var(--dur-micro) var(--ease-out);
 }
 
 .venue-tab:hover,
-.choice:hover {
-  background: var(--color-paper-3);
+.choice:hover,
+.layout-picker__option:hover,
+.btn:hover:not(:disabled) {
+  border-color: var(--color-rule-strong);
   color: var(--color-ink);
 }
 
 .venue-tab:active,
-.choice:active {
-  background: var(--color-rule);
+.choice:active,
+.layout-picker__option:active,
+.btn:active:not(:disabled) {
+  transform: translateY(var(--press-depth));
+  box-shadow: 0 0 0 var(--color-button-base);
 }
 
-.venue-tab[aria-selected='true'] {
-  background: var(--color-paper-3);
-  color: var(--color-ink);
+/* 카: what the viewer chose. */
+.venue-tab[aria-selected='true'],
+.choice[aria-pressed='true'],
+.layout-picker__option[aria-pressed='true'] {
+  background: var(--color-button-chosen);
+  border-color: var(--color-ka);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-chosen-base);
+  color: var(--color-ka);
+}
+
+.venue-tab[aria-selected='true']:active,
+.choice[aria-pressed='true']:active,
+.layout-picker__option[aria-pressed='true']:active {
+  box-shadow: 0 0 0 var(--color-button-chosen-base);
+}
+
+/* A button that cannot be pressed has no base to press into. */
+.btn:disabled {
+  background: var(--color-paper-2);
+  box-shadow: none;
+  color: var(--color-ink-3);
+  cursor: progress;
+}
+
+/* ------------------------------------------------------------- venue tabs */
+
+.venue-tabs {
+  display: flex;
+  gap: var(--space-2xs);
+  min-width: 0;
+  /* Room below for the buttons' bases, which the scroll box would otherwise clip. */
+  padding-bottom: var(--press-depth);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.venue-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.venue-tab {
+  flex: none;
 }
 
 .venue-tab__name {
-  flex: 1;
-  min-width: 0;
+  max-width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 600;
 }
 
 .venue-tab__count {
   min-width: 1.5rem;
   padding: 0 var(--space-3xs);
   border-radius: var(--radius-chip);
+  background: var(--color-paper);
   font-family: var(--font-data);
   font-size: var(--text-2xs);
   font-weight: 700;
@@ -219,6 +285,7 @@ input {
   color: var(--color-ink-3);
 }
 
+/* 돈: on air. */
 .venue-tab__count--live {
   background: var(--color-live);
   color: var(--color-live-ink);
@@ -226,162 +293,85 @@ input {
 
 /* ------------------------------------------------------------ view picker */
 
-/* A small lamp beside the chosen view, lit in the venue's colour. */
-.choice::before {
-  content: '';
-  flex: none;
-  width: 0.375rem;
-  height: 0.375rem;
-  border-radius: 1px;
-  background: transparent;
-}
-
-.choice[aria-pressed='true'] {
-  background: var(--color-paper-3);
-  color: var(--color-ink);
-  font-weight: 600;
-}
-
-.choice[aria-pressed='true']::before {
-  background: var(--color-accent);
-}
-
-/* ------------------------------------------------------------ scale control */
-
-.scale-control {
+.choice-list {
   display: flex;
-  align-items: center;
   gap: var(--space-3xs);
-  padding: var(--space-3xs);
-  background: var(--color-paper);
-  border: var(--rule-hair) solid var(--color-rule);
-  border-radius: var(--radius-control);
+  padding-bottom: var(--press-depth);
 }
 
-.scale-control button {
-  display: grid;
-  place-items: center;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 var(--space-3xs);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-chip);
-  font-size: var(--text-base);
-  line-height: 1;
-  cursor: pointer;
-  transition: background-color var(--dur-micro) var(--ease-out);
-}
-
-.scale-control button:hover:not(:disabled) {
-  background: var(--color-paper-3);
-}
-
-.scale-control button:active:not(:disabled) {
-  background: var(--color-rule);
-}
-
-.scale-control button:disabled {
-  color: var(--color-rule-strong);
-  cursor: default;
-}
-
-.scale-control input[type='range'] {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  accent-color: var(--color-accent);
-  cursor: pointer;
-}
-
-.scale-control .scale-control__value {
-  min-width: 2.75rem;
-  font-family: var(--font-data);
-  font-size: var(--text-2xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink-2);
+.choice {
+  padding-inline: var(--space-xs);
 }
 
 /* ----------------------------------------------------------- layout picker */
 
 .layout-picker {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
   gap: var(--space-3xs);
-  padding: var(--space-3xs);
-  background: var(--color-paper);
-  border: var(--rule-hair) solid var(--color-rule);
-  border-radius: var(--radius-control);
+  padding-bottom: var(--press-depth);
 }
 
 .layout-picker__option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  min-width: 2.75rem;
+  padding: 0 var(--space-2xs);
   gap: var(--space-3xs);
-  padding: var(--space-2xs) 0 var(--space-3xs);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-chip);
-  color: var(--color-ink-3);
-  cursor: pointer;
-  transition:
-    background-color var(--dur-micro) var(--ease-out),
-    color var(--dur-micro) var(--ease-out);
-}
-
-.layout-picker__option:hover {
-  background: var(--color-paper-3);
-  color: var(--color-ink);
-}
-
-.layout-picker__option:active {
-  background: var(--color-rule);
-}
-
-.layout-picker__option[aria-pressed='true'] {
-  background: var(--color-paper-3);
-  color: var(--color-accent);
 }
 
 .layout-picker__text {
   font-family: var(--font-data);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
-/* ------------------------------------------------------------ status block */
+/* ----------------------------------------------------------------- credit */
 
-.rail__status {
+.credit {
+  grid-area: credit;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-  margin-top: auto;
-  padding: var(--space-sm) var(--space-2xs) 0;
-  border-top: var(--rule-hair) solid var(--color-rule);
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-2xs) var(--space-md) calc(var(--space-2xs) + var(--press-depth));
+  background: var(--color-paper-2);
+  border-top: var(--rule-mark) solid var(--color-rule);
 }
 
-.rail__readout {
+.credit__readout {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3xs);
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-md);
+  row-gap: 0;
+  min-width: 0;
 }
 
 .tally {
   display: flex;
   align-items: baseline;
-  gap: var(--space-3xs);
+  gap: var(--space-2xs);
   color: var(--color-ink-2);
-  font-weight: 600;
+  font-weight: 700;
+}
+
+/* The cabinet's tally lamp: lit red when anything is on air. */
+.tally__lamp {
+  flex: none;
+  align-self: center;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  background: var(--color-rule-strong);
+}
+
+.tally--live .tally__lamp {
+  background: var(--color-don);
 }
 
 .tally__count {
-  font-family: var(--font-data);
-  font-size: var(--text-tally);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
   color: var(--color-live-text);
 }
 
@@ -389,52 +379,31 @@ input {
   color: var(--color-ink);
 }
 
-.rail__note {
+.credit__note {
   font-size: var(--text-xs);
   color: var(--color-warn);
   cursor: help;
 }
 
-.rail__updated {
+.credit__updated {
   font-size: var(--text-xs);
   color: var(--color-ink-3);
 }
 
-.rail__updated time {
+.credit__updated time {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
 }
 
-.btn {
-  min-height: 2.25rem;
-  padding: 0 var(--space-sm);
-  background: var(--color-paper-3);
-  border: var(--rule-hair) solid var(--color-rule-strong);
-  border-radius: var(--radius-control);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    border-color var(--dur-micro) var(--ease-out),
-    background-color var(--dur-micro) var(--ease-out);
-}
-
-.btn:hover:not(:disabled) {
-  border-color: var(--color-accent);
-}
-
-.btn:active:not(:disabled) {
-  background: var(--color-rule);
-}
-
-.btn:disabled {
-  color: var(--color-ink-3);
-  cursor: progress;
+.credit__refresh {
+  flex: none;
+  min-height: 2rem;
 }
 
 /* ------------------------------------------------------------------ stage */
 
 .stage {
+  grid-area: stage;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -456,89 +425,16 @@ input {
   overflow: auto;
 }
 
-/* The floor plan scales to fit instead of scrolling, so the whole venue stays visible. */
-.stage__main:has(.floorplan-scroll) {
-  overflow: hidden;
-}
-
-/* -------------------------------------------------------------- floorplan */
-
-.floorplan-scroll {
-  display: flex;
-  align-items: flex-start;
-  padding: var(--space-sm);
-  /* Fills the row the flex column leaves behind, rather than guessing with vh
-     units - those overshoot as soon as the desktop shell adds its own chrome. */
-  height: 100%;
-  overflow: auto;
-}
-
-.floorplan {
-  position: relative;
-  /* Auto margins centre the map but, unlike justify-content, never push its left
-     edge out of reach once it is wider than the view. */
-  margin-inline: auto;
-  /* Portrait canvas: the height (set from the zoom level) drives the size and the
-     width follows from the aspect ratio. Above 100% the container scrolls. */
-  max-width: none;
-  flex: none;
-}
-
-.floorplan__zone {
-  position: absolute;
-  background: var(--color-zone);
-  border: var(--rule-hair) solid var(--color-rule);
-  border-radius: var(--radius-tile);
-}
-
-.floorplan__zone-code {
-  position: absolute;
-  top: var(--space-2xs);
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-data);
-  font-size: clamp(0.5625rem, 1.1vh, 0.75rem);
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  color: var(--color-ink-3);
-  white-space: nowrap;
-}
-
-.floorplan__zone--muted {
-  background: transparent;
-  border-style: dashed;
-  border-color: var(--color-rule);
-}
-
-.floorplan__zone--muted .floorplan__zone-code {
-  color: var(--color-ink-3);
-}
-
-.floorplan__zone-note {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: clamp(0.5625rem, 1.1vh, 0.75rem);
-  color: var(--color-ink-3);
-  white-space: nowrap;
-}
-
-.floorplan__slot {
-  position: absolute;
-}
-
-.floorplan__slot .tile {
-  height: 100%;
-  aspect-ratio: auto;
-}
-
 /* ------------------------------------------------------------- grid views */
 
 /* The scrolling area is the size container, so a tile can be sized against both its
-   width and its height: N columns across, and N rows to one screen. */
-.stage__main {
-  container-type: size;
+   width and its height: N columns across, and N rows to one screen. Desktop only: a
+   size container takes no height from its content, and on phones - where the page
+   grows with its tiles - that collapsed the wall to nothing. */
+@media (min-width: 821px) {
+  .stage__main {
+    container-type: size;
+  }
 }
 
 .grid-view {
@@ -559,21 +455,20 @@ input {
 
 /* ------------------------------------------------------------------ tiles */
 
+/* Each tile is a cabinet screen: a thick bezel around the picture. */
 .tile {
   position: relative;
   container-type: inline-size;
   aspect-ratio: 16 / 9;
   background: var(--color-video);
-  border: var(--rule-hair) solid var(--color-rule);
+  border: var(--rule-mark) solid var(--color-rule);
   border-radius: var(--radius-tile);
   overflow: hidden;
-  transition: border-color var(--dur-short) var(--ease-out);
 }
 
-/* Holding the audio is the one state the viewer chose, so it gets the accent. */
+/* Holding the sound is what the viewer chose: 카. */
 .tile--audio {
-  border-color: var(--color-accent);
-  outline: var(--rule-hair) solid var(--color-accent);
+  border-color: var(--color-ka);
 }
 
 .tile--idle {
@@ -594,7 +489,7 @@ input {
   border: 0;
 }
 
-/* Header and audio button float over the video so the tile stays exactly 16:9. */
+/* Header and controls float over the video so the tile stays exactly 16:9. */
 .tile__header {
   position: absolute;
   top: 0;
@@ -603,8 +498,8 @@ input {
   z-index: 2;
   display: flex;
   align-items: center;
-  gap: var(--space-3xs);
-  padding: var(--space-3xs) var(--space-2xs) var(--space-sm);
+  gap: var(--space-2xs);
+  padding: var(--space-2xs) var(--space-xs) var(--space-sm);
   background: linear-gradient(to bottom, var(--color-scrim), transparent);
   pointer-events: none;
 }
@@ -617,7 +512,7 @@ input {
   font-family: var(--font-data);
   font-size: var(--text-tile-label);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
 }
 
@@ -626,7 +521,7 @@ input {
 }
 
 .tile__badge {
-  padding: 0 var(--space-3xs);
+  padding: 0 var(--space-2xs);
   border-radius: var(--radius-chip);
   background: var(--color-live);
   color: var(--color-live-ink);
@@ -634,7 +529,7 @@ input {
   font-size: var(--text-tile-meta);
   font-weight: 700;
   letter-spacing: 0.08em;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .tile__viewers {
@@ -651,14 +546,13 @@ input {
   }
 }
 
-/* Chat and audio, floated over the video so the tile stays exactly 16:9. */
 .tile__controls {
   position: absolute;
-  right: var(--space-3xs);
-  bottom: var(--space-3xs);
+  right: var(--space-2xs);
+  bottom: calc(var(--space-2xs) + var(--press-depth));
   z-index: 2;
   display: flex;
-  gap: var(--space-3xs);
+  gap: var(--space-2xs);
   opacity: 0;
   transition: opacity var(--dur-short) var(--ease-out);
 }
@@ -677,21 +571,23 @@ input {
   }
 }
 
+/* The arcade button again, on glass over the picture. */
 .tile__control {
   display: flex;
   align-items: center;
   gap: var(--space-3xs);
-  min-height: 1.75rem;
+  min-height: 1.875rem;
   padding: 0 var(--space-2xs);
   background: var(--color-scrim);
   border: var(--rule-hair) solid var(--color-rule-strong);
   border-radius: var(--radius-control);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-base);
   color: var(--color-ink);
   font-size: var(--text-tile-meta);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
-  transition: border-color var(--dur-micro) var(--ease-out);
+  transition: transform var(--dur-micro) var(--ease-out);
 }
 
 .tile__control:hover {
@@ -699,12 +595,13 @@ input {
 }
 
 .tile__control:active {
-  background: var(--color-paper-3);
+  transform: translateY(var(--press-depth));
+  box-shadow: 0 0 0 var(--color-button-base);
 }
 
 .tile__control[aria-pressed='true'] {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-ka);
+  color: var(--color-ka);
 }
 
 .tile__control:disabled {
@@ -715,7 +612,7 @@ input {
   flex: none;
 }
 
-/* In the floor plan a tile can be tiny; the icons alone still say what they do. */
+/* A small tile keeps the icons; the words go. */
 @container (max-width: 220px) {
   .tile__control-text {
     display: none;
@@ -758,20 +655,79 @@ input {
   transform: translate(-50%, -50%);
   display: grid;
   place-items: center;
-  width: 3rem;
-  height: 3rem;
+  width: 3.25rem;
+  height: 3.25rem;
   padding-left: 2px;
   border-radius: 50%;
   background: var(--color-scrim);
-  border: var(--rule-hair) solid var(--color-ink-3);
+  border: var(--rule-mark) solid var(--color-ink-3);
   color: var(--color-ink);
-  transition: border-color var(--dur-micro) var(--ease-out);
 }
 
 .poster:hover .poster__play,
 .poster:focus-visible .poster__play {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-ka);
+  color: var(--color-ka);
+}
+
+/* ---------------------------------------------------------- loading cover */
+
+/* The stream's thumbnail over the player until it has a picture: the wall shows its
+   cabinets at once instead of black boxes. Leaves by fading; never catches clicks. */
+.cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--color-video);
+  pointer-events: none;
+  transition: opacity var(--dur-short) var(--ease-out);
+}
+
+.cover--gone {
+  opacity: 0;
+}
+
+.cover__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--color-scrim);
+}
+
+/* The cabinet's attract screen: a hard blink, no easing, like the real thing. */
+.cover__readout,
+.placeholder--loading .placeholder__text {
+  font-family: var(--font-data);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  animation: attract-blink 1.2s steps(1, end) infinite;
+}
+
+.cover__readout {
+  position: relative;
+  padding: var(--space-3xs) var(--space-xs);
+  border-radius: var(--radius-chip);
+  background: var(--color-scrim);
+  color: var(--color-ink);
+  font-size: var(--text-tile-meta);
+}
+
+.placeholder--loading .placeholder__text {
+  color: var(--color-ink-2);
+}
+
+@keyframes attract-blink {
+  50% {
+    opacity: 0.25;
+  }
 }
 
 /* ----------------------------------------------------------- placeholders */
@@ -793,7 +749,7 @@ input {
 
 .placeholder__text {
   font-size: var(--text-tile-body);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .placeholder__detail {
@@ -812,7 +768,7 @@ input {
   color: var(--color-warn);
 }
 
-/* The floor plan shrinks tiles well below a readable width for a full sentence. */
+/* A small tile has no room for the full sentence. */
 .placeholder__short {
   display: none;
 }
@@ -833,7 +789,7 @@ input {
 }
 
 .placeholder__link {
-  color: var(--color-accent);
+  color: var(--color-ka);
   font-size: var(--text-tile-body);
   text-decoration: none;
   white-space: nowrap;
@@ -846,24 +802,20 @@ input {
 
 /* ------------------------------------------------------------------- chat */
 
-/* The chat takes a third column beside the wall while it is open. */
-.app--chat {
-  grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--chat-width);
-}
-
 .chat {
+  grid-area: chat;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: var(--color-paper-2);
-  border-left: var(--rule-hair) solid var(--color-rule);
+  border-left: var(--rule-mark) solid var(--color-rule);
 }
 
 .chat__header {
   display: flex;
   align-items: center;
   gap: var(--space-2xs);
-  padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-sm);
+  padding: var(--space-xs) var(--space-xs) calc(var(--space-xs) + var(--press-depth)) var(--space-sm);
   border-bottom: var(--rule-hair) solid var(--color-rule);
 }
 
@@ -881,12 +833,13 @@ input {
 .chat__station {
   font-family: var(--font-data);
   letter-spacing: 0.04em;
+  color: var(--color-ka);
 }
 
 .chat__actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3xs);
+  gap: var(--space-2xs);
 }
 
 .chat__write {
@@ -901,23 +854,23 @@ input {
   width: 2rem;
   height: 2rem;
   padding: 0;
-  background: transparent;
-  border: 0;
+  background: var(--color-button);
+  border: var(--rule-hair) solid var(--color-rule);
   border-radius: var(--radius-control);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-base);
   color: var(--color-ink-2);
   cursor: pointer;
-  transition:
-    background-color var(--dur-micro) var(--ease-out),
-    color var(--dur-micro) var(--ease-out);
+  transition: transform var(--dur-micro) var(--ease-out);
 }
 
 .chat__close:hover {
-  background: var(--color-paper-3);
   color: var(--color-ink);
+  border-color: var(--color-rule-strong);
 }
 
 .chat__close:active {
-  background: var(--color-rule);
+  transform: translateY(var(--press-depth));
+  box-shadow: 0 0 0 var(--color-button-base);
 }
 
 .chat__frame {
@@ -944,130 +897,89 @@ input {
 
 /* ----------------------------------------------------------------- mobile */
 
-/* Below this the rail folds into a header: brand and refresh on one line, then the
-   venues and views as scrolling rows. Zoom is dropped - the phone layout pins tile
-   size itself. */
+/* Phones: the marquee compresses to a brand row and scrolling rows of venues and views,
+   the credit line sits under it, and the wall grows with its tiles, one to a row.
+   Layouts are a desktop control - the phone pins tile size itself. */
 @media (max-width: 820px) {
   body {
     font-size: var(--text-base);
   }
 
-  .app {
+  .app,
+  .app--chat {
     display: flex;
     flex-direction: column;
   }
 
-  .rail {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      'brand refresh'
-      'venues venues'
-      'views views'
-      'status status';
-    align-items: center;
+  .marquee {
+    order: 0;
+    flex-wrap: wrap;
     gap: var(--space-2xs);
-    flex: none;
     padding: var(--space-xs);
     /* Honour the notch on phones held in landscape. */
     padding-left: max(var(--space-xs), env(safe-area-inset-left));
     padding-right: max(var(--space-xs), env(safe-area-inset-right));
-    overflow: visible;
-    border-right: 0;
-    border-bottom: var(--rule-hair) solid var(--color-rule);
   }
 
-  .rail__brand {
-    grid-area: brand;
+  .marquee__brand {
+    flex: 1 0 100%;
     flex-direction: row;
     align-items: center;
     gap: var(--space-2xs);
-    min-width: 0;
-    padding: 0;
   }
 
-  .rail__venue-name {
-    font-size: var(--text-base);
+  .marquee__venue-name {
+    font-size: var(--text-md);
   }
 
   .venue-mark--brand {
     height: 1.75rem;
   }
 
-  .rail__group--venues {
-    grid-area: venues;
+  .control-group--venues,
+  .marquee__controls {
+    flex: 1 0 100%;
+    min-width: 0;
   }
 
-  .rail__group:has(.choice-list) {
-    grid-area: views;
+  .control-group--views {
+    min-width: 0;
   }
 
-  .rail__group--layout {
+  .control-group--layout {
     display: none;
   }
 
-  .rail__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-  }
-
-  .venue-tabs,
   .choice-list {
-    flex-direction: row;
-    gap: var(--space-3xs);
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  .venue-tabs::-webkit-scrollbar,
   .choice-list::-webkit-scrollbar {
     display: none;
   }
 
   .venue-tab,
-  .choice {
+  .choice,
+  .btn {
     flex: none;
     min-height: 2.5rem;
-    padding-inline: var(--space-xs);
   }
 
-  .choice {
-    border: var(--rule-hair) solid var(--color-rule);
+  .credit {
+    order: 1;
+    gap: var(--space-xs);
+    padding: var(--space-2xs) var(--space-xs) calc(var(--space-2xs) + var(--press-depth));
+    border-top: 0;
+    border-bottom: var(--rule-mark) solid var(--color-rule);
   }
 
-  .choice[aria-pressed='true'] {
-    border-color: var(--color-accent);
-  }
-
-  /* In a row of chips an unlit lamp only reads as a lopsided gap. */
-  .choice:not([aria-pressed='true'])::before {
-    display: none;
-  }
-
-  .rail__status {
-    display: contents;
-  }
-
-  .rail__readout {
-    grid-area: status;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: baseline;
+  .credit__readout {
     column-gap: var(--space-xs);
-    row-gap: 0;
   }
 
-  .tally__count {
-    font-size: var(--text-md);
-  }
-
-  .rail__refresh {
-    grid-area: refresh;
-    min-height: 2.5rem;
+  .stage {
+    order: 2;
   }
 
   /* On a phone the chat is a sheet over the lower part of the wall. */
@@ -1080,7 +992,7 @@ input {
     height: 60dvh;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-left: 0;
-    border-top: var(--rule-hair) solid var(--color-rule-strong);
+    border-top: var(--rule-mark) solid var(--color-rule-strong);
     border-radius: var(--radius-tile) var(--radius-tile) 0 0;
   }
 
@@ -1089,29 +1001,11 @@ input {
     height: 2.5rem;
   }
 
-  .floorplan-scroll {
-    padding: var(--space-xs);
-    /* The plan is taller than a phone screen, so scroll it rather than shrink it. */
-    height: auto;
-    min-height: 100%;
-  }
-
-  .floorplan {
-    /* Overrides the inline zoom height so width drives the size on a phone. */
-    height: auto !important;
-    width: 100%;
-    /* Below this the nine tiles become unreadable, so pan instead of shrinking. */
-    min-width: 640px;
-  }
-
-  .stage__main:has(.floorplan-scroll) {
-    overflow: auto;
-  }
-
   .grid-view {
     /* One tile per row: nine players on a phone is neither usable nor affordable. */
     grid-template-columns: minmax(0, 1fr) !important;
     padding: var(--space-xs);
+    gap: var(--space-xs);
   }
 
   .tile__label,
@@ -1126,17 +1020,10 @@ input {
   }
 }
 
-/* Landscape phones: the floor plan is portrait, so give it every row we can. */
+/* Landscape phones: every row goes to the picture. */
 @media (max-height: 520px) and (orientation: landscape) {
-  .rail {
-    grid-template-areas:
-      'venues refresh'
-      'views views';
-    padding-block: var(--space-2xs);
-  }
-
-  .rail__brand,
-  .rail__readout {
+  .marquee__brand,
+  .credit__readout {
     display: none;
   }
 }
@@ -1146,5 +1033,6 @@ input {
   *::before,
   *::after {
     transition-duration: 1ms !important;
+    animation: none !important;
   }
 }

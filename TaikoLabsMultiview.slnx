@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/backend/">
     <Project Path="backend/TaikoLabs.Api/TaikoLabs.Api.csproj" />
+    <Project Path="backend/TaikoLabs.Api.Tests/TaikoLabs.Api.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/TaikoLabs.VenueEditor/TaikoLabs.VenueEditor.csproj" />

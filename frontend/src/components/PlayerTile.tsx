@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { IdleMessage } from '../lib/venue';
 import type { LiveStream } from '../lib/types';
 import { describePlayerError, report } from '../lib/diagnostics';
+import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
 import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
@@ -39,6 +40,9 @@ export function PlayerTile({
   const hostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const [failed, setFailed] = useState(false);
+  // False until the player shows a picture; the stream's thumbnail covers the black
+  // iframe meanwhile.
+  const [isPictureUp, setIsPictureUp] = useState(false);
   const [isActivated, setIsActivated] = useState(!lazy);
 
   // Read by the playback watchdog, which outlives any one render.
@@ -95,6 +99,10 @@ export function PlayerTile({
     let stopResync: (() => void) | undefined;
     const where = { station: label, videoId: mountedId };
     setFailed(false);
+    setIsPictureUp(false);
+    // Autoplay can be refused, leaving YouTube's own play button to press: never keep it
+    // covered for long.
+    const uncover = window.setTimeout(() => setIsPictureUp(true), COVER_LIMIT_MS);
 
     // YT.Player replaces the element it is handed, so give it a throwaway child
     // rather than the container React owns.
@@ -128,7 +136,12 @@ export function PlayerTile({
             },
             // Checked at once rather than on the next tick, so a start far behind live is
             // corrected before much old footage is on screen.
-            onStateChange: () => watchdog?.check(),
+            onStateChange: (event) => {
+              watchdog?.check();
+              if (event.data === PlayerState.Playing || event.data === PlayerState.Paused) {
+                setIsPictureUp(true);
+              }
+            },
             onError: (event) => {
               report('player-error', { ...where, code: event.data, meaning: describePlayerError(event.data) });
               setFailed(true);
@@ -143,6 +156,7 @@ export function PlayerTile({
 
     return () => {
       disposed = true;
+      window.clearTimeout(uncover);
       watchdog?.stop();
       stopResync?.();
       try {
@@ -215,6 +229,7 @@ export function PlayerTile({
         )}
 
         {mountedId && !failed && <div className="tile__player" ref={hostRef} />}
+        {mountedId && !failed && stream && <LoadingCover stream={stream} gone={isPictureUp} />}
       </div>
 
       <div className="tile__controls">
@@ -249,13 +264,32 @@ export function PlayerTile({
 
 function IdlePlaceholder({ message }: { message: IdleMessage }) {
   return (
-    <div className="placeholder">
+    <div className={message.loading ? 'placeholder placeholder--loading' : 'placeholder'}>
       <span className="placeholder__text">{message.title}</span>
       {message.detail && <span className="placeholder__detail">{message.detail}</span>}
     </div>
   );
 }
 
+/**
+ * The stream's thumbnail over the player while it loads, so a starting wall shows the
+ * cabinets at once instead of a row of black boxes. Fades out once there is a picture.
+ */
+function LoadingCover({ stream, gone }: { stream: LiveStream; gone: boolean }) {
+  return (
+    <div className={gone ? 'cover cover--gone' : 'cover'} aria-hidden="true">
+      <img className="cover__image" src={thumbnailOf(stream)} alt="" decoding="async" />
+      <span className="cover__scrim" />
+      <span className="cover__readout">NOW LOADING</span>
+    </div>
+  );
+}
+
+function thumbnailOf(stream: LiveStream): string {
+  return stream.thumbnailUrl ?? `https://i.ytimg.com/vi/${stream.videoId}/hqdefault.jpg`;
+}
+
+const COVER_LIMIT_MS = 12_000;
 const LAZY_START_MS = 300;
 const LAZY_STOP_MS = 2_000;
 
@@ -295,19 +329,13 @@ interface Watchdog {
  * broadcast's start is unknown, so the lag cannot be measured).
  */
 function jumpToLive(player: YTPlayer, startedAtRef: { current: string | undefined }): number | null {
-  const broadcastStart = startedAtRef.current ? Date.parse(startedAtRef.current) : NaN;
-  if (Number.isNaN(broadcastStart)) {
+  const startedAt = startedAtRef.current;
+  const behind = secondsBehindLive(startedAt, player.getCurrentTime());
+  if (behind === null || startedAt === undefined || behind <= RESYNC_BEHIND_S) {
     return null;
   }
 
-  const liveSecond = (Date.now() - broadcastStart) / 1000;
-  const behind = liveSecond - player.getCurrentTime();
-  if (behind <= RESYNC_BEHIND_S) {
-    return null;
-  }
-
-  // Seeking past the end of a live DVR window lands on the live edge.
-  player.seekTo(liveSecond + 60, true);
+  player.seekTo(liveEdgeSeek(startedAt), true);
   player.playVideo();
   return Math.round(behind);
 }
@@ -404,9 +432,8 @@ function watchPlayback(
     // On a live embed getCurrentTime counts seconds since the broadcast started, so the
     // gap to the wall-clock age of the broadcast is how far behind live the picture is.
     // getDuration is no use here: it read up to an hour off, differently per tile.
-    const broadcastStart = startedAtRef.current ? Date.parse(startedAtRef.current) : NaN;
-    if (state === PlayerState.Playing && !Number.isNaN(broadcastStart)) {
-      const behind = (now - broadcastStart) / 1000 - time;
+    const behind = state === PlayerState.Playing ? secondsBehindLive(startedAtRef.current, time, now) : null;
+    if (behind !== null) {
       if (behind > BEHIND_LIVE_LIMIT_S && !open.behind) {
         open.behind = true;
         report('behind-live', { ...where, behindSeconds: Math.round(behind) });
@@ -540,7 +567,7 @@ function UnavailablePlaceholder({
 
 /** A lazy tile's stand-in while off screen or about to start; tapping starts it at once. */
 function ThumbnailPoster({ stream, onActivate }: { stream: LiveStream; onActivate: () => void }) {
-  const poster = stream.thumbnailUrl ?? `https://i.ytimg.com/vi/${stream.videoId}/hqdefault.jpg`;
+  const poster = thumbnailOf(stream);
 
   return (
     <button type="button" className="poster" onClick={onActivate}>

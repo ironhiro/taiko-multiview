@@ -3,7 +3,8 @@ import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
 import type { LiveResponse, LiveStream, Venue, VenueLive } from './lib/types';
 import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
-import { accentStyle, idleMessageFor, venueSummary } from './lib/venue';
+import { onVenuesSaved } from './lib/settingsChannel';
+import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, stationsForView, viewOptionsFor, type ViewMode } from './lib/views';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
@@ -35,28 +36,39 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const hasChosenView = useRef(false);
 
-  // --- static configuration, fetched once -----------------------------------
+  // --- venue configuration ----------------------------------------------------
+
+  // Fetched at start and again whenever the API reports a new settings version - the
+  // venue editor saved - so a renamed cabinet or a new venue shows up without a reload.
+  const [venuesVersion, setVenuesVersion] = useState<number | null>(null);
+
+  const loadVenues = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const loaded = await fetchVenues(signal);
+      setVenues(loaded.venues);
+      setVenuesVersion(loaded.version);
+
+      // Keep the venue on screen if it is still there; otherwise fall back as at start.
+      setActiveVenueId((current) => {
+        if (current && loaded.venues.some((venue) => venue.id === current)) {
+          return current;
+        }
+        const requested = new URLSearchParams(window.location.search).get('venue');
+        return (loaded.venues.find((venue) => venue.id === requested) ?? loaded.venues[0])?.id ?? null;
+      });
+    } catch (cause) {
+      if (!signal?.aborted) {
+        setError(cause instanceof Error ? cause.message : '매장 정보를 불러오지 못했습니다');
+        report('venues-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-
-    fetchVenues(controller.signal)
-      .then((loaded) => {
-        setVenues(loaded);
-
-        const requested = new URLSearchParams(window.location.search).get('venue');
-        const initial = loaded.find((venue) => venue.id === requested) ?? loaded[0];
-        setActiveVenueId(initial?.id ?? null);
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : '매장 정보를 불러오지 못했습니다');
-          report('venues-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
-        }
-      });
-
+    void loadVenues(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [loadVenues]);
 
   const activeVenue = useMemo(
     () => venues.find((venue) => venue.id === activeVenueId),
@@ -104,6 +116,24 @@ export default function App() {
     void load();
     return () => abortRef.current?.abort();
   }, [load]);
+
+  // The API rebuilt its venue list: fetch it again.
+  const liveVenuesVersion = live?.venuesVersion;
+  useEffect(() => {
+    if (liveVenuesVersion !== undefined && venuesVersion !== null && liveVenuesVersion !== venuesVersion) {
+      void loadVenues();
+    }
+  }, [liveVenuesVersion, venuesVersion, loadVenues]);
+
+  // The editor in the other window just saved. The API notices the file a moment later,
+  // so the live data - which carries the new version - is asked for after a short wait.
+  useEffect(
+    () =>
+      onVenuesSaved(() => {
+        window.setTimeout(() => void load(), 1500);
+      }),
+    [load],
+  );
 
   // Follow the backend's own cadence, and skip polling while the tab is hidden.
   useEffect(() => {
@@ -165,6 +195,12 @@ export default function App() {
     window.history.replaceState(null, '', url);
   }, [activeVenueId, view]);
 
+  // The window title names the venue on screen - it is also what the desktop shell's
+  // title bar and the taskbar show.
+  useEffect(() => {
+    document.title = activeVenue ? `${activeVenue.name} · 태고 멀티뷰` : '태고 멀티뷰';
+  }, [activeVenue]);
+
   useEffect(() => {
     setDiagnosticsContext({ venueId: activeVenueId ?? undefined, view: view ?? undefined });
   }, [activeVenueId, view]);
@@ -193,7 +229,7 @@ export default function App() {
 
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
   const stations = useMemo(() => stationsForView(activeVenue, view ?? 'all-grid'), [activeVenue, view]);
-  const idle = useMemo(() => idleMessageFor(activeLive?.venue), [activeLive]);
+  const idle = useMemo(() => (live ? idleMessageFor(activeLive?.venue) : LOADING_MESSAGE), [live, activeLive]);
 
   const closedSummary = venueSummary(activeLive?.venue);
   const liveCount = activeLive?.streams.filter((stream) => stream.isLive).length ?? 0;
@@ -241,14 +277,15 @@ export default function App() {
       className={chatStation ? 'app app--chat venue-scope' : 'app venue-scope'}
       style={accentStyle(activeVenue?.accent)}
     >
-      <aside className="rail" aria-label="멀티뷰 설정">
-        <div className="rail__brand">
-          <h1 className="wordmark">태고 멀티뷰</h1>
+      {/* The marquee: the cabinet's lit sign. Who is on screen, and every control. */}
+      <header className="marquee">
+        <div className="marquee__brand">
+          <p className="wordmark">태고 멀티뷰</p>
           {activeVenue && (
-            <p className="rail__venue">
+            <h1 className="marquee__venue">
               <VenueMark venue={activeVenue} size="brand" />
-              <span className="rail__venue-name">{activeVenue.name}</span>
-            </p>
+              <span className="marquee__venue-name">{activeVenue.name}</span>
+            </h1>
           )}
         </div>
 
@@ -259,53 +296,11 @@ export default function App() {
           onSelect={selectVenue}
         />
 
-        {viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
-
-        <LayoutPicker size={gridSize} onChange={setGridSize} />
-
-        <div className="rail__status">
-          <div className="rail__readout" aria-live="polite">
-            {liveCount > 0 ? (
-              <p className="tally tally--live">
-                <span className="tally__count">{liveCount}</span>
-                <span className="tally__text">개 송출 중</span>
-              </p>
-            ) : (
-              <p className="tally">
-                <span className="tally__text">{closedSummary ?? '송출 대기중'}</span>
-              </p>
-            )}
-
-            {activeLive?.isFallbackSource && (
-              <p
-                className="rail__note"
-                title="API 키가 없어 공개 페이지로 라이브 여부를 확인하고 있습니다. YouTube:ApiKey 를 설정하면 공식 API를 사용합니다."
-              >
-                {activeLive.source === 'Mock' ? '모의 데이터' : 'API 키 없음 · 공개 페이지로 확인'}
-              </p>
-            )}
-
-            {activeLive && (
-              <p className="rail__updated">
-                <time dateTime={activeLive.updatedAt}>
-                  {new Date(activeLive.updatedAt).toLocaleTimeString('ko-KR')}
-                </time>{' '}
-                기준
-              </p>
-            )}
-          </div>
-
-          <button
-            type="button"
-            className="btn rail__refresh"
-            onClick={handleManualRefresh}
-            disabled={isRefreshing}
-            aria-busy={isRefreshing}
-          >
-            {isRefreshing ? '갱신 중…' : '새로고침'}
-          </button>
+        <div className="marquee__controls">
+          {viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
+          <LayoutPicker size={gridSize} onChange={setGridSize} />
         </div>
-      </aside>
+      </header>
 
       <div className="stage">
         {error && (
@@ -328,6 +323,52 @@ export default function App() {
           />
         </main>
       </div>
+
+      {/* The credit line: what an arcade screen keeps along its bottom edge. */}
+      <footer className="credit">
+        <div className="credit__readout" aria-live="polite">
+          {liveCount > 0 ? (
+            <p className="tally tally--live">
+              <span className="tally__lamp" aria-hidden="true" />
+              <span className="tally__count">{liveCount}</span>
+              <span className="tally__text">개 송출 중</span>
+            </p>
+          ) : (
+            <p className="tally">
+              <span className="tally__lamp" aria-hidden="true" />
+              <span className="tally__text">{live ? closedSummary ?? '송출 대기중' : '방송 확인 중'}</span>
+            </p>
+          )}
+
+          {activeLive?.isFallbackSource && (
+            <p
+              className="credit__note"
+              title="API 키가 없어 공개 페이지로 라이브 여부를 확인하고 있습니다. YouTube:ApiKey 를 설정하면 공식 API를 사용합니다."
+            >
+              {activeLive.source === 'Mock' ? '모의 데이터' : 'API 키 없음 · 공개 페이지로 확인'}
+            </p>
+          )}
+
+          {activeLive && (
+            <p className="credit__updated">
+              <time dateTime={activeLive.updatedAt}>
+                {new Date(activeLive.updatedAt).toLocaleTimeString('ko-KR')}
+              </time>{' '}
+              기준
+            </p>
+          )}
+        </div>
+
+        <button
+          type="button"
+          className="btn credit__refresh"
+          onClick={handleManualRefresh}
+          disabled={isRefreshing}
+          aria-busy={isRefreshing}
+        >
+          {isRefreshing ? '갱신 중…' : '새로고침'}
+        </button>
+      </footer>
 
       {chatStation && (
         <ChatPanel
