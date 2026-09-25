@@ -80,4 +80,4 @@ jobs:
           az containerapp up
           --name "${{ vars.AZURE_CONTAINERAPP }}"
           --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
-          --source backend/TaikoLabs.Api
+          --source .

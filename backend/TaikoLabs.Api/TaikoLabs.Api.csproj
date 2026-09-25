@@ -13,6 +13,9 @@
   <ItemGroup>
     <!-- The venue list; shipped beside appsettings.json in every build and publish. -->
     <Content Update="venues.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The /status page. Kept out of wwwroot, which holds the frontend build in the container
+         and is served to everyone: this page is only mapped while ApiDocs is on. -->
+    <Content Include="Status/status.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

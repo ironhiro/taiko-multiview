@@ -7,8 +7,9 @@
 배치도가 없는 매장은 균등 그리드로만 보여준다.
 
 ```
-ASP.NET Core API  ──▶  Vercel (React + TS)  ──▶  브라우저
-       │                                     └▶  Tauri 셸 (macOS · Windows)
+컨테이너 하나 (Azure Container Apps)
+  ASP.NET Core API + React 빌드  ──▶  브라우저
+       │                         └▶  Tauri 셸 (macOS · Windows)
        └─ YouTube RSS + Data API v3
 ```
 
@@ -346,38 +347,26 @@ YouTube__Mode=Api
 
 ## 배포
 
-### 백엔드 — Azure Container Apps
+환경 하나 = **컨테이너 하나**. 저장소 루트의 `Dockerfile` 이 프론트엔드를 빌드해 API의 `wwwroot` 에
+넣으므로, 한 서버가 화면과 `/api` 를 같은 주소에서 준다. 프록시도 CORS 설정도 필요 없다.
 
-폴링 워커가 계속 살아 있어야 하므로 **최소 복제본을 1 이상**으로 둔다. 0이면 스케일 투 제로되면서 폴링이 멈춘다.
-
-```powershell
-az containerapp up `
-  --name taikolabs-api `
-  --resource-group taikolabs `
-  --location japaneast `
-  --source backend/TaikoLabs.Api `
-  --ingress external --target-port 8080 `
-  --min-replicas 1 --max-replicas 1 `
-  --env-vars "YouTube__ApiKey=<키>" "YouTube__Mode=Api" "Cors__AllowedOrigins__0=https://<프로젝트>.vercel.app"
+```bash
+docker build -t taikolabs .
+docker run -p 8080:8080 -e YouTube__Mode=Mock taikolabs   # http://localhost:8080
 ```
 
-### 프론트엔드 — Vercel
+| 설정 (환경 변수) | 설명 |
+|---|---|
+| `YouTube__ApiKey` | 유튜브 키. 컨테이너 앱의 **시크릿**으로 넣는다 |
+| `YouTube__Mode` | `Api` / `Public` / `Mock` |
+| `ApiDocs__Enabled` | `true` 면 `/swagger` 와 `/status` 를 연다 (개발 서버용) |
+| `ASPNETCORE_ENVIRONMENT` | 개발 서버는 `Staging`, 실서버는 기본값(`Production`) |
 
-`frontend/vercel.json` 의 rewrite 대상을 배포된 백엔드 주소로 바꾼다.
+### Azure Container Apps
 
-```json
-{
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "https://taikolabs-api.<지역>.azurecontainerapps.io/api/:path*" }
-  ]
-}
-```
-
-이 rewrite 덕분에 브라우저는 Vercel 도메인 하나만 보게 되고, **CORS 설정이 필요 없어진다.**
-Vercel 프로젝트 설정에서 Root Directory를 `frontend` 로 지정하면 나머지는 자동이다.
-
-> Vercel Hobby 플랜은 비상업적 용도만 허용한다. 수익화 계획이 있다면 Cloudflare Pages를 쓰고
-> 프록시는 `functions/api/[[path]].ts` 에 직접 구현한다.
+폴링 워커가 메모리에 상태를 들고 있으므로 **최대 복제본은 1** 로 둔다. 둘이면 각자 폴링해 쿼터를
+두 배로 쓴다. 실서버는 최소 복제본도 1 (0이면 스케일 투 제로되면서 폴링이 멈춘다).
+개발 서버는 최소 0 으로 두면 아무도 안 볼 때 비용과 쿼터가 0이 되고, 접속하면 다시 깨어난다.
 
 ---
 
