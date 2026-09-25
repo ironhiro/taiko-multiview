@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Venue } from '../lib/types';
 
 interface VenueMarkProps {
@@ -13,9 +13,14 @@ interface VenueMarkProps {
  * the row still has a mark.
  */
 export function VenueMark({ venue, size }: VenueMarkProps) {
-  const [failed, setFailed] = useState(false);
+  // Rendered through a fresh element per logo. Reusing one <img> and swapping its src
+  // left WebKit (the macOS desktop shell) showing the previous venue's logo after a
+  // switch, and let one venue's failed load carry over to the next.
+  return <Mark key={venue.logo ?? venue.id} venue={venue} size={size} />;
+}
 
-  useEffect(() => setFailed(false), [venue.logo]);
+function Mark({ venue, size }: VenueMarkProps) {
+  const [failed, setFailed] = useState(false);
 
   if (venue.logo && !failed) {
     return (
@@ -23,7 +28,6 @@ export function VenueMark({ venue, size }: VenueMarkProps) {
         className={`venue-mark venue-mark--${size}`}
         src={venue.logo}
         alt=""
-        decoding="async"
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
       />

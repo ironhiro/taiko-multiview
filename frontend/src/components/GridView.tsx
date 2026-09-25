@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { LiveStream, Station } from '../lib/types';
 import type { IdleMessage } from '../lib/venue';
+import { gridColumns } from './LayoutPicker';
 import { PlayerTile } from './PlayerTile';
 
 interface GridViewProps {
@@ -32,10 +33,7 @@ export function GridView({
   lazy,
   idle,
 }: GridViewProps) {
-  // A 3×3 wall with a single cabinet would be one small tile in a corner, so there are
-  // never more columns than cabinets. Otherwise the choice stands: 4×4 on nine cabinets
-  // means four to a row, even though a row is left short.
-  const columns = Math.max(1, Math.min(gridSize, stations.length));
+  const columns = gridColumns(gridSize, stations.length);
   const gridRef = useGlideOnRelayout(columns);
 
   return (

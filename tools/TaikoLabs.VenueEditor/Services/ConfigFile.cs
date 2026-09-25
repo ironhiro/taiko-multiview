@@ -7,7 +7,7 @@ using TaikoLabs.VenueEditor.Models;
 namespace TaikoLabs.VenueEditor.Services;
 
 /// <summary>
-/// Reads and writes <c>Venues:Items</c> inside appsettings.json.
+/// Reads and writes <c>Venues:Items</c> in the backend's venues.json.
 ///
 /// The whole document is kept as a <see cref="JsonNode"/> so that everything this editor
 /// does not understand — logging, CORS, the YouTube key, a venue's floor plan — survives
@@ -23,10 +23,10 @@ public static class ConfigFile
 
     public sealed record Loaded(JsonObject Root, List<VenueDraft> Venues);
 
-    /// <summary>Looks for appsettings.json by walking up from the executable.</summary>
+    /// <summary>Looks for venues.json by walking up from the executable.</summary>
     public static string? FindDefaultPath()
     {
-        var relative = Path.Combine("backend", "TaikoLabs.Api", "appsettings.json");
+        var relative = Path.Combine("backend", "TaikoLabs.Api", "venues.json");
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
 
         while (directory is not null)
@@ -64,12 +64,8 @@ public static class ConfigFile
     {
         if (root["Venues"] is not JsonObject section)
         {
-            section = new JsonObject
-            {
-                ["TimeZone"] = "Asia/Seoul",
-                ["ClosureRefreshHour"] = 5,
-                ["ClosureCachePath"] = "closures.cache.json",
-            };
+            // Empty: TimeZone and the like live in appsettings.json and must not be overridden.
+            section = new JsonObject();
             root["Venues"] = section;
         }
 

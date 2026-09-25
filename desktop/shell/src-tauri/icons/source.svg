@@ -1,0 +1,36 @@
+<!-- Taiko Multiview app icon. A 3×3 wall of tiles, the middle one a taiko drumhead.
+     Graphite ground and live-red rim, from the app's own tokens. Edit this, then run
+     `npx tauri icon src-tauri/icons/source.svg` in desktop/shell to regenerate every size. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- macOS icon grid: an 824px rounded square inside the 1024px canvas. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#16181c"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none" stroke="#2b2e34" stroke-width="3"/>
+
+  <g fill="#262a30">
+    <rect x="210" y="210" width="180" height="180" rx="30"/>
+    <rect x="422" y="210" width="180" height="180" rx="30"/>
+    <rect x="634" y="210" width="180" height="180" rx="30"/>
+    <rect x="210" y="422" width="180" height="180" rx="30"/>
+    <rect x="634" y="422" width="180" height="180" rx="30"/>
+    <rect x="210" y="634" width="180" height="180" rx="30"/>
+    <rect x="422" y="634" width="180" height="180" rx="30"/>
+    <rect x="634" y="634" width="180" height="180" rx="30"/>
+  </g>
+
+  <!-- The drum outgrows its tile on purpose, so it survives being shrunk to 16px. -->
+  <circle cx="512" cy="512" r="150" fill="#16181c"/>
+  <circle cx="512" cy="512" r="128" fill="#d9413d"/>
+  <circle cx="512" cy="512" r="96" fill="#f3eee6"/>
+  <circle cx="512" cy="512" r="62" fill="none" stroke="#e2dace" stroke-width="6"/>
+  <!-- Rivets on the rim. -->
+  <g fill="#f3eee6" opacity="0.85">
+    <circle cx="512" cy="396" r="8"/>
+    <circle cx="628" cy="512" r="8"/>
+    <circle cx="512" cy="628" r="8"/>
+    <circle cx="396" cy="512" r="8"/>
+    <circle cx="594" cy="430" r="8"/>
+    <circle cx="594" cy="594" r="8"/>
+    <circle cx="430" cy="594" r="8"/>
+    <circle cx="430" cy="430" r="8"/>
+  </g>
+</svg>

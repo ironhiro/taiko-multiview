@@ -1,5 +1,5 @@
 /**
- * The venue section of the backend's appsettings.json, as the editor edits it.
+ * The backend's venue list (backend/TaikoLabs.Api/venues.json), as the editor edits it.
  *
  * Only the keys the editor has fields for are unpacked; anything else on a venue - a
  * floor plan, a key added to the backend after this editor was written - is carried
@@ -211,9 +211,9 @@ function toJson(venue: VenueDraft): Json {
 /** The whole file again, with Venues:Items replaced and everything else as it was. */
 export function withVenues(root: Json, venues: VenueDraft[]): Json {
   const next = structuredClone(root);
-  const section = (typeof next.Venues === 'object' && next.Venues !== null
-    ? next.Venues
-    : { TimeZone: 'Asia/Seoul', ClosureRefreshHour: 5, ClosureCachePath: 'closures.cache.json' }) as Json;
+  // A new file gets an empty section: the time zone and the like live in
+  // appsettings.json, and repeating them here would override those.
+  const section = (typeof next.Venues === 'object' && next.Venues !== null ? next.Venues : {}) as Json;
 
   section.Items = venues.map(toJson);
   next.Venues = section;

@@ -20,8 +20,8 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
   }
 
   return (
-    <div className="rail__group rail__group--venues">
-      <span className="rail__label" id="venue-tabs-label">
+    <div className="control-group control-group--venues">
+      <span className="control-group__label" id="venue-tabs-label">
         매장
       </span>
       <div className="venue-tabs" role="tablist" aria-labelledby="venue-tabs-label">
@@ -38,10 +38,14 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
               aria-selected={isActive}
               className="venue-tab"
               style={accentStyle(venue.accent)}
+              title={venue.name}
               onClick={() => onSelect(venue.id)}
             >
               <VenueMark venue={venue} size="tab" />
-              <span className="venue-tab__name">{venue.name}</span>
+              {/* The open venue's name is already large in the marquee, so a tab is its
+                  logo and its live count; the name stays for screen readers, and shows
+                  when there is no logo to go by. */}
+              <span className={venue.logo ? 'venue-tab__name visually-hidden' : 'venue-tab__name'}>{venue.name}</span>
               <span className={count > 0 ? 'venue-tab__count venue-tab__count--live' : 'venue-tab__count'}>
                 {count}
                 <span className="visually-hidden">개 송출 중</span>

@@ -1,0 +1,83 @@
+# Tests on every push and pull request; the backend (and with it venues.json) deploys
+# to Azure Container Apps from main once the repository is set up for it - see the
+# deploy job. The frontend deploys itself: Vercel builds main on its own.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test backend/TaikoLabs.Api.Tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: frontend/test-results/
+
+  # Off until the repository is given what it needs (Settings → Secrets and variables → Actions):
+  #   secret   AZURE_CREDENTIALS   output of `az ad sp create-for-rbac --sdk-auth` scoped to the resource group
+  #   variable AZURE_RESOURCE_GROUP, AZURE_CONTAINERAPP   e.g. taikolabs / taikolabs-api
+  #   variable DEPLOY_BACKEND = true
+  # The container app keeps its own environment variables (the YouTube key among them);
+  # this only ships new code and a new venues.json.
+  deploy-backend:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_BACKEND == 'true'
+    needs: [backend, frontend, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - run: >
+          az containerapp up
+          --name "${{ vars.AZURE_CONTAINERAPP }}"
+          --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+          --source backend/TaikoLabs.Api

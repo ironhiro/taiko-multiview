@@ -23,7 +23,7 @@ pub struct OpenedFile {
     text: String,
 }
 
-/// Opens the backend's appsettings.json - found by walking up from the app, or picked
+/// Opens the backend's venues.json - found by walking up from the app, or picked
 /// in a file dialog when `pick` is set or nothing was found.
 #[tauri::command]
 pub async fn editor_open(app: AppHandle, file: State<'_, EditorFile>, pick: bool) -> Result<Option<OpenedFile>, String> {
@@ -35,7 +35,7 @@ pub async fn editor_open(app: AppHandle, file: State<'_, EditorFile>, pick: bool
             let picked = app
                 .dialog()
                 .file()
-                .set_title("appsettings.json 선택")
+                .set_title("venues.json 선택")
                 .add_filter("JSON", &["json"])
                 .blocking_pick_file();
 
@@ -112,11 +112,11 @@ pub async fn editor_fetch(url: String) -> Result<String, String> {
     .map_err(|err| err.to_string())?
 }
 
-/// backend/TaikoLabs.Api/appsettings.json, looked for above the app and above the
+/// backend/TaikoLabs.Api/venues.json, looked for above the app and above the
 /// working directory - the first covers a dev build, the second a copied binary run
 /// from the repository.
 fn find_default_path() -> Option<PathBuf> {
-    let relative = Path::new("backend").join("TaikoLabs.Api").join("appsettings.json");
+    let relative = Path::new("backend").join("TaikoLabs.Api").join("venues.json");
 
     let starts = [
         std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf)),
@@ -151,9 +151,12 @@ pub fn open_editor_window(app: &AppHandle, page: tauri::Url) {
     };
 
     let result = tauri::WebviewWindowBuilder::new(app, crate::EDITOR_WINDOW_LABEL, webview_url)
-        .title("매장 등록기 — 태고 멀티뷰")
+        .title("매장 등록기 · 태고 멀티뷰")
         .inner_size(1180.0, 860.0)
         .min_inner_size(900.0, 600.0)
+        .on_document_title_changed(|window, title| {
+            let _ = window.set_title(&title);
+        })
         // Links in the editor (a channel page, say) go to the browser.
         .on_new_window(|url, _features| {
             crate::open_in_browser(&url);

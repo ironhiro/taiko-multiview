@@ -329,7 +329,7 @@ public sealed class YouTubeLiveClient(
     /// and put a dead stream on the wall. Only live broadcasts survive: a station whose
     /// stream has ended must read as idle, not as a replay.
     /// </summary>
-    private static LiveSnapshot BuildSnapshot(Venue venue, IReadOnlyList<LiveStream> candidates, LiveSourceMode source, bool isFallbackSource)
+    internal static LiveSnapshot BuildSnapshot(Venue venue, IReadOnlyList<LiveStream> candidates, LiveSourceMode source, bool isFallbackSource)
     {
         var live = candidates.Where(c => c.IsLive).ToList();
 

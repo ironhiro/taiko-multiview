@@ -18,7 +18,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
-Write-Host "TAIKO LABS Multiview - 개발 환경 시작 (Mode=$Mode)" -ForegroundColor Cyan
+Write-Host "태고 멀티뷰 - 개발 환경 시작 (Mode=$Mode)" -ForegroundColor Cyan
 
 # --- backend ---------------------------------------------------------------
 $api = Join-Path $root 'backend/TaikoLabs.Api'

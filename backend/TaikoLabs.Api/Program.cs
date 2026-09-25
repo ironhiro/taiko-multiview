@@ -5,6 +5,12 @@ using TaikoLabs.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// The venue list lives in a file of its own, apart from the app's settings: it is data
+// that changes as venues come and go, edited with the venue editor and reviewed in git,
+// while appsettings.json holds how the app runs. Both bind into the one "Venues"
+// section, and edits are picked up while running (VenueRegistry rebuilds on change).
+builder.Configuration.AddJsonFile("venues.json", optional: false, reloadOnChange: true);
+
 builder.Services.Configure<YouTubeOptions>(builder.Configuration.GetSection(YouTubeOptions.SectionName));
 builder.Services.Configure<VenuesOptions>(builder.Configuration.GetSection(VenuesOptions.SectionName));
 
@@ -66,15 +72,68 @@ builder.Services.AddCors(cors => cors.AddPolicy(CorsPolicy, policy =>
     policy.AllowAnyHeader().AllowAnyMethod();
 }));
 
+// The OpenAPI document, Swagger UI and the status page. On in Development; elsewhere only
+// when ApiDocs:Enabled is set, since they describe the API to anyone who asks.
+var apiDocs = builder.Configuration.GetValue<bool?>("ApiDocs:Enabled") ?? builder.Environment.IsDevelopment();
+if (apiDocs)
+{
+    builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info.Title = "태고 멀티뷰 API";
+        document.Info.Description =
+            "매장 설정(venues.json)과 매장별 유튜브 라이브 방송 상태를 제공합니다. " +
+            "한눈에 보려면 [/status](/status) 페이지를 여세요.";
+        return Task.CompletedTask;
+    }));
+}
+
 var app = builder.Build();
+var startedAt = DateTimeOffset.UtcNow;
 
 app.UseCors(CorsPolicy);
 
-app.MapGet("/api/health", () => Results.Ok(new
+if (apiDocs)
 {
-    status = "ok",
-    time = DateTimeOffset.UtcNow,
-}));
+    app.MapOpenApi();
+    app.UseSwaggerUI(ui =>
+    {
+        ui.SwaggerEndpoint("/openapi/v1.json", "태고 멀티뷰 API v1");
+        ui.DocumentTitle = "태고 멀티뷰 API";
+    });
+
+    // A visual reading of /api/health, /api/venues and /api/live, in one page.
+    app.MapGet("/status", (IWebHostEnvironment env) =>
+            Results.File(Path.Combine(env.WebRootPath, "status.html"), "text/html; charset=utf-8"))
+        .ExcludeFromDescription();
+    app.MapGet("/", () => Results.Redirect("/status")).ExcludeFromDescription();
+}
+
+app.MapGet("/api/health", (
+    VenueRegistry registry,
+    IOptions<YouTubeOptions> options,
+    IWebHostEnvironment env) =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var youtube = options.Value;
+
+    return TypedResults.Ok(new HealthResponse
+    {
+        Status = "ok",
+        Time = now,
+        StartedAt = startedAt,
+        UptimeSeconds = (long)(now - startedAt).TotalSeconds,
+        Environment = env.EnvironmentName,
+        YouTubeMode = youtube.Mode,
+        HasApiKey = !string.IsNullOrWhiteSpace(youtube.ApiKey),
+        PollIntervalSeconds = youtube.PollIntervalSecondsClamped,
+        ClosedPollIntervalSeconds = youtube.ClosedPollIntervalSecondsClamped,
+        VenueCount = registry.All.Count,
+        VenuesVersion = registry.Version,
+    });
+})
+    .WithTags("상태")
+    .WithSummary("서버 상태")
+    .WithDescription("서버가 살아 있는지, 어떤 모드로 돌고 있는지. API 키는 설정 여부만 알려주고 값은 절대 내보내지 않습니다.");
 
 // Static per-venue configuration, fetched once and cached by the client. Adding a venue
 // is a configuration change, never a frontend deploy.
@@ -87,11 +146,15 @@ app.MapGet("/api/venues", async (
     var channelIds = registry.All.Select(venue => venue.Definition.ChannelId).Distinct().ToList();
     var avatarByChannel = await avatars.GetAsync(youtube, channelIds, ct);
 
-    return Results.Ok(new
+    return TypedResults.Ok(new VenuesResponse
     {
-        venues = registry.All.Select(venue => DescribeVenue(venue, avatarByChannel)),
+        Version = registry.Version,
+        Venues = registry.All.Select(venue => DescribeVenue(venue, avatarByChannel)).ToList(),
     });
-});
+})
+    .WithTags("매장")
+    .WithSummary("매장 설정")
+    .WithDescription("venues.json의 매장 목록: 이름, 색, 로고, 유튜브 채널, 구역과 기체. 로고를 따로 지정하지 않은 매장은 채널 프로필 사진을 씁니다.");
 
 // Every venue's current streams in one response, so the venue tabs can show live counts
 // without a request each.
@@ -100,7 +163,10 @@ app.MapGet("/api/live", (
     LiveStreamStore store,
     VenueScheduleProvider schedule,
     IOptions<YouTubeOptions> options) =>
-    Results.Ok(ProjectAll(registry, store, schedule, options.Value)));
+    TypedResults.Ok(ProjectAll(registry, store, schedule, options.Value)))
+    .WithTags("라이브")
+    .WithSummary("매장별 현재 방송")
+    .WithDescription("매장마다 기체에 연결된 방송(streams), 기체를 못 찾은 방송(unmatched), 데이터 출처, 영업 상태. 서버가 주기적으로 폴링한 결과를 그대로 돌려주므로 호출해도 유튜브 API 사용량은 늘지 않습니다.");
 
 // Forces an immediate refresh - handy while developing and from the desktop shell.
 app.MapPost("/api/live/refresh", async (
@@ -113,8 +179,11 @@ app.MapPost("/api/live/refresh", async (
     CancellationToken ct) =>
 {
     await poller.RefreshAsync(ct, venueId);
-    return Results.Ok(ProjectAll(registry, store, schedule, options.Value));
-});
+    return TypedResults.Ok(ProjectAll(registry, store, schedule, options.Value));
+})
+    .WithTags("라이브")
+    .WithSummary("지금 다시 확인")
+    .WithDescription("venueId를 주면 그 매장만, 없으면 전체를 바로 폴링합니다. 매장마다 쿨다운이 있어 연달아 불러도 유튜브 API는 한 번만 호출됩니다.");
 
 // Playback trouble reported by clients (the desktop shell's webview has no reachable
 // console). Off unless Diagnostics:ClientReports is set, so production never maps it.
@@ -137,55 +206,57 @@ if (app.Configuration.GetValue<bool>("Diagnostics:ClientReports"))
 
         clientLog.LogWarning("CLIENT {Report}", body);
         return Results.NoContent();
-    });
+    })
+        .WithTags("진단")
+        .WithSummary("클라이언트 재생 문제 보고")
+        .WithDescription("앱이 재생 문제를 서버 로그로 보냅니다. 분당 120건 제한.");
 }
 
 app.Run();
 
-static object ProjectAll(
+static LiveResponse ProjectAll(
     VenueRegistry registry,
     LiveStreamStore store,
     VenueScheduleProvider schedule,
-    YouTubeOptions options) => new
+    YouTubeOptions options) => new()
 {
-    pollIntervalSeconds = options.PollIntervalSecondsClamped,
-    venues = registry.All
+    PollIntervalSeconds = options.PollIntervalSecondsClamped,
+    // Clients refetch /api/venues when this moves: the settings file was edited.
+    VenuesVersion = registry.Version,
+    Venues = registry.All
         .Select(venue => Project(venue, store.For(venue.Id), schedule.For(venue)))
         .ToList(),
 };
 
-static object DescribeVenue(Venue venue, IReadOnlyDictionary<string, string> avatarByChannel) => new
+static VenueInfo DescribeVenue(Venue venue, IReadOnlyDictionary<string, string> avatarByChannel) => new()
 {
-    venue.Id,
-    venue.Name,
-    venue.Definition.Accent,
+    Id = venue.Id,
+    Name = venue.Name,
+    Accent = venue.Definition.Accent,
     // A configured logo wins; otherwise the channel's own profile picture, if the API gave one.
-    logo = string.IsNullOrWhiteSpace(venue.Definition.Logo)
+    Logo = string.IsNullOrWhiteSpace(venue.Definition.Logo)
         ? avatarByChannel.GetValueOrDefault(venue.Definition.ChannelId)
         : venue.Definition.Logo,
-    venue.Definition.ChannelId,
-    venue.Definition.ChannelUrl,
-    zones = venue.Definition.Zones,
-    stations = venue.Definition.Stations.Select(station => new
-    {
-        station.Id,
-        station.Label,
-        station.ZoneId,
-    }),
+    ChannelId = venue.Definition.ChannelId,
+    ChannelUrl = venue.Definition.ChannelUrl,
+    Zones = venue.Definition.Zones,
+    Stations = venue.Definition.Stations
+        .Select(station => new StationInfo(station.Id, station.Label, station.ZoneId))
+        .ToList(),
     // Null for venues with no published map; the client then offers the grid only.
-    venue.Definition.Layout,
+    Layout = venue.Definition.Layout,
 };
 
-static object Project(Venue venue, LiveSnapshot snapshot, VenueStatus status) => new
+static VenueLive Project(Venue venue, LiveSnapshot snapshot, VenueStatus status) => new()
 {
-    venueId = venue.Id,
-    snapshot.UpdatedAt,
-    snapshot.Streams,
-    snapshot.Unmatched,
-    snapshot.Source,
-    snapshot.IsFallbackSource,
-    snapshot.Error,
-    venue = status,
+    VenueId = venue.Id,
+    UpdatedAt = snapshot.UpdatedAt,
+    Streams = snapshot.Streams,
+    Unmatched = snapshot.Unmatched,
+    Source = snapshot.Source,
+    IsFallbackSource = snapshot.IsFallbackSource,
+    Error = snapshot.Error,
+    Venue = status,
 };
 
 /// <summary>A fixed-window cap, so a misbehaving client cannot flood the log.</summary>

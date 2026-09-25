@@ -1,4 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  Children,
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
+import { announceVenuesSaved } from '../lib/settingsChannel';
 import { isDesktopShell, openSettings, saveSettings } from '../lib/shell';
 import {
   DAY_LABEL,
@@ -36,7 +49,7 @@ interface Confirmation {
 
 /**
  * The venue editor, as a screen of the desktop shell: edits Venues:Items in the
- * backend's appsettings.json. File access and YouTube lookups go through the shell;
+ * backend's venues.json. File access and YouTube lookups go through the shell;
  * everything else happens here.
  */
 export default function VenueEditor() {
@@ -57,7 +70,7 @@ export default function VenueEditor() {
     try {
       const opened = await openSettings(pick);
       if (!opened) {
-        setStatus(pick ? '파일 선택을 취소했습니다.' : 'appsettings.json을 찾지 못했습니다. [파일 선택]으로 지정해 주세요.');
+        setStatus(pick ? '파일 선택을 취소했습니다.' : 'venues.json을 찾지 못했습니다. [파일 선택]으로 지정해 주세요.');
         return;
       }
 
@@ -79,6 +92,7 @@ export default function VenueEditor() {
   }, []);
 
   useEffect(() => {
+    document.title = '매장 등록기 · 태고 멀티뷰';
     if (isDesktopShell) {
       void load(false);
     }
@@ -114,7 +128,8 @@ export default function VenueEditor() {
     try {
       await saveSettings(`${JSON.stringify(withVenues(root, venues), null, 2)}\n`);
       setDirty(false);
-      setStatus(`${new Date().toLocaleTimeString('ko-KR')} 저장 완료 — 백엔드를 다시 시작하면 반영됩니다.`);
+      announceVenuesSaved();
+      setStatus(`${new Date().toLocaleTimeString('ko-KR')} 저장 완료 — 멀티뷰에 곧바로 반영됩니다.`);
     } catch (cause) {
       setStatus(`저장 실패: ${messageOf(cause)}`);
     } finally {
@@ -167,15 +182,35 @@ export default function VenueEditor() {
 
   return (
     <div className="editor">
-      <aside className="editor__rail" aria-label="매장 목록">
-        <div className="rail__brand">
+      {/* The same marquee as the wall: whose screen this is, and the file it edits. */}
+      <header className="marquee editor__marquee">
+        <div className="marquee__brand">
           <p className="wordmark">태고 멀티뷰</p>
-          <h1 className="editor__title">매장 등록기</h1>
+          <h1 className="marquee__venue">
+            <span className="marquee__venue-name">매장 등록기</span>
+          </h1>
         </div>
 
-        <div className="rail__group editor__venues">
-          <span className="rail__label">매장</span>
-          <div className="choice-list" role="listbox" aria-label="매장">
+        <p className="editor__path" title={path ?? undefined}>
+          {path ?? '설정 파일 없음'}
+        </p>
+
+        <div className="editor__file-actions">
+          <button type="button" className="btn" onClick={() => void load(true)}>
+            파일 선택…
+          </button>
+          <button type="button" className="btn editor__save" onClick={() => void save()} disabled={!root || busy}>
+            {busy ? '저장 중…' : dirty ? '저장 ●' : '저장'}
+          </button>
+        </div>
+      </header>
+
+      <aside className="editor__list" aria-label="매장 목록">
+        <div className="editor__venues">
+          <span className="editor__list-label" id="editor-venues-label">
+            매장
+          </span>
+          <div className="editor__venue-list" role="listbox" aria-labelledby="editor-venues-label">
             {venues.map((item) => (
               <button
                 key={item.key}
@@ -206,18 +241,6 @@ export default function VenueEditor() {
       </aside>
 
       <div className="editor__stage">
-        <header className="editor__bar">
-          <p className="editor__path" title={path ?? undefined}>
-            {path ?? '설정 파일 없음'}
-          </p>
-          <button type="button" className="btn" onClick={() => void load(true)}>
-            파일 선택…
-          </button>
-          <button type="button" className="btn editor__save" onClick={() => void save()} disabled={!root || busy}>
-            {busy ? '저장 중…' : dirty ? '저장 ●' : '저장'}
-          </button>
-        </header>
-
         {confirmation && (
           <div className="editor__confirm" role="alertdialog" aria-label={confirmation.action}>
             <p>{confirmation.message}</p>
@@ -258,7 +281,9 @@ export default function VenueEditor() {
               })}
             </nav>
 
-            <main className="editor__body">
+            {/* Keyed by venue: the fetched titles, the sample and the lookup box belong to
+                the venue they were entered for, and must not carry over to the next one. */}
+            <main className="editor__body" key={venue.key}>
               {tab === 'basic' && <BasicTab venue={venue} update={update} setStatus={setStatus} />}
               {tab === 'pattern' && <PatternTab venue={venue} update={update} setStatus={setStatus} />}
               {tab === 'stations' && <StationsTab venue={venue} update={update} />}
@@ -284,10 +309,13 @@ export default function VenueEditor() {
           </main>
         )}
 
-        <footer className="editor__status" aria-live="polite">
-          {status}
-        </footer>
       </div>
+
+      <footer className="credit editor__credit">
+        <p className="editor__status" aria-live="polite">
+          {status}
+        </p>
+      </footer>
     </div>
   );
 }
@@ -299,13 +327,41 @@ interface TabProps {
   update: (key: string, change: (venue: VenueDraft) => VenueDraft) => void;
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/**
+ * A labelled control. The label names the control and the hint describes it, so a
+ * screen reader says "이름" rather than the label and the whole hint run together. When
+ * the control sits in a row with a button, the first element of the row is the one
+ * labelled.
+ */
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactElement }) {
+  const id = useId();
+  const hintId = hint ? `${id}-hint` : undefined;
+  const labelled = (element: ReactElement) =>
+    cloneElement(element as ReactElement<{ id?: string; 'aria-describedby'?: string }>, {
+      id,
+      'aria-describedby': hintId,
+    });
+
+  const row = children.props as { className?: string; children?: ReactNode };
+  const control =
+    row.className === 'field__row'
+      ? cloneElement(children, {}, ...Children.toArray(row.children).map((child, index) =>
+          index === 0 && isValidElement(child) ? labelled(child) : child,
+        ))
+      : labelled(children);
+
   return (
-    <label className="field">
-      <span className="field__label">{label}</span>
-      {children}
-      {hint && <span className="field__hint">{hint}</span>}
-    </label>
+    <div className="field">
+      <label className="field__label" htmlFor={id}>
+        {label}
+      </label>
+      {control}
+      {hint && (
+        <span id={hintId} className="field__hint">
+          {hint}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -723,7 +779,7 @@ function LayoutTab({ venue, onClear }: { venue: VenueDraft; onClear: () => void 
           : '없음 — 이 매장은 그리드 보기만 제공합니다.'}
       </p>
       <p className="field__hint">
-        이 등록기는 배치도 좌표를 편집하지 않습니다. 배치도를 넣으려면 appsettings.json 의 layout 항목을 직접
+        이 등록기는 배치도 좌표를 편집하지 않습니다. 배치도를 넣으려면 venues.json 의 layout 항목을 직접
         작성하세요. 지금 멀티뷰는 배치도 보기를 쓰지 않습니다.
       </p>
       {Array.isArray(units) && (

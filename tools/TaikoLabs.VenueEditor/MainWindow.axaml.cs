@@ -38,7 +38,7 @@ public partial class MainWindow : Window
 
         if (path is null)
         {
-            SetStatus("appsettings.json을 찾지 못했습니다. [파일 선택]으로 직접 지정해 주세요.");
+            SetStatus("venues.json을 찾지 못했습니다. [파일 선택]으로 직접 지정해 주세요.");
             return;
         }
 
@@ -55,7 +55,7 @@ public partial class MainWindow : Window
 
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "appsettings.json 선택",
+            Title = "venues.json 선택",
             AllowMultiple = false,
             SuggestedStartLocation = startFolder,
             FileTypeFilter =

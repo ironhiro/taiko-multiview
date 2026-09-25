@@ -115,5 +115,7 @@ export interface VenueLive {
 
 export interface LiveResponse {
   pollIntervalSeconds: number;
+  /** Moves when the settings file changes; the venue list should then be fetched again. */
+  venuesVersion?: number;
   venues: VenueLive[];
 }

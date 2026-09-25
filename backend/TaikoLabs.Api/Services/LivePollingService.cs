@@ -83,7 +83,7 @@ public sealed class LivePollingService(
         }
     }
 
-    private bool IsDue(Venue venue)
+    internal bool IsDue(Venue venue)
     {
         DateTimeOffset last;
         lock (_lastPolled)

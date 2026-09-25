@@ -1,0 +1,286 @@
+{
+  "Venues": {
+    "Items": [
+      {
+        "id": "taikolabs",
+        "name": "TAIKO LABS",
+        "accent": "#E8B24A",
+        "channelId": "UC0tzRzxBMM1-riQVHHYoADw",
+        "channelUrl": "https://www.youtube.com/@TAIKO_LABS",
+        "titlePattern": "^\\s*TAIKO\\s+LABS\\s+(?<name>.+?)\\s+Live\\s+Streaming\\s+(?<date>\\d{2}\\.\\d{2}\\.\\d{2})(?:\\s*[-\\u2013\\u2014]\\s*(?<part>\\d+)\\s*\\ubd80)?\\s*$",
+        "naverPlaceId": "1485818481",
+        "zones": [
+          {
+            "id": "sector-a",
+            "code": "SECTOR A",
+            "label": "SECTOR A"
+          },
+          {
+            "id": "the-base",
+            "code": "THE BASE",
+            "label": "THE BASE"
+          },
+          {
+            "id": "sector-b",
+            "code": "SECTOR B",
+            "label": "SECTOR B"
+          }
+        ],
+        "stations": [
+          {
+            "id": "a1",
+            "label": "A1",
+            "zoneId": "sector-a",
+            "aliases": [
+              "SECTOR A 1"
+            ]
+          },
+          {
+            "id": "a2",
+            "label": "A2",
+            "zoneId": "sector-a",
+            "aliases": [
+              "SECTOR A 2"
+            ]
+          },
+          {
+            "id": "a3",
+            "label": "A3",
+            "zoneId": "sector-a",
+            "aliases": [
+              "SECTOR A 3"
+            ]
+          },
+          {
+            "id": "a4",
+            "label": "A4",
+            "zoneId": "sector-a",
+            "aliases": [
+              "SECTOR A 4"
+            ]
+          },
+          {
+            "id": "a5",
+            "label": "A5",
+            "zoneId": "sector-a",
+            "aliases": [
+              "SECTOR A 5"
+            ]
+          },
+          {
+            "id": "b1",
+            "label": "B1",
+            "zoneId": "sector-b",
+            "aliases": [
+              "SECTOR B 1"
+            ]
+          },
+          {
+            "id": "b2",
+            "label": "B2",
+            "zoneId": "sector-b",
+            "aliases": [
+              "SECTOR B 2"
+            ]
+          },
+          {
+            "id": "b3",
+            "label": "B3",
+            "zoneId": "sector-b",
+            "aliases": [
+              "SECTOR B 3"
+            ]
+          },
+          {
+            "id": "base",
+            "label": "THE BASE",
+            "zoneId": "the-base",
+            "aliases": [
+              "BASE"
+            ]
+          }
+        ],
+        "layout": {
+          "canvas": {
+            "width": 1000,
+            "height": 1200
+          },
+          "unitSize": 130,
+          "tileWidth": 230,
+          "zones": [
+            {
+              "id": "sector-a",
+              "outline": {
+                "x": 50,
+                "y": 50,
+                "width": 250,
+                "height": 1040
+              }
+            },
+            {
+              "id": "the-base",
+              "outline": {
+                "x": 375,
+                "y": 50,
+                "width": 250,
+                "height": 280
+              }
+            },
+            {
+              "id": "sector-b",
+              "outline": {
+                "x": 700,
+                "y": 50,
+                "width": 250,
+                "height": 570
+              }
+            }
+          ],
+          "units": [
+            {
+              "stationId": "a5",
+              "x": 110,
+              "y": 155
+            },
+            {
+              "stationId": "a4",
+              "x": 110,
+              "y": 350
+            },
+            {
+              "stationId": "a3",
+              "x": 110,
+              "y": 545
+            },
+            {
+              "stationId": "a2",
+              "x": 110,
+              "y": 740
+            },
+            {
+              "stationId": "a1",
+              "x": 110,
+              "y": 935
+            },
+            {
+              "stationId": "base",
+              "x": 435,
+              "y": 155
+            },
+            {
+              "stationId": "b1",
+              "x": 760,
+              "y": 155
+            },
+            {
+              "stationId": "b2",
+              "x": 760,
+              "y": 315
+            },
+            {
+              "stationId": "b3",
+              "x": 760,
+              "y": 475
+            }
+          ],
+          "decorations": []
+        },
+        "hours": {
+          "Monday": "10:00-24:00",
+          "Tuesday": "10:00-24:00",
+          "Wednesday": "10:00-24:00",
+          "Thursday": "10:00-24:00",
+          "Friday": "10:00-29:00",
+          "Saturday": "07:00-29:00",
+          "Sunday": "07:00-24:00"
+        },
+        "closedDates": []
+      },
+      {
+        "id": "p2zone",
+        "name": "부천 P2존",
+        "accent": "#FFD400",
+        "channelId": "UC5R2bDll1LCFvmyYmTZuFqA",
+        "channelUrl": "https://www.youtube.com/@bucheon_p2live",
+        "titlePattern": "^\\s*(?<name>태고\\s*-\\s*\\d+)\\s+(?<date>\\d{4}-\\d{1,2}-\\d{1,2})\\s*$",
+        "stations": [
+          {
+            "id": "taiko-1",
+            "label": "태고-1"
+          },
+          {
+            "id": "taiko-2",
+            "label": "태고-2"
+          }
+        ],
+        "layout": null,
+        "hours": {
+          "Monday": "10:30-29:00",
+          "Tuesday": "10:30-29:00",
+          "Wednesday": "10:30-29:00",
+          "Thursday": "10:30-29:00",
+          "Friday": "10:30-29:00",
+          "Saturday": "10:30-29:00",
+          "Sunday": "10:30-29:00"
+        },
+        "closedDates": []
+      },
+      {
+        "id": "cygameworld",
+        "name": "싸이뮤직 게임월드",
+        "accent": "#EDEDED",
+        "channelId": "UCpNAEJ-rMg9CoguWZNYBLSg",
+        "channelUrl": "https://www.youtube.com/@cygameworld4",
+        "titlePattern": "^\\s*\\[Taiko\\]\\s*\\[(?<name>No\\.\\s*\\d+-[A-Z])\\]",
+        "stations": [
+          {
+            "id": "1a",
+            "label": "1-A",
+            "aliases": [
+              "No.1-A"
+            ]
+          }
+        ],
+        "layout": null,
+        "hours": {
+          "Monday": "09:00-24:00",
+          "Tuesday": "09:00-24:00",
+          "Wednesday": "09:00-24:00",
+          "Thursday": "09:00-24:00",
+          "Friday": "09:00-24:00",
+          "Saturday": "09:00-24:00",
+          "Sunday": "09:00-24:00"
+        },
+        "closedDates": []
+      },
+      {
+        "id": "gamed-ks",
+        "name": "게임D 경성대",
+        "accent": "#C93BD6",
+        "channelId": "UCsZX0E0vg2WqBrJnbBIQ6bA",
+        "channelUrl": "https://www.youtube.com/@gamed_taiko",
+        "titlePattern": "^\\s*GAME\\s*D\\s+(?<name>太鼓の達人)\\s*$",
+        "stations": [
+          {
+            "id": "taiko",
+            "label": "태고",
+            "aliases": [
+              "太鼓の達人"
+            ]
+          }
+        ],
+        "layout": null,
+        "hours": {
+          "Monday": "09:00-25:00",
+          "Tuesday": "09:00-25:00",
+          "Wednesday": "09:00-25:00",
+          "Thursday": "09:00-25:00",
+          "Friday": "09:00-25:00",
+          "Saturday": "09:00-25:00",
+          "Sunday": "09:00-25:00"
+        },
+        "closedDates": []
+      }
+    ]
+  }
+}

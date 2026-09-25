@@ -3,7 +3,7 @@ name = "taikolabs-shell"
 version = "1.0.0"
 edition = "2021"
 rust-version = "1.77"
-description = "Desktop shell for the TAIKO LABS multiview"
+description = "Desktop shell for the Taiko multiview"
 publish = false
 
 [build-dependencies]

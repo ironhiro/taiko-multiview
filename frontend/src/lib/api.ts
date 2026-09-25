@@ -27,9 +27,10 @@ async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** Static venue configuration. Fetched once; it only changes on a backend deploy. */
-export async function fetchVenues(signal?: AbortSignal): Promise<Venue[]> {
-  const payload = await getJson<{ venues: Venue[] }>('/api/venues', { signal });
-  return payload.venues;
+/** The venue list, and the settings version it was built from. */
+export async function fetchVenues(signal?: AbortSignal): Promise<{ venues: Venue[]; version: number }> {
+  const payload = await getJson<{ venues: Venue[]; version?: number }>('/api/venues', { signal });
+  return { venues: payload.venues, version: payload.version ?? 0 };
 }
 
 /** Every venue's streams in one call, so the venue tabs can show live counts. */

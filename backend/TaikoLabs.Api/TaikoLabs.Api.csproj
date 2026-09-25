@@ -10,4 +10,19 @@
     <UserSecretsId>b1b1b905-cbaa-47b7-b84b-a62ab0c58a51</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The venue list; shipped beside appsettings.json in every build and publish. -->
+    <Content Update="venues.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets the tests reach the few internals they check directly. -->
+    <InternalsVisibleTo Include="TaikoLabs.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+  </ItemGroup>
+
 </Project>

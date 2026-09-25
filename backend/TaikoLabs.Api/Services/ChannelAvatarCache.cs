@@ -16,13 +16,18 @@ public sealed class ChannelAvatarCache(ILogger<ChannelAvatarCache> logger)
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IReadOnlyDictionary<string, string> _avatars = new Dictionary<string, string>();
     private DateTimeOffset _expiresAt = DateTimeOffset.MinValue;
+    private HashSet<string> _fetchedFor = new(StringComparer.Ordinal);
+
+    /// <summary>A venue added in the editor brings a channel the cached answer never asked about.</summary>
+    private bool IsFresh(IReadOnlyCollection<string> channelIds) =>
+        DateTimeOffset.UtcNow < _expiresAt && channelIds.All(_fetchedFor.Contains);
 
     public async Task<IReadOnlyDictionary<string, string>> GetAsync(
         YouTubeLiveClient client,
         IReadOnlyCollection<string> channelIds,
         CancellationToken ct)
     {
-        if (DateTimeOffset.UtcNow < _expiresAt)
+        if (IsFresh(channelIds))
         {
             return _avatars;
         }
@@ -30,10 +35,12 @@ public sealed class ChannelAvatarCache(ILogger<ChannelAvatarCache> logger)
         await _gate.WaitAsync(ct);
         try
         {
-            if (DateTimeOffset.UtcNow < _expiresAt)
+            if (IsFresh(channelIds))
             {
                 return _avatars;
             }
+
+            _fetchedFor = channelIds.ToHashSet(StringComparer.Ordinal);
 
             try
             {
