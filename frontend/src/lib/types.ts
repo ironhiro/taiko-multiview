@@ -89,6 +89,8 @@ export interface Venue {
   id: string;
   name: string;
   accent?: string;
+  /** A configured logo, or else the channel's profile picture. Absent without either. */
+  logo?: string;
   channelId: string;
   channelUrl?: string;
   zones: Zone[];

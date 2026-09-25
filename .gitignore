@@ -26,3 +26,6 @@ apikey.txt
 # Runtime cache, regenerated on startup
 closures.cache.json
 
+
+# Local design-tool notes (Hallmark)
+.hallmark/

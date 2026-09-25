@@ -1,0 +1,231 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:m="using:TaikoLabs.VenueEditor.Models"
+        x:Class="TaikoLabs.VenueEditor.MainWindow"
+        Title="매장 등록기 — 태고 멀티뷰"
+        Width="1180" Height="880"
+        MinWidth="900" MinHeight="620"
+        WindowStartupLocation="CenterScreen">
+
+    <DockPanel>
+
+        <!-- File bar -->
+        <Border DockPanel.Dock="Top" Padding="12,10"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="SaveButton" Click="OnSaveClick" Margin="8,0,0,0">저장</Button>
+                <Button DockPanel.Dock="Right" Click="OnBrowseClick" Margin="8,0,0,0">파일 선택…</Button>
+                <TextBlock DockPanel.Dock="Left" Text="설정 파일" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox x:Name="PathBox" IsReadOnly="True" />
+            </DockPanel>
+        </Border>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom" Padding="12,8"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+            <TextBlock x:Name="StatusText" TextTrimming="CharacterEllipsis" Classes="hint" />
+        </Border>
+
+        <Grid ColumnDefinitions="230,*">
+
+            <!-- Venue list -->
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="매장" FontWeight="SemiBold" Margin="12,12,12,8" />
+
+                <UniformGrid DockPanel.Dock="Bottom" Columns="3" Margin="8">
+                    <Button Click="OnAddVenueClick" Margin="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">추가</Button>
+                    <Button Click="OnDuplicateVenueClick" Margin="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">복제</Button>
+                    <Button Click="OnRemoveVenueClick" Margin="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">삭제</Button>
+                </UniformGrid>
+
+                <ListBox x:Name="VenueList" Margin="4" SelectionChanged="OnVenueSelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="m:VenueDraft">
+                            <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Editor -->
+            <TabControl Grid.Column="1" x:Name="EditorTabs" Margin="12,4,12,12">
+
+                <TabItem Header="기본">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Classes="form" Margin="4,12,16,12">
+                            <TextBlock Classes="field-label" Text="id — URL과 설정에서 이 매장을 가리키는 값 (영소문자·숫자·하이픈)" />
+                            <TextBox x:Name="IdBox" />
+
+                            <TextBlock Classes="field-label" Text="name — 탭에 표시할 매장 이름" />
+                            <TextBox x:Name="NameBox" />
+
+                            <TextBlock Classes="field-label" Text="accent — 탭 강조색 (#RRGGBB)" />
+                            <DockPanel Margin="0,0,0,12">
+                                <Border DockPanel.Dock="Right" x:Name="AccentSwatch" Width="34" Margin="8,0,0,0"
+                                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                                        BorderThickness="1" CornerRadius="3" />
+                                <TextBox x:Name="AccentBox" TextChanged="OnAccentChanged" />
+                            </DockPanel>
+
+                            <TextBlock Classes="field-label" Text="logo — 비우면 채널 프로필 이미지. 파일은 frontend/public/logos/ 에 두고 logos/이름.svg 로 입력" />
+                            <TextBox x:Name="LogoBox" />
+
+                            <Separator Margin="0,4,0,16" />
+
+                            <TextBlock Classes="field-label" Text="채널 — @핸들, 채널 URL, 또는 UC로 시작하는 id를 붙여넣고 [조회]" />
+                            <DockPanel Margin="0,0,0,12">
+                                <Button DockPanel.Dock="Right" x:Name="ResolveButton" Click="OnResolveChannelClick"
+                                        Margin="8,0,0,0">조회</Button>
+                                <TextBox x:Name="ChannelInputBox" />
+                            </DockPanel>
+
+                            <TextBlock Classes="field-label" Text="channelId" />
+                            <TextBox x:Name="ChannelIdBox" />
+
+                            <TextBlock Classes="field-label" Text="channelUrl — 매장 채널 링크 (선택)" />
+                            <TextBox x:Name="ChannelUrlBox" />
+
+                            <TextBlock Classes="field-label" Text="naverPlaceId — 임시휴무 자동 감지에 사용 (선택). 네이버 지도 URL의 place/뒤 숫자" />
+                            <TextBox x:Name="NaverBox" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="제목 규칙">
+                    <Grid RowDefinitions="Auto,Auto,*" Margin="4,12,4,4">
+
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Classes="field-label"
+                                       Text="titlePattern — 방송 제목에서 기체명을 뽑는 정규식. (?&lt;name&gt;...) 그룹이 반드시 필요합니다." />
+                            <TextBox x:Name="PatternBox" Classes="mono" TextWrapping="Wrap"
+                                     AcceptsReturn="False" TextChanged="OnPatternChanged" />
+                            <TextBlock x:Name="PatternError" Foreground="#C0392B" FontSize="12"
+                                       TextWrapping="Wrap" Margin="0,4,0,12" />
+                        </StackPanel>
+
+                        <Border Grid.Row="1" CornerRadius="4" Padding="12" Margin="0,0,0,12"
+                                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="패턴 만들기" FontWeight="SemiBold" />
+                                <TextBlock Classes="hint"
+                                           Text="아래 목록에서 제목을 하나 고른 뒤, 이 칸에서 기체명에 해당하는 부분만 드래그로 선택하고 [선택 부분이 기체명]을 누르세요. 날짜·회차 숫자는 자동으로 일반화됩니다." />
+                                <!-- The button reads this selection, so it must survive the focus moving to the button. -->
+                                <TextBox x:Name="SampleBox" Classes="mono" ClearSelectionOnLostFocus="False" />
+                                <Button Click="OnBuildPatternClick" Focusable="False">선택 부분이 기체명</Button>
+                            </StackPanel>
+                        </Border>
+
+                        <DockPanel Grid.Row="2">
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                                <Button DockPanel.Dock="Right" x:Name="FetchButton" Click="OnFetchTitlesClick"
+                                        Margin="8,0,0,0">채널에서 제목 가져오기</Button>
+                                <TextBlock Classes="hint" VerticalAlignment="Center"
+                                           Text="최근 방송 제목으로 패턴과 기체 매칭을 함께 검증합니다." />
+                            </DockPanel>
+
+                            <DataGrid x:Name="TitleGrid" x:DataType="m:TitleRow" IsReadOnly="True"
+                                      SelectionChanged="OnTitleSelectionChanged">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="제목" Binding="{Binding Title}" Width="*" />
+                                    <DataGridTextColumn Header="기체명" Binding="{Binding Name}" Width="110" />
+                                    <DataGridTextColumn Header="매칭된 기체" Binding="{Binding Station}" Width="150" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="기체 · 구역">
+                    <Grid RowDefinitions="2*,Auto,*" Margin="4,12,4,4">
+
+                        <DockPanel Grid.Row="0">
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+                                    <Button Click="OnAddStationClick">기체 추가</Button>
+                                    <Button Click="OnRemoveStationClick">선택 삭제</Button>
+                                </StackPanel>
+                                <TextBlock Classes="field-label" VerticalAlignment="Center"
+                                           Text="기체 — id는 내부 식별자, label은 화면에 표시되는 이름. aliases는 제목에 쓰이는 다른 표기를 쉼표로 구분해 적습니다." />
+                            </DockPanel>
+                            <DataGrid x:Name="StationGrid" x:DataType="m:StationDraft">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="id" Binding="{Binding Id}" Width="100" />
+                                    <DataGridTextColumn Header="label" Binding="{Binding Label}" Width="140" />
+                                    <DataGridTextColumn Header="zoneId" Binding="{Binding ZoneId}" Width="120" />
+                                    <DataGridTextColumn Header="aliases (쉼표 구분)" Binding="{Binding Aliases}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+
+                        <Separator Grid.Row="1" Margin="0,14" />
+
+                        <DockPanel Grid.Row="2">
+                            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+                                    <Button Click="OnAddZoneClick">구역 추가</Button>
+                                    <Button Click="OnRemoveZoneClick">선택 삭제</Button>
+                                </StackPanel>
+                                <TextBlock Classes="field-label" VerticalAlignment="Center"
+                                           Text="구역 — 2개 이상일 때만 보기 목록에 구역별 항목이 생깁니다. 나눌 필요가 없으면 비워 두세요." />
+                            </DockPanel>
+                            <DataGrid x:Name="ZoneGrid" x:DataType="m:ZoneDraft">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="id" Binding="{Binding Id}" Width="140" />
+                                    <DataGridTextColumn Header="code (배치도 표기)" Binding="{Binding Code}" Width="160" />
+                                    <DataGridTextColumn Header="label (보기 이름)" Binding="{Binding Label}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="영업시간">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="4,12,16,12">
+                            <TextBlock Classes="field-label"
+                                       Text="자정을 넘기는 마감은 시를 24 이상으로 적습니다. 예: 07:00~익일 05:00 → 마감 29:00" />
+
+                            <DataGrid x:Name="HourGrid" x:DataType="m:HourDraft" Margin="0,8,0,16">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="요일" Binding="{Binding DayLabel}" IsReadOnly="True" Width="60" />
+                                    <DataGridTextColumn Header="오픈" Binding="{Binding Open}" Width="100" />
+                                    <DataGridTextColumn Header="마감" Binding="{Binding Close}" Width="100" />
+                                    <DataGridCheckBoxColumn Header="휴무" Binding="{Binding IsClosed}" Width="70" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <TextBlock Classes="field-label" Text="확정된 휴무일 — 한 줄에 하나씩 yyyy-MM-dd" />
+                            <TextBox x:Name="ClosedDatesBox" Classes="mono" AcceptsReturn="True" Height="110"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto" Margin="0,0,0,8" />
+                            <TextBlock Classes="field-label"
+                                       Text="naverPlaceId를 넣어두면 임시휴무는 하루 한 번 자동으로 반영됩니다. 여기에 적은 날짜가 항상 우선합니다." />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="배치도">
+                    <StackPanel Margin="4,12,4,4">
+                        <TextBlock x:Name="LayoutSummaryText" TextWrapping="Wrap" Margin="0,0,0,12" />
+                        <TextBlock Classes="hint"
+                                   Text="이 등록기는 배치도 좌표를 편집하지 않습니다. 기존 매장의 좌표는 저장할 때 그대로 보존되고, 새로 추가한 매장은 배치도 없이 그리드 보기만 제공합니다. 배치도를 넣으려면 appsettings.json 의 layout 항목을 직접 작성하세요." />
+                        <Button Click="OnClearLayoutClick" Margin="0,16,0,0">이 매장의 배치도 제거</Button>
+                    </StackPanel>
+                </TabItem>
+
+                <TabItem Header="검증">
+                    <DockPanel Margin="4,12,4,4">
+                        <Button DockPanel.Dock="Top" Click="OnValidateClick" Margin="0,0,0,12">다시 검사</Button>
+                        <ListBox x:Name="IssueList">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </TabItem>
+
+            </TabControl>
+        </Grid>
+    </DockPanel>
+</Window>

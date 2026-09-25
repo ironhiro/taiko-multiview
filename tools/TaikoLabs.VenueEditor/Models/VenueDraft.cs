@@ -30,6 +30,7 @@ public sealed class VenueDraft : Observable
     private string _id = string.Empty;
     private string _name = string.Empty;
     private string _accent = "#E8B24A";
+    private string _logo = string.Empty;
     private string _channelId = string.Empty;
     private string _channelUrl = string.Empty;
     private string _titlePattern = string.Empty;
@@ -49,6 +50,8 @@ public sealed class VenueDraft : Observable
     }
 
     public string Accent { get => _accent; set => Set(ref _accent, value); }
+
+    public string Logo { get => _logo; set => Set(ref _logo, value); }
 
     public string ChannelId { get => _channelId; set => Set(ref _channelId, value); }
 

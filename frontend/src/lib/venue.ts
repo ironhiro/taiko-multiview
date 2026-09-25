@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { VenueStatus } from './types';
 
 export interface IdleMessage {
@@ -12,7 +13,7 @@ export interface IdleMessage {
  */
 export function idleMessageFor(venue: VenueStatus | undefined): IdleMessage {
   if (!venue) {
-    return { title: '준비중...' };
+    return { title: '준비중…' };
   }
 
   const opens = formatOpening(venue);
@@ -23,7 +24,7 @@ export function idleMessageFor(venue: VenueStatus | undefined): IdleMessage {
     case 'OutsideHours':
       return { title: '영업 종료', detail: opens };
     default:
-      return { title: '준비중...' };
+      return { title: '준비중…' };
   }
 }
 
@@ -76,4 +77,9 @@ function formatOpening(venue: VenueStatus): string | undefined {
 function calendarDaysBetween(from: Date, to: Date): number {
   const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
   return Math.round((startOfDay(to) - startOfDay(from)) / 86_400_000);
+}
+
+/** Hands a venue's brand colour to CSS as --venue-accent; the stylesheet falls back to the app accent. */
+export function accentStyle(accent: string | undefined): CSSProperties | undefined {
+  return accent ? ({ '--venue-accent': accent } as CSSProperties) : undefined;
 }

@@ -3,6 +3,13 @@ import type { Layout, LiveStream, Station, Zone } from '../lib/types';
 import type { IdleMessage } from '../lib/venue';
 import { PlayerTile } from './PlayerTile';
 
+/**
+ * Fitting the whole portrait map into the window left the tiles too small to watch,
+ * so the default is 1.7x a full fit and the view scrolls. Zooming out still reaches a
+ * full fit.
+ */
+const FLOORPLAN_BASE_ZOOM = 1.7;
+
 interface FloorPlanViewProps {
   layout: Layout;
   zones: Zone[];
@@ -10,7 +17,7 @@ interface FloorPlanViewProps {
   streamsByStation: Map<string, LiveStream>;
   audioStationId: string | null;
   onRequestAudio: (stationId: string) => void;
-  /** 1 fits the whole venue on screen; above that the view scrolls. */
+  /** Zoom from the scale control. 1 is FLOORPLAN_BASE_ZOOM, so the map is readable before anyone touches it. */
   scale: number;
   lazy?: boolean;
   idle: IdleMessage;
@@ -42,7 +49,7 @@ export function FloorPlanView({
         className="floorplan"
         style={{
           aspectRatio: `${layout.canvas.width} / ${layout.canvas.height}`,
-          height: `${scale * 100}%`,
+          height: `${scale * FLOORPLAN_BASE_ZOOM * 100}%`,
         }}
       >
         {layout.zones.map((zone) => (

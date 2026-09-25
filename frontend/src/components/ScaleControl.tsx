@@ -1,4 +1,5 @@
-export const SCALE_MIN = 0.6;
+// Low enough that the floor plan can still zoom out to fit the whole venue (1 / 1.7).
+export const SCALE_MIN = 0.5;
 export const SCALE_MAX = 2.5;
 export const SCALE_STEP = 0.1;
 export const SCALE_DEFAULT = 1;

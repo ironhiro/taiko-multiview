@@ -88,6 +88,7 @@ public static class ConfigFile
             Id = Text(item, "id"),
             Name = Text(item, "name"),
             Accent = Text(item, "accent", "#E8B24A"),
+            Logo = Text(item, "logo"),
             ChannelId = Text(item, "channelId"),
             ChannelUrl = Text(item, "channelUrl"),
             TitlePattern = Text(item, "titlePattern"),
@@ -144,6 +145,7 @@ public static class ConfigFile
         };
 
         AddIfPresent(item, "accent", draft.Accent);
+        AddIfPresent(item, "logo", draft.Logo);
         item["channelId"] = draft.ChannelId.Trim();
         AddIfPresent(item, "channelUrl", draft.ChannelUrl);
         item["titlePattern"] = draft.TitlePattern;

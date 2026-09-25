@@ -114,7 +114,7 @@ export function PlayerTile({ label, stream, isAudioActive, onRequestAudio, compa
     <div className={className}>
       <div className="tile__header">
         <span className="tile__label">{label}</span>
-        {stream && <span className="tile__badge tile__badge--live">LIVE</span>}
+        {stream && <span className="tile__badge">LIVE</span>}
         {typeof stream?.concurrentViewers === 'number' && (
           <span className="tile__viewers">{stream.concurrentViewers.toLocaleString('ko-KR')}명</span>
         )}
@@ -151,9 +151,11 @@ export function PlayerTile({ label, stream, isAudioActive, onRequestAudio, compa
         className="tile__audio"
         onClick={onRequestAudio}
         disabled={!mountedId}
-        title={isAudioActive ? '소리 끄기' : '이 화면 소리 듣기'}
+        aria-pressed={isAudioActive}
+        aria-label={isAudioActive ? `${label} 소리 끄기` : `${label} 소리 듣기`}
       >
-        {isAudioActive ? '🔊 소리 켜짐' : '🔇 음소거'}
+        <SpeakerIcon on={isAudioActive} />
+        <span className="tile__audio-text">{isAudioActive ? '소리 켜짐' : '음소거'}</span>
       </button>
     </div>
   );
@@ -162,11 +164,6 @@ export function PlayerTile({ label, stream, isAudioActive, onRequestAudio, compa
 function IdlePlaceholder({ message }: { message: IdleMessage }) {
   return (
     <div className="placeholder">
-      <span className="placeholder__dots" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
       <span className="placeholder__text">{message.title}</span>
       {message.detail && <span className="placeholder__detail">{message.detail}</span>}
     </div>
@@ -205,9 +202,31 @@ function ThumbnailPoster({ stream, onActivate }: { stream: LiveStream; onActivat
       <img className="poster__image" src={poster} alt="" loading="lazy" decoding="async" />
       <span className="poster__scrim" aria-hidden="true" />
       <span className="poster__play" aria-hidden="true">
-        ▶
+        <svg viewBox="0 0 16 16" width="16" height="16">
+          <path d="M4.5 2.8v10.4L13 8z" fill="currentColor" />
+        </svg>
       </span>
       <span className="visually-hidden">재생</span>
     </button>
+  );
+}
+
+/** Drawn rather than an emoji so it takes the tile's colour and stays one size everywhere. */
+function SpeakerIcon({ on }: { on: boolean }) {
+  return (
+    <svg className="tile__audio-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path d="M2 6h2.6L8 3.2v9.6L4.6 10H2z" fill="currentColor" />
+      {on ? (
+        <path
+          d="M10.4 5.6a3.4 3.4 0 0 1 0 4.8M12.3 3.8a6 6 0 0 1 0 8.4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      ) : (
+        <path d="M10.5 6l3.5 4M14 6l-3.5 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      )}
+    </svg>
   );
 }

@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
 import type { LiveResponse, LiveStream, Venue, VenueLive } from './lib/types';
 import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
-import { idleMessageFor, venueSummary } from './lib/venue';
+import { accentStyle, idleMessageFor, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, stationsForView, viewOptionsFor, type ViewMode } from './lib/views';
 import { FloorPlanView } from './components/FloorPlanView';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
+import { VenueMark } from './components/VenueMark';
+import { ViewPicker } from './components/ViewPicker';
 import { SCALE_DEFAULT, SCALE_STEP, ScaleControl, clampScale } from './components/ScaleControl';
 
-const SCALE_STORAGE_KEY = 'taiko-multiview:scale';
+// v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
+const SCALE_STORAGE_KEY = 'taiko-multiview:scale:v2';
 
 export default function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -216,96 +219,109 @@ export default function App() {
   const showFloorPlan = view === 'all' && activeVenue?.layout;
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <div className="app__top">
-          <div className="app__brand">
-            <h1>태고 멀티뷰</h1>
-            {activeVenue && (
-              <span className="app__venue" style={activeVenue.accent ? { color: activeVenue.accent } : undefined}>
-                {activeVenue.name}
-              </span>
-            )}
-          </div>
-
-          <VenueTabs
-            venues={venues}
-            liveByVenue={liveByVenue}
-            activeVenueId={activeVenueId ?? ''}
-            onSelect={selectVenue}
-          />
+    <div className="app venue-scope" style={accentStyle(activeVenue?.accent)}>
+      <aside className="rail" aria-label="멀티뷰 설정">
+        <div className="rail__brand">
+          <h1 className="wordmark">태고 멀티뷰</h1>
+          {activeVenue && (
+            <p className="rail__venue">
+              <VenueMark venue={activeVenue} size="brand" />
+              <span className="rail__venue-name">{activeVenue.name}</span>
+            </p>
+          )}
         </div>
 
-        <div className="app__controls">
-          {viewOptions.length > 1 && (
-            <label className="app__view-select">
-              <span className="visually-hidden">보기 선택</span>
-              <select value={view ?? ''} onChange={(event) => selectView(event.target.value as ViewMode)}>
-                {viewOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+        <VenueTabs
+          venues={venues}
+          liveByVenue={liveByVenue}
+          activeVenueId={activeVenueId ?? ''}
+          onSelect={selectVenue}
+        />
 
+        {viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
+
+        <div className="rail__group rail__group--scale">
+          <span className="rail__label">화면 크기</span>
           <ScaleControl scale={scale} onChange={setScale} />
+        </div>
 
-          <div className="app__status">
-            <span className={liveCount > 0 ? 'pill pill--live' : 'pill'}>
-              {liveCount > 0 ? `${liveCount}개 송출 중` : (closedSummary ?? '송출 대기중')}
-            </span>
+        <div className="rail__status">
+          <div className="rail__readout" aria-live="polite">
+            {liveCount > 0 ? (
+              <p className="tally tally--live">
+                <span className="tally__count">{liveCount}</span>
+                <span className="tally__text">개 송출 중</span>
+              </p>
+            ) : (
+              <p className="tally">
+                <span className="tally__text">{closedSummary ?? '송출 대기중'}</span>
+              </p>
+            )}
 
             {activeLive?.isFallbackSource && (
-              <span
-                className="pill pill--fallback"
+              <p
+                className="rail__note"
                 title="API 키가 없어 공개 페이지로 라이브 여부를 확인하고 있습니다. YouTube:ApiKey 를 설정하면 공식 API를 사용합니다."
               >
-                {activeLive.source === 'Mock' ? '모의 데이터' : '키 없음'}
-              </span>
+                {activeLive.source === 'Mock' ? '모의 데이터' : 'API 키 없음 · 공개 페이지로 확인'}
+              </p>
             )}
 
             {activeLive && (
-              <span className="app__updated">
-                {new Date(activeLive.updatedAt).toLocaleTimeString('ko-KR')} 기준
-              </span>
+              <p className="rail__updated">
+                <time dateTime={activeLive.updatedAt}>
+                  {new Date(activeLive.updatedAt).toLocaleTimeString('ko-KR')}
+                </time>{' '}
+                기준
+              </p>
             )}
-
-            <button type="button" onClick={handleManualRefresh} disabled={isRefreshing}>
-              {isRefreshing ? '갱신 중...' : '새로고침'}
-            </button>
           </div>
+
+          <button
+            type="button"
+            className="btn rail__refresh"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            aria-busy={isRefreshing}
+          >
+            {isRefreshing ? '갱신 중…' : '새로고침'}
+          </button>
         </div>
-      </header>
+      </aside>
 
-      {error && <div className="app__error">⚠ {error}</div>}
-
-      <main className="app__main">
-        {showFloorPlan && activeVenue?.layout ? (
-          <FloorPlanView
-            layout={activeVenue.layout}
-            zones={activeVenue.zones}
-            stations={activeVenue.stations}
-            streamsByStation={streamsByStation}
-            audioStationId={audioStationId}
-            onRequestAudio={handleRequestAudio}
-            scale={scale}
-            lazy={isCompactDevice}
-            idle={idle}
-          />
-        ) : (
-          <GridView
-            stations={stations}
-            streamsByStation={streamsByStation}
-            audioStationId={audioStationId}
-            onRequestAudio={handleRequestAudio}
-            scale={scale}
-            lazy={isCompactDevice}
-            idle={idle}
-          />
+      <div className="stage">
+        {error && (
+          <div className="stage__error" role="alert">
+            {error}
+          </div>
         )}
-      </main>
+
+        <main className="stage__main">
+          {showFloorPlan && activeVenue?.layout ? (
+            <FloorPlanView
+              layout={activeVenue.layout}
+              zones={activeVenue.zones}
+              stations={activeVenue.stations}
+              streamsByStation={streamsByStation}
+              audioStationId={audioStationId}
+              onRequestAudio={handleRequestAudio}
+              scale={scale}
+              lazy={isCompactDevice}
+              idle={idle}
+            />
+          ) : (
+            <GridView
+              stations={stations}
+              streamsByStation={streamsByStation}
+              audioStationId={audioStationId}
+              onRequestAudio={handleRequestAudio}
+              scale={scale}
+              lazy={isCompactDevice}
+              idle={idle}
+            />
+          )}
+        </main>
+      </div>
     </div>
   );
 }

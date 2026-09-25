@@ -13,6 +13,12 @@ public sealed class VenueDefinition
     /// <summary>Accent colour for the venue tab. Venues are separate businesses, not branches.</summary>
     public string? Accent { get; set; }
 
+    /// <summary>
+    /// Optional logo, as a path under the frontend's <c>logos/</c> folder or an absolute URL.
+    /// Wins over the channel's profile picture, which is used when this is empty.
+    /// </summary>
+    public string? Logo { get; set; }
+
     public string ChannelId { get; set; } = string.Empty;
 
     /// <summary>Public channel link, shown so traffic can find its way back to the venue.</summary>

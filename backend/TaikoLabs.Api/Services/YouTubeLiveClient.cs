@@ -72,6 +72,51 @@ public sealed class YouTubeLiveClient(
         return BuildSnapshot(venue, candidates, LiveSourceMode.Api, isFallbackSource: false);
     }
 
+    /// <summary>
+    /// Profile pictures for the given channels, keyed by channel id (1 quota unit for up to
+    /// 50 channels). Empty without an API key - the public pages offer no stable equivalent.
+    /// </summary>
+    public async Task<Dictionary<string, string>> FetchChannelAvatarsAsync(
+        IReadOnlyCollection<string> channelIds,
+        CancellationToken ct)
+    {
+        var avatars = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!Options.HasApiKey || channelIds.Count == 0)
+        {
+            return avatars;
+        }
+
+        var url = $"{ApiBase}/channels?part=snippet" +
+                  $"&id={Uri.EscapeDataString(string.Join(',', channelIds.Take(50)))}" +
+                  $"&key={Uri.EscapeDataString(Options.ApiKey)}";
+
+        using var document = await GetJsonAsync(url, ct);
+        if (!document.RootElement.TryGetProperty("items", out var items))
+        {
+            return avatars;
+        }
+
+        foreach (var item in items.EnumerateArray())
+        {
+            var id = item.GetPropertyOrNull("id")?.GetString();
+            var thumbnails = item.GetPropertyOrNull("snippet")?.GetPropertyOrNull("thumbnails");
+
+            // 240px is plenty for a logo slot and a fraction of the 800px "high" size.
+            var avatar = thumbnails is null
+                ? null
+                : ((string[])["medium", "high", "default"])
+                    .Select(size => thumbnails.Value.GetPropertyOrNull(size)?.GetPropertyOrNull("url")?.GetString())
+                    .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+            if (!string.IsNullOrWhiteSpace(id) && avatar is not null)
+            {
+                avatars[id] = avatar;
+            }
+        }
+
+        return avatars;
+    }
+
     /// <summary>Reads the newest uploads (1 quota unit). Live broadcasts appear here once started.</summary>
     private async Task<List<string>> GetRecentVideoIdsAsync(Venue venue, CancellationToken ct)
     {

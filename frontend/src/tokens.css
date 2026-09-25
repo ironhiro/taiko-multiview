@@ -1,0 +1,88 @@
+/* Hallmark tokens · genre: atmospheric · theme: custom graphite (neutral chrome · venue-driven accent · live-red)
+ * axes: paper-band dark / display-style rounded-sans (Pretendard) / accent-hue per venue
+ * Every colour and face in styles.css comes through these names. A venue's brand colour
+ * arrives as data (--venue-accent) and becomes --color-accent below.
+ */
+
+:root {
+  /* Graphite chrome with almost no hue of its own: the colour on screen should come
+     from the venue (its logo and accent) and from the red on-air marks, nothing else. */
+  --color-video: oklch(9% 0.003 250);
+  --color-paper: oklch(14% 0.004 250);
+  --color-zone: oklch(16% 0.004 250);
+  --color-paper-2: oklch(18% 0.005 250);
+  --color-paper-3: oklch(22.5% 0.006 250);
+  --color-rule: oklch(28% 0.006 250);
+  --color-rule-strong: oklch(37% 0.008 250);
+
+  /* Text. ink-3 is the floor for anything a person has to read (≥4.5:1 on paper). */
+  --color-ink: oklch(95% 0.003 250);
+  --color-ink-2: oklch(77% 0.006 250);
+  --color-ink-3: oklch(64% 0.007 250);
+
+  /* Focus is plain ink: it must read against any venue colour. */
+  --color-focus: oklch(95% 0.003 250);
+  --color-accent-fallback: oklch(82% 0.02 250);
+
+  /* Red is reserved for "on air". */
+  --color-live: oklch(62% 0.2 25);
+  --color-live-ink: oklch(97% 0.012 25);
+  --color-live-text: oklch(76% 0.13 25);
+  --color-live-wash: oklch(24% 0.05 25);
+  --color-live-edge: oklch(38% 0.1 25);
+
+  --color-warn: oklch(80% 0.12 80);
+
+  /* Overlay modifiers - only ever laid over video. */
+  --color-scrim: oklch(9% 0.003 250 / 0.78);
+  --color-scrim-soft: oklch(9% 0.003 250 / 0.3);
+
+  --font-body: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Malgun Gothic', sans-serif;
+  --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-md: 1.25rem;
+  --text-tally: 2.25rem;
+
+  /* Tile type follows the viewport height, since the floor plan scales with it. */
+  --text-tile-label: clamp(0.625rem, 1.3vh, 0.875rem);
+  --text-tile-meta: clamp(0.5625rem, 1.05vh, 0.6875rem);
+  --text-tile-body: clamp(0.6875rem, 1.5vh, 0.9375rem);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+
+  --rule-hair: 1px;
+  --rule-mark: 2px;
+
+  --radius-tile: 6px;
+  --radius-control: 6px;
+  --radius-chip: 3px;
+  --radius-pill: 999px;
+
+  --rail-width: 15rem;
+
+  color-scheme: dark;
+}
+
+/* The accent is the open venue's own colour, lifted to at least 72% lightness so a dark
+   brand colour still reads on graphite. Declared on .venue-scope as well as :root because
+   var() resolves where the property is declared, and --venue-accent is set on the app. */
+:root,
+.venue-scope {
+  --color-accent: oklch(from var(--venue-accent, var(--color-accent-fallback)) max(l, 0.72) c h);
+}

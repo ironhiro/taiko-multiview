@@ -1,10 +1,9 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Text.Json.Nodes;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using Microsoft.Win32;
+using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using TaikoLabs.VenueEditor.Models;
 using TaikoLabs.VenueEditor.Services;
 
@@ -30,10 +29,10 @@ public partial class MainWindow : Window
         VenueList.ItemsSource = _venues;
         TitleGrid.ItemsSource = _titles;
 
-        Loaded += OnLoaded;
+        Opened += OnOpened;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnOpened(object? sender, EventArgs e)
     {
         var path = ConfigFile.FindDefaultPath();
 
@@ -43,27 +42,37 @@ public partial class MainWindow : Window
             return;
         }
 
-        LoadFile(path);
+        _ = LoadFileAsync(path);
     }
 
     // ------------------------------------------------------------ file
 
-    private void OnBrowseClick(object sender, RoutedEventArgs e)
+    private async void OnBrowseClick(object? sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog
+        var startFolder = _path is null
+            ? null
+            : await StorageProvider.TryGetFolderFromPathAsync(Path.GetDirectoryName(_path) ?? string.Empty);
+
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "appsettings.json 선택",
-            Filter = "JSON 파일 (*.json)|*.json|모든 파일 (*.*)|*.*",
-            InitialDirectory = _path is null ? string.Empty : Path.GetDirectoryName(_path) ?? string.Empty,
-        };
+            AllowMultiple = false,
+            SuggestedStartLocation = startFolder,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("JSON 파일") { Patterns = ["*.json"] },
+                FilePickerFileTypes.All,
+            ],
+        });
 
-        if (dialog.ShowDialog(this) == true)
+        var path = files.Count > 0 ? files[0].TryGetLocalPath() : null;
+        if (path is not null)
         {
-            LoadFile(dialog.FileName);
+            await LoadFileAsync(path);
         }
     }
 
-    private void LoadFile(string path)
+    private async Task LoadFileAsync(string path)
     {
         try
         {
@@ -85,11 +94,11 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             SetStatus($"불러오기 실패: {ex.Message}");
-            MessageBox.Show(this, ex.Message, "불러오기 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
+            await Dialogs.ShowAsync(this, "불러오기 실패", ex.Message);
         }
     }
 
-    private void OnSaveClick(object sender, RoutedEventArgs e)
+    private async void OnSaveClick(object? sender, RoutedEventArgs e)
     {
         if (_root is null || _path is null)
         {
@@ -108,12 +117,10 @@ public partial class MainWindow : Window
 
         if (blocking.Count > 0)
         {
-            MessageBox.Show(
+            await Dialogs.ShowAsync(
                 this,
-                "아래 문제를 고쳐야 저장할 수 있습니다.\n\n" + string.Join("\n", blocking),
                 "검증 실패",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+                "아래 문제를 고쳐야 저장할 수 있습니다.\n\n" + string.Join("\n", blocking));
 
             EditorTabs.SelectedIndex = 5;
             RefreshIssues();
@@ -128,20 +135,20 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             SetStatus($"저장 실패: {ex.Message}");
-            MessageBox.Show(this, ex.Message, "저장 실패", MessageBoxButton.OK, MessageBoxImage.Warning);
+            await Dialogs.ShowAsync(this, "저장 실패", ex.Message);
         }
     }
 
     // ------------------------------------------------------------ venue list
 
-    private void OnVenueSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnVenueSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         CommitCurrent();
         _current = VenueList.SelectedItem as VenueDraft;
         BindCurrent();
     }
 
-    private void OnAddVenueClick(object sender, RoutedEventArgs e)
+    private void OnAddVenueClick(object? sender, RoutedEventArgs e)
     {
         CommitCurrent();
 
@@ -154,7 +161,7 @@ public partial class MainWindow : Window
         IdBox.Focus();
     }
 
-    private void OnDuplicateVenueClick(object sender, RoutedEventArgs e)
+    private void OnDuplicateVenueClick(object? sender, RoutedEventArgs e)
     {
         CommitCurrent();
 
@@ -168,6 +175,7 @@ public partial class MainWindow : Window
             Id = _current.Id + "-copy",
             Name = _current.Name + " (복사)",
             Accent = _current.Accent,
+            Logo = _current.Logo,
             ChannelId = _current.ChannelId,
             ChannelUrl = _current.ChannelUrl,
             TitlePattern = _current.TitlePattern,
@@ -202,21 +210,20 @@ public partial class MainWindow : Window
         VenueList.SelectedItem = copy;
     }
 
-    private void OnRemoveVenueClick(object sender, RoutedEventArgs e)
+    private async void OnRemoveVenueClick(object? sender, RoutedEventArgs e)
     {
         if (_current is null)
         {
             return;
         }
 
-        var answer = MessageBox.Show(
+        var confirmed = await Dialogs.ConfirmAsync(
             this,
-            $"'{_current.Display}' 매장을 목록에서 제거할까요?\n저장하기 전까지 파일은 바뀌지 않습니다.",
             "매장 삭제",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Question);
+            $"'{_current.Display}' 매장을 목록에서 제거할까요?\n저장하기 전까지 파일은 바뀌지 않습니다.",
+            "제거");
 
-        if (answer != MessageBoxResult.OK)
+        if (!confirmed || _current is null)
         {
             return;
         }
@@ -241,6 +248,7 @@ public partial class MainWindow : Window
         IdBox.Text = venue?.Id ?? string.Empty;
         NameBox.Text = venue?.Name ?? string.Empty;
         AccentBox.Text = venue?.Accent ?? string.Empty;
+        LogoBox.Text = venue?.Logo ?? string.Empty;
         ChannelIdBox.Text = venue?.ChannelId ?? string.Empty;
         ChannelUrlBox.Text = venue?.ChannelUrl ?? string.Empty;
         NaverBox.Text = venue?.NaverPlaceId ?? string.Empty;
@@ -270,36 +278,32 @@ public partial class MainWindow : Window
             return;
         }
 
-        _current.Id = IdBox.Text.Trim();
-        _current.Name = NameBox.Text.Trim();
-        _current.Accent = AccentBox.Text.Trim();
-        _current.ChannelId = ChannelIdBox.Text.Trim();
-        _current.ChannelUrl = ChannelUrlBox.Text.Trim();
-        _current.NaverPlaceId = NaverBox.Text.Trim();
-        _current.TitlePattern = PatternBox.Text;
-        _current.ClosedDates = ClosedDatesBox.Text;
+        _current.Id = IdBox.Text?.Trim() ?? string.Empty;
+        _current.Name = NameBox.Text?.Trim() ?? string.Empty;
+        _current.Accent = AccentBox.Text?.Trim() ?? string.Empty;
+        _current.Logo = LogoBox.Text?.Trim() ?? string.Empty;
+        _current.ChannelId = ChannelIdBox.Text?.Trim() ?? string.Empty;
+        _current.ChannelUrl = ChannelUrlBox.Text?.Trim() ?? string.Empty;
+        _current.NaverPlaceId = NaverBox.Text?.Trim() ?? string.Empty;
+        _current.TitlePattern = PatternBox.Text ?? string.Empty;
+        _current.ClosedDates = ClosedDatesBox.Text ?? string.Empty;
     }
+
+    private void OnAccentChanged(object? sender, TextChangedEventArgs e) => UpdateAccentSwatch();
 
     private void UpdateAccentSwatch()
     {
-        try
-        {
-            var value = AccentBox.Text.Trim();
-            AccentSwatch.Background = value.StartsWith('#')
-                ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(value))
-                : Brushes.Transparent;
-        }
-        catch (FormatException)
-        {
-            AccentSwatch.Background = Brushes.Transparent;
-        }
+        var value = AccentBox.Text?.Trim() ?? string.Empty;
+        AccentSwatch.Background = value.StartsWith('#') && Color.TryParse(value, out var color)
+            ? new SolidColorBrush(color)
+            : Brushes.Transparent;
     }
 
     // ------------------------------------------------------------ channel
 
-    private async void OnResolveChannelClick(object sender, RoutedEventArgs e)
+    private async void OnResolveChannelClick(object? sender, RoutedEventArgs e)
     {
-        var input = ChannelInputBox.Text.Trim();
+        var input = ChannelInputBox.Text?.Trim() ?? string.Empty;
         if (input.Length == 0)
         {
             SetStatus("@핸들이나 채널 URL을 입력해 주세요.");
@@ -321,7 +325,7 @@ public partial class MainWindow : Window
 
             ChannelIdBox.Text = channelId;
 
-            if (ChannelUrlBox.Text.Trim().Length == 0)
+            if (string.IsNullOrWhiteSpace(ChannelUrlBox.Text))
             {
                 ChannelUrlBox.Text = input.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                     ? input
@@ -329,7 +333,7 @@ public partial class MainWindow : Window
             }
 
             var name = await _lookup.FetchChannelNameAsync(channelId);
-            if (name is not null && NameBox.Text.Trim().Length == 0)
+            if (name is not null && string.IsNullOrWhiteSpace(NameBox.Text))
             {
                 NameBox.Text = name;
             }
@@ -347,11 +351,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnFetchTitlesClick(object sender, RoutedEventArgs e)
+    private async void OnFetchTitlesClick(object? sender, RoutedEventArgs e)
     {
         CommitCurrent();
 
-        var channelId = ChannelIdBox.Text.Trim();
+        var channelId = ChannelIdBox.Text?.Trim() ?? string.Empty;
         if (channelId.Length == 0)
         {
             SetStatus("먼저 채널을 조회해 channelId를 채워 주세요.");
@@ -384,7 +388,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnTitleSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnTitleSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (TitleGrid.SelectedItem is TitleRow row)
         {
@@ -394,7 +398,7 @@ public partial class MainWindow : Window
 
     // ------------------------------------------------------------ pattern
 
-    private void OnPatternChanged(object sender, TextChangedEventArgs e)
+    private void OnPatternChanged(object? sender, TextChangedEventArgs e)
     {
         if (_isBinding)
         {
@@ -405,14 +409,15 @@ public partial class MainWindow : Window
         RefreshPatternState();
     }
 
-    private void OnBuildPatternClick(object sender, RoutedEventArgs e)
+    private void OnBuildPatternClick(object? sender, RoutedEventArgs e)
     {
         try
         {
-            PatternBox.Text = PatternBuilder.FromSelection(
-                SampleBox.Text,
-                SampleBox.SelectionStart,
-                SampleBox.SelectionLength);
+            // Avalonia keeps a selection as two ends, in whichever order it was dragged.
+            var start = Math.Min(SampleBox.SelectionStart, SampleBox.SelectionEnd);
+            var length = Math.Abs(SampleBox.SelectionEnd - SampleBox.SelectionStart);
+
+            PatternBox.Text = PatternBuilder.FromSelection(SampleBox.Text ?? string.Empty, start, length);
 
             CommitCurrent();
             RefreshPatternState();
@@ -427,7 +432,7 @@ public partial class MainWindow : Window
     /// <summary>Re-runs the pattern over the fetched titles and shows what each resolves to.</summary>
     private void RefreshPatternState()
     {
-        var ok = PatternBuilder.TryCompile(PatternBox.Text, out var regex, out var error);
+        var ok = PatternBuilder.TryCompile(PatternBox.Text ?? string.Empty, out var regex, out var error);
         PatternError.Text = ok ? string.Empty : error;
 
         var stations = _current?.Stations ?? [];
@@ -490,23 +495,68 @@ public partial class MainWindow : Window
     private static string Normalize(string value) =>
         new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
+    // ------------------------------------------------------------ stations & zones
+
+    // Avalonia's DataGrid has no blank "new row" like WPF's, so rows are added here.
+
+    private void OnAddStationClick(object? sender, RoutedEventArgs e) =>
+        AddRow(_current?.Stations, StationGrid, () => new StationDraft());
+
+    private void OnRemoveStationClick(object? sender, RoutedEventArgs e) =>
+        RemoveSelectedRows(_current?.Stations, StationGrid);
+
+    private void OnAddZoneClick(object? sender, RoutedEventArgs e) =>
+        AddRow(_current?.Zones, ZoneGrid, () => new ZoneDraft());
+
+    private void OnRemoveZoneClick(object? sender, RoutedEventArgs e) =>
+        RemoveSelectedRows(_current?.Zones, ZoneGrid);
+
+    private static void AddRow<T>(ObservableCollection<T>? rows, DataGrid grid, Func<T> create)
+    {
+        if (rows is null)
+        {
+            return;
+        }
+
+        var row = create();
+        rows.Add(row);
+        grid.SelectedItem = row;
+        grid.ScrollIntoView(row, grid.Columns[0]);
+        grid.CurrentColumn = grid.Columns[0];
+        grid.BeginEdit();
+    }
+
+    private void RemoveSelectedRows<T>(ObservableCollection<T>? rows, DataGrid grid)
+    {
+        if (rows is null)
+        {
+            return;
+        }
+
+        foreach (var row in grid.SelectedItems.OfType<T>().ToList())
+        {
+            rows.Remove(row);
+        }
+
+        RefreshIssues();
+    }
+
     // ------------------------------------------------------------ layout
 
-    private void OnClearLayoutClick(object sender, RoutedEventArgs e)
+    private async void OnClearLayoutClick(object? sender, RoutedEventArgs e)
     {
         if (_current is null || _current.Layout is null)
         {
             return;
         }
 
-        var answer = MessageBox.Show(
+        var confirmed = await Dialogs.ConfirmAsync(
             this,
-            "배치도 좌표를 제거하면 이 매장은 그리드 보기만 제공합니다.\n되돌리려면 좌표를 다시 작성해야 합니다.",
             "배치도 제거",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
+            "배치도 좌표를 제거하면 이 매장은 그리드 보기만 제공합니다.\n되돌리려면 좌표를 다시 작성해야 합니다.",
+            "제거");
 
-        if (answer != MessageBoxResult.OK)
+        if (!confirmed || _current?.Layout is null)
         {
             return;
         }
@@ -518,7 +568,7 @@ public partial class MainWindow : Window
 
     // ------------------------------------------------------------ validation
 
-    private void OnValidateClick(object sender, RoutedEventArgs e)
+    private void OnValidateClick(object? sender, RoutedEventArgs e)
     {
         CommitCurrent();
         RefreshIssues();
@@ -540,23 +590,4 @@ public partial class MainWindow : Window
     }
 
     private void SetStatus(string message) => StatusText.Text = message;
-
-    /// <summary>A fetched title plus what the current pattern makes of it.</summary>
-    private sealed class TitleRow(string title) : Observable
-    {
-        private string _name = "—";
-        private string _station = "—";
-
-        public string Title { get; } = title;
-
-        public string Name { get => _name; private set => Set(ref _name, value); }
-
-        public string Station { get => _station; private set => Set(ref _station, value); }
-
-        public void Update(string name, string station)
-        {
-            Name = name;
-            Station = station;
-        }
-    }
 }

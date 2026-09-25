@@ -8,7 +8,7 @@
 
 ```
 ASP.NET Core API  ──▶  Vercel (React + TS)  ──▶  브라우저
-       │                                     └▶  WPF + WebView2 (데스크톱)
+       │                                     └▶  Tauri 셸 (macOS · Windows)
        └─ YouTube RSS + Data API v3
 ```
 
@@ -16,7 +16,7 @@ ASP.NET Core API  ──▶  Vercel (React + TS)  ──▶  브라우저
 | --- | --- | --- |
 | 백엔드 | `backend/TaikoLabs.Api` | 라이브 상태 폴링, 메모리 캐시, JSON API |
 | 프론트엔드 | `frontend` | React 18 + TypeScript + Vite |
-| 데스크톱 | `desktop/TaikoLabs.Desktop` | WPF + WebView2 셸 (테스트용) |
+| 데스크톱 | `desktop/shell` | Tauri 셸. macOS·Windows 공용 |
 | **매장 등록기** | `tools/TaikoLabs.VenueEditor` | 매장을 폼으로 추가·편집하는 독립 실행 프로그램 |
 
 ---
@@ -37,8 +37,9 @@ npm install
 npm run dev        # http://localhost:5173
 
 # 터미널 3 - 데스크톱 셸 (선택)
-cd desktop/TaikoLabs.Desktop
-dotnet run
+cd desktop/shell
+npm install
+npm run dev
 
 # 매장 등록기 (필요할 때만)
 cd tools/TaikoLabs.VenueEditor
@@ -86,6 +87,7 @@ dotnet run
   "id": "example",
   "name": "○○ 게임장",
   "accent": "#5B8DEF",
+  "logo": "logos/example.svg",
   "channelId": "UC...",
   "channelUrl": "https://www.youtube.com/@example",
   "titlePattern": "^\[(?<name>\d+번)\]",
@@ -100,6 +102,8 @@ dotnet run
 
 | 필드 | 설명 |
 | --- | --- |
+| `accent` | 매장 강조색. 선택한 보기·소리 켜진 타일 등 화면의 강조가 이 색을 따른다 |
+| `logo` | 선택. `frontend/public/logos/` 아래 파일 경로나 절대 URL. **비우면 YouTube 채널 프로필 이미지**(API 키 필요)를 쓴다 |
 | `titlePattern` | 방송 제목 정규식. **`(?<name>...)` 그룹 필수**, `date`·`part`는 선택 |
 | `stations` | 기체 목록. `aliases` 로 제목에 쓰이는 다른 표기를 흡수 |
 | `zones` | 구역. 2개 이상일 때만 보기 목록에 구역별 항목이 생김 |
@@ -233,7 +237,7 @@ YouTube__Mode=Api
 브라우저는 음소거 상태가 아니면 자동재생을 막는다. 따라서 모든 타일은 **음소거로 시작**하고,
 타일 위의 버튼으로 **한 번에 하나만** 소리를 켤 수 있다. 다른 타일을 선택하면 이전 타일은 자동으로 음소거된다.
 
-데스크톱 셸은 WebView2를 `--autoplay-policy=no-user-gesture-required` 로 띄우므로 이 제약이 없다.
+데스크톱 셸에는 이 제약이 없다. 이유는 [데스크톱 셸](#데스크톱-셸) 에 적었다.
 
 ---
 
@@ -354,23 +358,74 @@ Vercel 프로젝트 설정에서 Root Directory를 `frontend` 로 지정하면 �
 
 ## 데스크톱 셸
 
-`desktop/TaikoLabs.Desktop/appsettings.json` 으로 동작을 바꾼다.
+`desktop/shell` 의 Tauri 앱이다. **macOS 와 Windows 에서 같은 코드로 돈다** — 웹뷰만
+플랫폼 기본을 쓴다 (macOS `WKWebView`, Windows `WebView2`).
+
+```bash
+cd desktop/shell
+npm install
+npm run dev      # Vite 개발 서버를 먼저 띄워 둘 것
+npm run build    # .app + .dmg (macOS) / .msi + .exe (Windows)
+```
+
+`npm run build` 는 `frontend` 빌드를 먼저 돌리고 그 산출물을 앱 안에 넣는다.
+
+> **개발 빌드에는 번들 프론트엔드가 없다.** `npm run dev` 에서는 `Bundled` 모드조차
+> `devUrl`(5173)로 해석되므로, Vite를 띄우지 않으면 빈 창이 뜬다. 번들 동작을 확인하려면
+> `npm run build` 로 만든 앱을 실행해야 한다.
+
+### 셸이 존재하는 이유
+
+브라우저는 음소거가 아닌 자동재생을 막는다. 셸에는 이 제약이 없고, **그게 셸의 유일한 존재
+이유다.** wry가 웹뷰를 만들 때 자동재생을 기본으로 켜 주므로 코드에서 따로 요청하지 않는다 —
+macOS 는 `mediaTypesRequiringUserActionForPlayback = None`, Windows 는
+`--autoplay-policy=no-user-gesture-required` 로 생성된다.
+
+### 설정
+
+`shell.config.json` 을 아래 순서로 찾고, **처음 발견한 파일 하나만** 읽는다.
+없는 키는 기본값을 쓰므로 바꿀 키만 적으면 된다. 본보기는 `shell.config.sample.json`.
+
+1. `$TAIKO_SHELL_CONFIG` — 전체 경로. 설치본을 건드리지 않고 시험할 때
+2. 실행 파일과 같은 폴더 — Windows 포터블 설치
+3. `<앱 설정 폴더>/shell.config.json` — macOS 는 실행 파일이 `.app` 안에 있으므로 이쪽
+   (`~/Library/Application Support/app.taikolabs.multiview/`)
 
 | 키 | 설명 |
 | --- | --- |
-| `FrontendMode` | `Auto`(기본) / `DevServer` / `Built` |
-| `DevServerUrl` | Vite 개발 서버 주소 |
-| `BuiltFrontendPath` | 실행 파일에서 위로 올라가며 찾을 빌드 산출물 경로 |
-| `ApiBaseUrl` | 빌드 산출물 모드에서 호출할 백엔드 주소 |
-| `AllowAutoplayWithSound` | 자동재생 제한 해제 |
+| `frontendMode` | `Auto`(기본) / `DevServer` / `Bundled` / `Remote` |
+| `devServerUrl` | Vite 개발 서버 주소 |
+| `remoteUrl` | 배포된 프론트엔드 주소. `Auto` 에서 개발 서버가 없을 때 차선 |
+| `apiBaseUrl` | **`Bundled` 에서만** 쓰는 백엔드 주소 |
+| `allowAutoplayWithSound` | 자동재생 허용. 기본 `true` |
 
-`Auto` 는 개발 서버가 떠 있으면 그쪽을, 아니면 `frontend/dist` 를 연다.
-개발 서버 모드에서는 Vite가 `/api` 를 프록시하므로 `ApiBaseUrl` 을 무시한다.
+`Auto` 는 개발 서버 → `remoteUrl` → 번들 순으로 내려간다. 무엇을 열었는지는 **창 제목에**
+적히므로 확인할 필요가 없다. 어느 모드든 실패하면 번들로 떨어지므로 빈 창은 뜨지 않는다.
 
-단축키: `F5` 새로고침 · `F11` 전체화면 · `F12` 개발자 도구 · `Esc` 전체화면 해제
+`apiBaseUrl` 을 번들 모드에서만 쓰는 이유는, 개발 서버는 Vite가 `/api` 를 프록시하고 배포본은
+호스트가 rewrite 하므로 **둘 다 이미 동일 오리진**이기 때문이다.
 
-> 빌드 산출물은 `https` 가 아니라 `http://taiko.multiview/` 가상 호스트로 서빙한다.
-> `https` 페이지에서 `http` 백엔드를 호출하면 Chromium이 혼합 콘텐츠로 차단하기 때문이다.
+> `allowAutoplayWithSound: false` 는 Windows 에서만 듣는다. WKWebView 는 미디어 정책을
+> 생성 시점에 확정하고 Tauri 가 그 스위치를 노출하지 않는다.
+
+### 단축키
+
+플랫폼 관습을 따르므로 둘이 다르다. macOS 에서 `F11` 은 Mission Control 이 가져간다.
+
+| | macOS | Windows |
+| --- | --- | --- |
+| 다시 불러오기 | `Cmd R` | `F5` |
+| 전체화면 | `Cmd Ctrl F` | `F11` |
+| 개발자 도구 | `Cmd Alt I` | `F12` |
+
+다시 불러오기와 개발자 도구는 **멀티뷰** 메뉴에 있다. 전체화면은 macOS 에서는 표준 **View**
+메뉴가 이미 제공하므로 중복으로 넣지 않았고, 네이티브 전체화면이라 `Esc` 로 빠져나온다.
+Windows 에는 표준 View 메뉴가 없어 **멀티뷰** 메뉴에 직접 넣었다 — 나올 때는 `F11` 을 다시 누른다.
+
+### 아이콘
+
+`icons/source.png` 는 자리를 채우기 위한 임시 도안이다. 실제 로고가 생기면 그 파일을 바꾸고
+`npx tauri icon src-tauri/icons/source.png` 를 다시 돌리면 나머지 포맷이 전부 생성된다.
 
 ---
 
@@ -380,4 +435,7 @@ Vercel 프로젝트 설정에서 Root Directory를 `frontend` 로 지정하면 �
 - **임베드 불가 방송** — 저작권 등으로 임베드가 막힌 방송은 플레이어 대신 "유튜브에서 보기" 카드가 뜬다.
 - **RSS 15개 제한** — `Public` 모드는 피드의 최근 15개만 보므로, 한 회차 9개 기체까지는 충분하지만 그 이상 거슬러 올라가지 못한다.
 - **`Public` 모드의 취약성** — YouTube가 watch 페이지 구조를 바꾸면 라이브 판별이 멈춘다. 그때는 전부 `준비중...` 으로 보인다. API 키 설정이 근본 대책이다.
+- **매장 등록기는 Avalonia UI** — `tools/TaikoLabs.VenueEditor` 는 Windows·macOS·Linux 에서 같은 코드로 돈다.
+  기체·구역 표에는 빈 줄 입력이 없으므로 [기체 추가]·[구역 추가] 버튼으로 행을 만든다.
+- **.NET 10 SDK 필요** — 백엔드는 `net10.0` 이다. SDK 가 그보다 낮으면 `dotnet run` 이 거부한다 (도커 이미지는 무관).
 - **경로에 `#` 금지** — Vite가 경로를 URL로 다루기 때문에 `#` 이 들어간 디렉터리 아래에서는 빌드가 실패한다.

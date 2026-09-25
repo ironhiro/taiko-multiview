@@ -24,7 +24,26 @@ public sealed class YouTubeOptions
     /// <summary>How many recent uploads to inspect per venue. The API accepts at most 50 ids per call.</summary>
     public int MaxVideoIdsPerLookup { get; set; } = 50;
 
+    /// <summary>
+    /// Seconds between polls for a venue outside its opening hours with nothing on air.
+    /// Most of a day is closed hours, so this is where the quota goes if left at the
+    /// open-hours rate.
+    /// </summary>
+    public int ClosedPollIntervalSeconds { get; set; } = 600;
+
+    /// <summary>Minutes before opening at which a closed venue goes back to the full rate.</summary>
+    public int PreOpenMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// A manual refresh skips any venue polled within this many seconds. The refresh
+    /// button is public, so without it every viewer's click would spend quota.
+    /// </summary>
+    public int ManualRefreshCooldownSeconds { get; set; } = 60;
+
     public int PollIntervalSecondsClamped => Math.Clamp(PollIntervalSeconds, 15, 3600);
+
+    public int ClosedPollIntervalSecondsClamped =>
+        Math.Clamp(ClosedPollIntervalSeconds, PollIntervalSecondsClamped, 3600);
 
     public int MaxVideoIdsClamped => Math.Clamp(MaxVideoIdsPerLookup, 1, 50);
 

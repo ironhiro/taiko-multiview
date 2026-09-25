@@ -43,6 +43,7 @@ builder.Services.AddSingleton<EndedBroadcastCache>();
 builder.Services.AddSingleton<VenueClosureStore>();
 builder.Services.AddSingleton<VenueScheduleProvider>();
 builder.Services.AddSingleton<LiveStreamStore>();
+builder.Services.AddSingleton<ChannelAvatarCache>();
 
 builder.Services.AddSingleton<LivePollingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LivePollingService>());
@@ -77,10 +78,20 @@ app.MapGet("/api/health", () => Results.Ok(new
 
 // Static per-venue configuration, fetched once and cached by the client. Adding a venue
 // is a configuration change, never a frontend deploy.
-app.MapGet("/api/venues", (VenueRegistry registry) => Results.Ok(new
+app.MapGet("/api/venues", async (
+    VenueRegistry registry,
+    YouTubeLiveClient youtube,
+    ChannelAvatarCache avatars,
+    CancellationToken ct) =>
 {
-    venues = registry.All.Select(DescribeVenue),
-}));
+    var channelIds = registry.All.Select(venue => venue.Definition.ChannelId).Distinct().ToList();
+    var avatarByChannel = await avatars.GetAsync(youtube, channelIds, ct);
+
+    return Results.Ok(new
+    {
+        venues = registry.All.Select(venue => DescribeVenue(venue, avatarByChannel)),
+    });
+});
 
 // Every venue's current streams in one response, so the venue tabs can show live counts
 // without a request each.
@@ -119,11 +130,15 @@ static object ProjectAll(
         .ToList(),
 };
 
-static object DescribeVenue(Venue venue) => new
+static object DescribeVenue(Venue venue, IReadOnlyDictionary<string, string> avatarByChannel) => new
 {
     venue.Id,
     venue.Name,
     venue.Definition.Accent,
+    // A configured logo wins; otherwise the channel's own profile picture, if the API gave one.
+    logo = string.IsNullOrWhiteSpace(venue.Definition.Logo)
+        ? avatarByChannel.GetValueOrDefault(venue.Definition.ChannelId)
+        : venue.Definition.Logo,
     venue.Definition.ChannelId,
     venue.Definition.ChannelUrl,
     zones = venue.Definition.Zones,
