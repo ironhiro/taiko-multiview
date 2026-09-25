@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import { report } from './lib/diagnostics';
@@ -21,8 +21,19 @@ if (!container) {
   throw new Error('#root not found');
 }
 
+// The desktop shell opens its venue editor on the same page with ?screen=editor. It is
+// loaded only then, so the multiview never pays for it.
+const VenueEditor = lazy(() => import('./editor/VenueEditor'));
+const isEditor = new URLSearchParams(window.location.search).get('screen') === 'editor';
+
 createRoot(container).render(
   <StrictMode>
-    <App />
+    {isEditor ? (
+      <Suspense fallback={null}>
+        <VenueEditor />
+      </Suspense>
+    ) : (
+      <App />
+    )}
   </StrictMode>,
 );

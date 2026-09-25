@@ -1,0 +1,13 @@
+{
+  "identifier": "editor",
+  "description": "The venue editor window may open and save the backend settings file (only the one picked or found) and fetch YouTube pages for channel lookups.",
+  "windows": [
+    "editor"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-editor-open",
+    "allow-editor-save",
+    "allow-editor-fetch"
+  ]
+}

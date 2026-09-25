@@ -16,6 +16,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["devtools", "unstable"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-dialog = "2"
+ureq = "2"
 
 # Reads the window's view height for placing the chat panel (see title_bar_height).
 [target.'cfg(target_os = "macos")'.dependencies]
