@@ -116,6 +116,30 @@ app.MapPost("/api/live/refresh", async (
     return Results.Ok(ProjectAll(registry, store, schedule, options.Value));
 });
 
+// Playback trouble reported by clients (the desktop shell's webview has no reachable
+// console). Off unless Diagnostics:ClientReports is set, so production never maps it.
+if (app.Configuration.GetValue<bool>("Diagnostics:ClientReports"))
+{
+    var clientLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ClientDiagnostics");
+    var limiter = new ClientReportLimiter(perMinute: 120);
+
+    app.MapPost("/api/diagnostics", async (HttpRequest request) =>
+    {
+        if (!limiter.TryAcquire())
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
+        using var reader = new StreamReader(request.Body);
+        var buffer = new char[2048];
+        var read = await reader.ReadBlockAsync(buffer, 0, buffer.Length);
+        var body = new string(buffer, 0, read).ReplaceLineEndings(" ");
+
+        clientLog.LogWarning("CLIENT {Report}", body);
+        return Results.NoContent();
+    });
+}
+
 app.Run();
 
 static object ProjectAll(
@@ -163,3 +187,26 @@ static object Project(Venue venue, LiveSnapshot snapshot, VenueStatus status) =>
     snapshot.Error,
     venue = status,
 };
+
+/// <summary>A fixed-window cap, so a misbehaving client cannot flood the log.</summary>
+sealed class ClientReportLimiter(int perMinute)
+{
+    private readonly object _gate = new();
+    private DateTimeOffset _windowStart = DateTimeOffset.MinValue;
+    private int _count;
+
+    public bool TryAcquire()
+    {
+        lock (_gate)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (now - _windowStart >= TimeSpan.FromMinutes(1))
+            {
+                _windowStart = now;
+                _count = 0;
+            }
+
+            return ++_count <= perMinute;
+        }
+    }
+}

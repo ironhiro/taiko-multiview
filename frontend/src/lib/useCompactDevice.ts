@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
  *
  * Mounting nine YouTube players on a phone is not viable: it saturates the
  * connection, and iOS restricts simultaneous inline playback anyway. On these
- * devices tiles start as thumbnails and only become players when tapped.
+ * devices a tile is a player only while it is on screen, and a thumbnail otherwise.
  */
 /**
  * Width is what decides this, not touch alone: a touchscreen laptop at 1920px can

@@ -323,8 +323,11 @@ public sealed class YouTubeLiveClient(
     // ----------------------------------------------------------------- helpers
 
     /// <summary>
-    /// Keeps one stream per station, highest 부 first then newest. Only live broadcasts
-    /// survive: a station whose stream has ended must read as idle, not as a replay.
+    /// Keeps one stream per station: the one that started most recently, with 부 only
+    /// breaking ties. Start time has to lead because YouTube can keep a finished broadcast
+    /// flagged "live" for hours - ranking by 부 first let yesterday's 3부 beat today's 1부
+    /// and put a dead stream on the wall. Only live broadcasts survive: a station whose
+    /// stream has ended must read as idle, not as a replay.
     /// </summary>
     private static LiveSnapshot BuildSnapshot(Venue venue, IReadOnlyList<LiveStream> candidates, LiveSourceMode source, bool isFallbackSource)
     {
@@ -334,8 +337,8 @@ public sealed class YouTubeLiveClient(
             .Where(c => c.StationId is not null)
             .GroupBy(c => c.StationId!)
             .Select(group => group
-                .OrderByDescending(c => c.Part ?? 0)
-                .ThenByDescending(c => c.ActualStartTime ?? c.PublishedAt ?? DateTimeOffset.MinValue)
+                .OrderByDescending(c => c.ActualStartTime ?? c.PublishedAt ?? DateTimeOffset.MinValue)
+                .ThenByDescending(c => c.Part ?? 0)
                 .First())
             .OrderBy(c => venue.Stations.ToList().FindIndex(s => s.Id == c.StationId))
             .ToList();

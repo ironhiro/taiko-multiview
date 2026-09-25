@@ -29,3 +29,6 @@ closures.cache.json
 
 # Local design-tool notes (Hallmark)
 .hallmark/
+
+# Soak-test output
+logs/
