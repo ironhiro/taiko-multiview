@@ -1,0 +1,11 @@
+{
+  "identifier": "default",
+  "description": "The page calls one app command, chat_panel, to show YouTube's chat as a webview of its own over the chat panel. Nothing else beyond the core defaults.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-chat-panel"
+  ]
+}

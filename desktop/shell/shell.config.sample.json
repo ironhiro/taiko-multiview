@@ -1,0 +1,7 @@
+{
+  "frontendMode": "Auto",
+  "devServerUrl": "http://localhost:5173",
+  "remoteUrl": "",
+  "apiBaseUrl": "http://localhost:5180",
+  "allowAutoplayWithSound": true
+}

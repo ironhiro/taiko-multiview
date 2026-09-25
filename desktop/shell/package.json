@@ -1,0 +1,14 @@
+{
+  "name": "taikolabs-shell",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Cross-platform desktop shell for the TAIKO LABS multiview.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}
