@@ -9,6 +9,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod editor;
 mod settings;
 
 use std::net::{TcpStream, ToSocketAddrs};
@@ -28,6 +29,7 @@ use tauri::{
 const WINDOW_LABEL: &str = "main";
 const CHAT_WINDOW_LABEL: &str = "chat";
 const CHAT_PANEL_LABEL: &str = "chat-panel";
+const EDITOR_WINDOW_LABEL: &str = "editor";
 
 /// WKWebView's default user agent stops before the "Version/x Safari/y" part, and YouTube
 /// reads that as an outdated browser: its live chat asks to update, and Google refuses
@@ -65,23 +67,39 @@ fn main() {
         .manage(ChatTarget::default())
         .manage(MultiviewHome::default())
         .manage(ChatPanelVideo::default())
-        .invoke_handler(tauri::generate_handler![chat_panel])
+        .manage(editor::EditorFile::default())
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            chat_panel,
+            editor::editor_open,
+            editor::editor_save,
+            editor::editor_fetch,
+        ])
         .setup(|app| {
             let settings = ShellSettings::load(app);
             let target = resolve_target(&settings);
 
             // A page served from elsewhere (the dev server, the deployed site) counts as
             // remote, and remote pages reach no app command unless a capability names
-            // their origin. This one names exactly the page being loaded, and grants it
-            // the chat panel and nothing more.
+            // their origin. These name exactly the page being loaded, and give each
+            // window only its own commands: the chat panel to the multiview, file and
+            // YouTube access to the editor.
             if let WebviewUrl::External(url) = &target.url {
                 let port = url.port().map(|port| format!(":{port}")).unwrap_or_default();
                 let origin = format!("{}://{}{port}/*", url.scheme(), url.host_str().unwrap_or_default());
                 app.add_capability(
                     CapabilityBuilder::new("multiview-remote")
-                        .remote(origin)
+                        .remote(origin.clone())
                         .window(WINDOW_LABEL)
                         .permission("allow-chat-panel"),
+                )?;
+                app.add_capability(
+                    CapabilityBuilder::new("editor-remote")
+                        .remote(origin)
+                        .window(EDITOR_WINDOW_LABEL)
+                        .permission("allow-editor-open")
+                        .permission("allow-editor-save")
+                        .permission("allow-editor-fetch"),
                 )?;
             }
 
@@ -514,7 +532,7 @@ fn is_live_chat(url: &Url) -> bool {
 }
 
 /// The platform's own "open this" command, to keep a plugin out of the dependencies.
-fn open_in_browser(url: &Url) {
+pub(crate) fn open_in_browser(url: &Url) {
     if !matches!(url.scheme(), "http" | "https") {
         return;
     }
@@ -640,6 +658,11 @@ mod accelerator {
     pub const FULLSCREEN: &str = "F11";
 
     #[cfg(target_os = "macos")]
+    pub const EDITOR: &str = "Cmd+Shift+E";
+    #[cfg(not(target_os = "macos"))]
+    pub const EDITOR: &str = "Ctrl+Shift+E";
+
+    #[cfg(target_os = "macos")]
     pub const DEVTOOLS: &str = "Cmd+Alt+I";
     #[cfg(not(target_os = "macos"))]
     pub const DEVTOOLS: &str = "F12";
@@ -647,6 +670,7 @@ mod accelerator {
 
 fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
     let reload = MenuItem::with_id(app, "reload", "다시 불러오기", true, Some(accelerator::RELOAD))?;
+    let editor = MenuItem::with_id(app, "editor", "매장 등록기", true, Some(accelerator::EDITOR))?;
     let devtools = MenuItem::with_id(app, "devtools", "개발자 도구", true, Some(accelerator::DEVTOOLS))?;
 
     // Only on Windows: the default menu carries a View submenu with Toggle Fullscreen
@@ -656,9 +680,9 @@ fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
     let fullscreen = MenuItem::with_id(app, "fullscreen", "전체화면", true, Some(accelerator::FULLSCREEN))?;
 
     #[cfg(target_os = "macos")]
-    let items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &devtools];
+    let items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &editor, &devtools];
     #[cfg(not(target_os = "macos"))]
-    let items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &fullscreen, &devtools];
+    let items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &fullscreen, &editor, &devtools];
 
     let shell_menu = Submenu::with_items(app, "멀티뷰", true, &items)?;
 
@@ -669,7 +693,7 @@ fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
     app.set_menu(menu)?;
 
     let window = window.clone();
-    app.on_menu_event(move |_app, event| match event.id().as_ref() {
+    app.on_menu_event(move |handle, event| match event.id().as_ref() {
         "reload" => {
             let _ = window.reload();
         }
@@ -678,6 +702,13 @@ fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
             let _ = window.set_fullscreen(entering);
         }
         "devtools" => window.open_devtools(),
+        "editor" => {
+            // Opened on the same page the multiview is showing, wherever that is served.
+            let page = handle.state::<MultiviewHome>().0.lock().unwrap().clone().or_else(|| window.url().ok());
+            if let Some(page) = page {
+                editor::open_editor_window(handle, page);
+            }
+        }
         _ => {}
     });
 
