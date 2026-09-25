@@ -587,11 +587,33 @@ input {
   }
 }
 
-.tile__audio {
+/* Chat and audio, floated over the video so the tile stays exactly 16:9. */
+.tile__controls {
   position: absolute;
   right: var(--space-3xs);
   bottom: var(--space-3xs);
   z-index: 2;
+  display: flex;
+  gap: var(--space-3xs);
+  opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-out);
+}
+
+.tile:hover .tile__controls,
+.tile:focus-within .tile__controls,
+.tile--audio .tile__controls,
+.tile--chat .tile__controls {
+  opacity: 1;
+}
+
+/* Touch has no hover state, so the controls must stay on screen. */
+@media (hover: none) {
+  .tile__controls {
+    opacity: 1;
+  }
+}
+
+.tile__control {
   display: flex;
   align-items: center;
   gap: var(--space-3xs);
@@ -605,54 +627,38 @@ input {
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  opacity: 0;
-  transition:
-    opacity var(--dur-short) var(--ease-out),
-    border-color var(--dur-micro) var(--ease-out);
+  transition: border-color var(--dur-micro) var(--ease-out);
 }
 
-.tile:hover .tile__audio,
-.tile:focus-within .tile__audio,
-.tile--audio .tile__audio {
-  opacity: 1;
+.tile__control:hover {
+  border-color: var(--color-ink-2);
 }
 
-.tile__audio:hover {
-  border-color: var(--color-accent);
-}
-
-.tile__audio:active {
+.tile__control:active {
   background: var(--color-paper-3);
 }
 
-.tile__audio[aria-pressed='true'] {
+.tile__control[aria-pressed='true'] {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
 
-.tile__audio:disabled {
+.tile__control:disabled {
   display: none;
 }
 
-.tile__audio-icon {
+.tile__control-icon {
   flex: none;
 }
 
-/* In the floor plan a tile can be tiny; the icon alone still says what it does. */
+/* In the floor plan a tile can be tiny; the icons alone still say what they do. */
 @container (max-width: 220px) {
-  .tile__audio-text {
+  .tile__control-text {
     display: none;
   }
 
-  .tile__audio {
+  .tile__control {
     padding: 0 var(--space-3xs);
-  }
-}
-
-/* Touch has no hover state, so the control must stay on screen. */
-@media (hover: none) {
-  .tile__audio {
-    opacity: 1;
   }
 }
 
@@ -772,6 +778,104 @@ input {
 .placeholder__link:hover {
   text-decoration: underline;
   text-underline-offset: 0.2em;
+}
+
+/* ------------------------------------------------------------------- chat */
+
+/* The chat takes a third column beside the wall while it is open. */
+.app--chat {
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--chat-width);
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-paper-2);
+  border-left: var(--rule-hair) solid var(--color-rule);
+}
+
+.chat__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-sm);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.chat__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.chat__station {
+  font-family: var(--font-data);
+  letter-spacing: 0.04em;
+}
+
+.chat__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3xs);
+}
+
+.chat__write {
+  min-height: 2rem;
+  padding-inline: var(--space-xs);
+  font-size: var(--text-xs);
+}
+
+.chat__close {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--color-ink-2);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.chat__close:hover {
+  background: var(--color-paper-3);
+  color: var(--color-ink);
+}
+
+.chat__close:active {
+  background: var(--color-rule);
+}
+
+.chat__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: var(--color-paper);
+}
+
+.chat__empty {
+  flex: 1;
+  padding: var(--space-md) var(--space-sm);
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+}
+
+.chat__hint {
+  padding: var(--space-2xs) var(--space-sm);
+  border-top: var(--rule-hair) solid var(--color-rule);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
 }
 
 /* ----------------------------------------------------------------- mobile */
@@ -902,6 +1006,25 @@ input {
     min-height: 2.5rem;
   }
 
+  /* On a phone the chat is a sheet over the lower part of the wall. */
+  .chat {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10;
+    height: 60dvh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-left: 0;
+    border-top: var(--rule-hair) solid var(--color-rule-strong);
+    border-radius: var(--radius-tile) var(--radius-tile) 0 0;
+  }
+
+  .chat__close {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
   .floorplan-scroll {
     padding: var(--space-xs);
     /* The plan is taller than a phone screen, so scroll it rather than shrink it. */
@@ -932,7 +1055,7 @@ input {
     font-size: var(--text-sm);
   }
 
-  .tile__audio {
+  .tile__control {
     min-height: 2.25rem;
     padding: 0 var(--space-xs);
     font-size: var(--text-xs);

@@ -17,6 +17,8 @@ interface FloorPlanViewProps {
   streamsByStation: Map<string, LiveStream>;
   audioStationId: string | null;
   onRequestAudio: (stationId: string) => void;
+  chatStationId: string | null;
+  onRequestChat: (stationId: string) => void;
   /** Zoom from the scale control. 1 is FLOORPLAN_BASE_ZOOM, so the map is readable before anyone touches it. */
   scale: number;
   lazy?: boolean;
@@ -34,6 +36,8 @@ export function FloorPlanView({
   streamsByStation,
   audioStationId,
   onRequestAudio,
+  chatStationId,
+  onRequestChat,
   scale,
   lazy,
   idle,
@@ -81,6 +85,8 @@ export function FloorPlanView({
               stream={streamsByStation.get(unit.stationId)}
               isAudioActive={audioStationId === unit.stationId}
               onRequestAudio={() => onRequestAudio(unit.stationId)}
+              isChatOpen={chatStationId === unit.stationId}
+              onRequestChat={() => onRequestChat(unit.stationId)}
               lazy={lazy}
               idle={idle}
             />

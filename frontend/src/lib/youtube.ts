@@ -13,7 +13,22 @@ export interface YTPlayer {
   setVolume(volume: number): void;
   playVideo(): void;
   getPlayerState(): number;
+  getCurrentTime(): number;
+  /** The watch URL of whatever is loaded now - which can drift from the video asked for. */
+  getVideoUrl(): string;
+  loadVideoById(videoId: string): void;
+  seekTo(seconds: number, allowSeekAhead: boolean): void;
 }
+
+/** YT.PlayerState values. */
+export const PlayerState = {
+  Unstarted: -1,
+  Ended: 0,
+  Playing: 1,
+  Paused: 2,
+  Buffering: 3,
+  Cued: 5,
+} as const;
 
 interface YTPlayerEvent {
   target: YTPlayer;
@@ -24,6 +39,7 @@ interface YTPlayerOptions {
   playerVars?: Record<string, string | number>;
   events?: {
     onReady?: (event: YTPlayerEvent) => void;
+    onStateChange?: (event: { data: number; target: YTPlayer }) => void;
     onError?: (event: { data: number }) => void;
   };
 }

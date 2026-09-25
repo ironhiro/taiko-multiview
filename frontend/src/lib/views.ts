@@ -1,9 +1,6 @@
 import type { Station, Venue } from './types';
 
-/**
- * Which views a venue offers depends on what it publishes. Only a venue with a floor
- * plan gets the 배치도 entry; the rest go straight to the plain grid.
- */
+/** The whole wall, plus one entry per zone when a venue has more than one. */
 export type ViewMode = 'all' | 'all-grid' | string;
 
 export interface ViewOption {
@@ -18,13 +15,9 @@ export function viewOptionsFor(venue: Venue | undefined): ViewOption[] {
 
   const options: ViewOption[] = [];
 
-  if (venue.layout) {
-    options.push({ value: 'all', label: '통합 (배치도)' });
-    options.push({ value: 'all-grid', label: '통합 (일반)' });
-  } else {
-    // With no map there is nothing to contrast against, so it is just "통합".
-    options.push({ value: 'all-grid', label: '통합' });
-  }
+  // The floor-plan view is retired from the picker: the plain wall served better. Venue
+  // layouts stay in the config and FloorPlanView stays in the code, unused, for now.
+  options.push({ value: 'all-grid', label: '통합' });
 
   // A single zone adds nothing over 통합.
   if (venue.zones.length > 1) {
@@ -38,9 +31,8 @@ export function viewOptionsFor(venue: Venue | undefined): ViewOption[] {
   return options;
 }
 
-export function defaultViewFor(venue: Venue | undefined, isCompact: boolean): ViewMode {
-  // The map is unreadable on a phone, so small screens start on the plain wall.
-  return venue?.layout && !isCompact ? 'all' : 'all-grid';
+export function defaultViewFor(_venue: Venue | undefined, _isCompact: boolean): ViewMode {
+  return 'all-grid';
 }
 
 export function isValidView(venue: Venue | undefined, view: string | null): view is ViewMode {

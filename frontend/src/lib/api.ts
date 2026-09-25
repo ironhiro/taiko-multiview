@@ -9,7 +9,7 @@ const API_BASE =
   import.meta.env.VITE_API_BASE ??
   '';
 
-function endpoint(path: string): string {
+export function endpoint(path: string): string {
   return `${API_BASE.replace(/\/$/, '')}${path}`;
 }
 

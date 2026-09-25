@@ -7,6 +7,8 @@ interface GridViewProps {
   streamsByStation: Map<string, LiveStream>;
   audioStationId: string | null;
   onRequestAudio: (stationId: string) => void;
+  chatStationId: string | null;
+  onRequestChat: (stationId: string) => void;
   /** Multiplies the minimum tile width, so bigger means fewer per row. */
   scale: number;
   lazy?: boolean;
@@ -25,6 +27,8 @@ export function GridView({
   streamsByStation,
   audioStationId,
   onRequestAudio,
+  chatStationId,
+  onRequestChat,
   scale,
   lazy,
   idle,
@@ -43,6 +47,8 @@ export function GridView({
           stream={streamsByStation.get(station.id)}
           isAudioActive={audioStationId === station.id}
           onRequestAudio={() => onRequestAudio(station.id)}
+          isChatOpen={chatStationId === station.id}
+          onRequestChat={() => onRequestChat(station.id)}
           lazy={lazy}
           idle={idle}
         />

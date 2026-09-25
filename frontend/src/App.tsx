@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
 import type { LiveResponse, LiveStream, Venue, VenueLive } from './lib/types';
 import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
+import { setDiagnosticsContext, report } from './lib/diagnostics';
 import { accentStyle, idleMessageFor, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, stationsForView, viewOptionsFor, type ViewMode } from './lib/views';
 import { FloorPlanView } from './components/FloorPlanView';
@@ -9,6 +10,7 @@ import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
+import { ChatPanel } from './components/ChatPanel';
 import { SCALE_DEFAULT, SCALE_STEP, ScaleControl, clampScale } from './components/ScaleControl';
 
 // v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
@@ -25,6 +27,10 @@ export default function App() {
 
   // Only one tile may hold the audio at a time.
   const [audioStationId, setAudioStationId] = useState<string | null>(null);
+
+  // The tile whose chat is open, if any. Kept by station rather than video so a new
+  // broadcast on the same cabinet carries the panel over.
+  const [chatStationId, setChatStationId] = useState<string | null>(null);
 
   const isCompactDevice = useCompactDevice();
   const abortRef = useRef<AbortController | null>(null);
@@ -46,6 +52,7 @@ export default function App() {
       .catch((cause) => {
         if (!controller.signal.aborted) {
           setError(cause instanceof Error ? cause.message : '매장 정보를 불러오지 못했습니다');
+          report('venues-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
         }
       });
 
@@ -89,6 +96,7 @@ export default function App() {
     } catch (cause) {
       if (!controller.signal.aborted) {
         setError(cause instanceof Error ? cause.message : '알 수 없는 오류');
+        report('live-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
       }
     }
   }, []);
@@ -157,6 +165,10 @@ export default function App() {
     window.history.replaceState(null, '', url);
   }, [activeVenueId, view]);
 
+  useEffect(() => {
+    setDiagnosticsContext({ venueId: activeVenueId ?? undefined, view: view ?? undefined });
+  }, [activeVenueId, view]);
+
   // --- derived --------------------------------------------------------------
 
   const liveByVenue = useMemo(() => {
@@ -190,6 +202,7 @@ export default function App() {
     hasChosenView.current = true;
     setActiveVenueId(venueId);
     setAudioStationId(null);
+    setChatStationId(null);
   }, []);
 
   const selectView = useCallback((next: ViewMode) => {
@@ -200,6 +213,12 @@ export default function App() {
   const handleRequestAudio = useCallback((stationId: string) => {
     setAudioStationId((current) => (current === stationId ? null : stationId));
   }, []);
+
+  const handleRequestChat = useCallback((stationId: string) => {
+    setChatStationId((current) => (current === stationId ? null : stationId));
+  }, []);
+
+  const chatStation = chatStationId ? activeVenue?.stations.find((station) => station.id === chatStationId) : undefined;
 
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -219,7 +238,10 @@ export default function App() {
   const showFloorPlan = view === 'all' && activeVenue?.layout;
 
   return (
-    <div className="app venue-scope" style={accentStyle(activeVenue?.accent)}>
+    <div
+      className={chatStation ? 'app app--chat venue-scope' : 'app venue-scope'}
+      style={accentStyle(activeVenue?.accent)}
+    >
       <aside className="rail" aria-label="멀티뷰 설정">
         <div className="rail__brand">
           <h1 className="wordmark">태고 멀티뷰</h1>
@@ -305,6 +327,8 @@ export default function App() {
               streamsByStation={streamsByStation}
               audioStationId={audioStationId}
               onRequestAudio={handleRequestAudio}
+              chatStationId={chatStationId}
+              onRequestChat={handleRequestChat}
               scale={scale}
               lazy={isCompactDevice}
               idle={idle}
@@ -315,6 +339,8 @@ export default function App() {
               streamsByStation={streamsByStation}
               audioStationId={audioStationId}
               onRequestAudio={handleRequestAudio}
+              chatStationId={chatStationId}
+              onRequestChat={handleRequestChat}
               scale={scale}
               lazy={isCompactDevice}
               idle={idle}
@@ -322,6 +348,14 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {chatStation && (
+        <ChatPanel
+          label={chatStation.label}
+          stream={streamsByStation.get(chatStation.id)}
+          onClose={() => setChatStationId(null)}
+        />
+      )}
     </div>
   );
 }
