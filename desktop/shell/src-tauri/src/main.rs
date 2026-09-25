@@ -78,6 +78,10 @@ fn main() {
         .setup(|app| {
             let settings = ShellSettings::load(app);
             let target = resolve_target(&settings);
+            let with_editor = editor_allowed(&target, &settings);
+            if !with_editor {
+                eprintln!("venue editor off: {} is not a local server", target.description);
+            }
 
             // A page served from elsewhere (the dev server, the deployed site) counts as
             // remote, and remote pages reach no app command unless a capability names
@@ -93,14 +97,16 @@ fn main() {
                         .window(WINDOW_LABEL)
                         .permission("allow-chat-panel"),
                 )?;
-                app.add_capability(
-                    CapabilityBuilder::new("editor-remote")
-                        .remote(origin)
-                        .window(EDITOR_WINDOW_LABEL)
-                        .permission("allow-editor-open")
-                        .permission("allow-editor-save")
-                        .permission("allow-editor-fetch"),
-                )?;
+                if with_editor {
+                    app.add_capability(
+                        CapabilityBuilder::new("editor-remote")
+                            .remote(origin)
+                            .window(EDITOR_WINDOW_LABEL)
+                            .permission("allow-editor-open")
+                            .permission("allow-editor-save")
+                            .permission("allow-editor-fetch"),
+                    )?;
+                }
             }
 
             let handle = app.handle().clone();
@@ -154,7 +160,7 @@ fn main() {
             }
 
             let window = builder.build()?;
-            install_menu(app, &window)?;
+            install_menu(app, &window, with_editor)?;
 
             Ok(())
         })
@@ -571,6 +577,29 @@ struct StartTarget {
     inject_api_base: bool,
 }
 
+/// The venue editor writes venues.json on this machine, which only means something when
+/// this machine runs the API: the dev server, or the bundled build talking to a local
+/// API. Pointed at the deployed site it would edit a file the live server never reads,
+/// so there it is not offered at all.
+fn editor_allowed(target: &StartTarget, settings: &ShellSettings) -> bool {
+    match &target.url {
+        WebviewUrl::External(url) => is_loopback(url),
+        _ => tauri::Url::parse(&settings.api_base_url).is_ok_and(|url| is_loopback(&url)),
+    }
+}
+
+fn is_loopback(url: &tauri::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .trim_matches(['[', ']'])
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 fn resolve_target(settings: &ShellSettings) -> StartTarget {
     let dev_server = || {
         if settings.dev_server_url.is_empty() || !is_reachable(&settings.dev_server_url) {
@@ -676,7 +705,7 @@ mod accelerator {
     pub const DEVTOOLS: &str = "F12";
 }
 
-fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
+fn install_menu(app: &tauri::App, window: &WebviewWindow, with_editor: bool) -> tauri::Result<()> {
     let reload = MenuItem::with_id(app, "reload", "다시 불러오기", true, Some(accelerator::RELOAD))?;
     let editor = MenuItem::with_id(app, "editor", "매장 등록기", true, Some(accelerator::EDITOR))?;
     let devtools = MenuItem::with_id(app, "devtools", "개발자 도구", true, Some(accelerator::DEVTOOLS))?;
@@ -688,9 +717,13 @@ fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
     let fullscreen = MenuItem::with_id(app, "fullscreen", "전체화면", true, Some(accelerator::FULLSCREEN))?;
 
     #[cfg(target_os = "macos")]
-    let items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &editor, &devtools];
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &editor, &devtools];
     #[cfg(not(target_os = "macos"))]
-    let items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &fullscreen, &editor, &devtools];
+    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> = vec![&reload, &fullscreen, &editor, &devtools];
+
+    if !with_editor {
+        items.retain(|item| item.id() != editor.id());
+    }
 
     let shell_menu = Submenu::with_items(app, "멀티뷰", true, &items)?;
 
@@ -710,7 +743,7 @@ fn install_menu(app: &tauri::App, window: &WebviewWindow) -> tauri::Result<()> {
             let _ = window.set_fullscreen(entering);
         }
         "devtools" => window.open_devtools(),
-        "editor" => {
+        "editor" if with_editor => {
             // Opened on the same page the multiview is showing, wherever that is served.
             let page = handle.state::<MultiviewHome>().0.lock().unwrap().clone().or_else(|| window.url().ok());
             if let Some(page) = page {
