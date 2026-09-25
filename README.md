@@ -368,6 +368,24 @@ docker run -p 8080:8080 -e YouTube__Mode=Mock taikolabs   # http://localhost:808
 두 배로 쓴다. 실서버는 최소 복제본도 1 (0이면 스케일 투 제로되면서 폴링이 멈춘다).
 개발 서버는 최소 0 으로 두면 아무도 안 볼 때 비용과 쿼터가 0이 되고, 접속하면 다시 깨어난다.
 
+| 리소스 | 이름 |
+|---|---|
+| 리소스 그룹 (한국 중부) | `rg-taikolabs` |
+| Container Apps 환경 (dev·prod 공용) | `cae-taikolabs` |
+| 개발 서버 | `taikolabs-dev` — 최소 0 / 최대 1, 0.25 vCPU / 0.5 GiB |
+| 이미지 | `ghcr.io/ironhiro/taikolabs` (공개) |
+
+새 이미지를 개발 서버에 올리는 법:
+
+```bash
+# ARM 맥에서도 에뮬레이션 없이 빌드된다 (Dockerfile 주석 참고)
+docker buildx build --platform linux/amd64 -t ghcr.io/ironhiro/taikolabs:$(git rev-parse --short HEAD) --push .
+az containerapp update -n taikolabs-dev -g rg-taikolabs --image ghcr.io/ironhiro/taikolabs:<태그>
+```
+
+유튜브 키는 컨테이너 앱의 시크릿 `youtube-api-key` 에 있고, 환경 변수
+`YouTube__ApiKey=secretref:youtube-api-key` 로 읽는다. 바꿀 때는 시크릿만 교체한다.
+
 ---
 
 ## 데스크톱 셸
