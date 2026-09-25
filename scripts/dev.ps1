@@ -47,14 +47,28 @@ Start-Process -FilePath 'npm' -ArgumentList 'run', 'dev' -WorkingDirectory $fron
 
 # --- desktop ---------------------------------------------------------------
 if (-not $NoDesktop) {
-    # Give the dev server a moment: the shell picks its source at startup and
-    # falls back to frontend/dist if 5173 is not answering yet.
-    Start-Sleep -Seconds 6
+    $shell = Join-Path $root 'desktop/shell'
 
-    $desktop = Join-Path $root 'desktop/TaikoLabs.Desktop'
-    Write-Host "  데스크톱 셸 시작" -ForegroundColor DarkGray
-    Start-Process -FilePath 'dotnet' -ArgumentList 'run' -WorkingDirectory $desktop
+    # The Tauri shell is Rust; without a toolchain it cannot build, and saying so beats
+    # a wall of cargo errors in a window that closes.
+    if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+        Write-Host "  데스크톱 셸 건너뜀: Rust가 없습니다 (https://rustup.rs)" -ForegroundColor Yellow
+    }
+    else {
+        if (-not (Test-Path (Join-Path $shell 'node_modules'))) {
+            Push-Location $shell
+            npm install --no-audit --no-fund
+            Pop-Location
+        }
+
+        # Give the dev server a moment: the shell picks its source at startup and
+        # falls back to the next source if 5173 is not answering yet.
+        Start-Sleep -Seconds 6
+
+        Write-Host "  데스크톱 셸 시작 (첫 빌드는 몇 분 걸림)" -ForegroundColor DarkGray
+        Start-Process -FilePath 'npm' -ArgumentList 'run', 'dev' -WorkingDirectory $shell
+    }
 }
 
 Write-Host ""
-Write-Host "종료하려면: Get-Process dotnet, node | Stop-Process" -ForegroundColor DarkGray
+Write-Host "종료하려면: Get-Process dotnet, node, taikolabs-shell | Stop-Process" -ForegroundColor DarkGray
