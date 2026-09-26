@@ -121,12 +121,15 @@ function useGlideOnRelayout(columns: number) {
     const remember = () => {
       lastBoxes.current = [...grid.children].map((tile) => tile.getBoundingClientRect());
     };
+    // The wall scrolls on a desktop; on a phone the whole page does.
     const scroller = grid.parentElement;
 
     window.addEventListener('resize', remember);
+    window.addEventListener('scroll', remember, { passive: true });
     scroller?.addEventListener('scroll', remember, { passive: true });
     return () => {
       window.removeEventListener('resize', remember);
+      window.removeEventListener('scroll', remember);
       scroller?.removeEventListener('scroll', remember);
     };
   }, []);
