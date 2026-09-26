@@ -19,3 +19,4 @@
 | 2026-09-26 | 로그 위치 찾는 법 추가(stack.sh 밖에서 띄운 서버) | skills/multiview-local-env | 첫 실행에서 device-qa가 안내된 로그 경로와 실제 경로 불일치 보고 |
 | 2026-09-26 | 종합 코드 리뷰 하네스 추가: 에이전트 5(arch/security/perf/style-reviewer, review-synthesizer), 스킬 2(code-review-harness, code-audit + 영역별 references 4) | 전체 | 사용자 요청: 네 영역 병렬 감사 → 통합 리포트 |
 | 2026-09-26 | 통합자 쓰기 차단 시 처리 규칙, 리뷰 발견 버그를 성능 비교 전 재수정에 넣는 규칙 추가 | skills/code-review-harness, skills/multiview-harness | 리뷰 첫 실행: 통합자 REPORT.md 쓰기 차단, R-1 버그를 개발 하네스 진행 중 발견 |
+| 2026-09-26 | 진행 표시 규칙 추가: 백그라운드 실행 중 진행판(Artifact) 단계별 갱신 | skills/multiview-harness, skills/code-review-harness | 사용자 요청: "백그라운드로 진행하면 시각화해서 보여줘" |
