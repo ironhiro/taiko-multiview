@@ -18,6 +18,8 @@ export interface YTPlayer {
   /** The watch URL of whatever is loaded now - which can drift from the video asked for. */
   getVideoUrl(): string;
   loadVideoById(videoId: string): void;
+  /** Loads without playing: the player waits on the video's first frame. */
+  cueVideoById(videoId: string): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
 }
 

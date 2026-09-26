@@ -53,6 +53,7 @@ export function GridView({
           lazy={lazy && chatStationId !== station.id}
           suspended={lazy && chatStationId !== null && chatStationId !== station.id}
           shielded={lazy}
+          pausesWhenAway={lazy}
           idle={idle}
         />
       ))}
