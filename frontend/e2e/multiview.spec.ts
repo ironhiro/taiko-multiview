@@ -167,6 +167,63 @@ test.describe('phone', () => {
   });
 });
 
+// The venue list is all the wall is built from: a first fetch that fails or hangs must be
+// tried again rather than leave the page empty. Desktop only - the path is the same on a
+// phone, and the hang costs each run fifteen seconds.
+test.describe('a venue list that does not arrive the first time', () => {
+  test.skip(({ isMobile }) => isMobile, 'same path on every device');
+
+  test('is asked for again after failing, and the tiles come up', async ({ page }) => {
+    let failuresLeft = 2;
+    await page.route('**/api/venues', async (route) => {
+      if (failuresLeft > 0) {
+        failuresLeft -= 1;
+        await route.fulfill({ status: 500, body: '' }).catch(() => {});
+        return;
+      }
+      await route.continue();
+    });
+
+    // The notice can be gone within a frame - a live answer asks for the venues again at
+    // once - so the page notes that it was shown rather than the test catching it.
+    await page.addInitScript(() => {
+      new MutationObserver(() => {
+        if (document.querySelector('.stage__error')?.textContent?.includes('다시 연결하는 중')) {
+          (window as { sawReconnecting?: boolean }).sawReconnecting = true;
+        }
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    });
+
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    await expect(page.locator('.tile').first()).toBeVisible({ timeout: 15_000 });
+    expect(await page.evaluate(() => (window as { sawReconnecting?: boolean }).sawReconnecting)).toBe(true);
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+    expect(failuresLeft).toBe(0);
+  });
+
+  test('gives up on a request that hangs and asks again', async ({ page }) => {
+    test.setTimeout(60_000);
+    // Everything asked in the first three seconds hangs, as the dev proxy's did.
+    const hangUntil = Date.now() + 3_000;
+    let hung = 0;
+    await page.route('**/api/venues', async (route) => {
+      if (Date.now() < hangUntil) {
+        hung += 1;
+        return; // Never answered.
+      }
+      await route.continue();
+    });
+
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    await expect(page.locator('.stage__error')).toContainText('다시 연결하는 중… (백엔드 응답 없음 (15초))', {
+      timeout: 20_000,
+    });
+    await expect(page.locator('.tile').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+    expect(hung).toBeGreaterThan(0);
+  });
+});
+
 /**
  * Serves `/api/venues` with the configured venues and copies of them up to `total`, so a
  * phone has more venues than its row holds. The copies have no live snapshot, which the

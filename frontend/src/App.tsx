@@ -3,6 +3,7 @@ import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
 import type { LiveResponse, LiveStream, Venue, VenueLive } from './lib/types';
 import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
+import { retryUntilDone, type RetryHandle } from './lib/retry';
 import { onVenuesSaved } from './lib/settingsChannel';
 import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, stationsForView, viewOptionsFor, type ViewMode } from './lib/views';
@@ -35,34 +36,61 @@ export default function App() {
 
   // Fetched at start and again whenever the API reports a new settings version - the
   // venue editor saved - so a renamed cabinet or a new venue shows up without a reload.
+  // A failed fetch is tried again with growing waits until it succeeds: without the
+  // venues there is nothing to put on the wall.
   const [venuesVersion, setVenuesVersion] = useState<number | null>(null);
+  // The last failure while the venues are being asked for again; null once they arrive.
+  const [venuesRetryError, setVenuesRetryError] = useState<string | null>(null);
+  const venuesRetry = useRef<RetryHandle | null>(null);
+  const loadRef = useRef<() => Promise<void>>(async () => {});
+  const hadVenuesFailure = useRef(false);
 
-  const loadVenues = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const loaded = await fetchVenues(signal);
-      setVenues(loaded.venues);
-      setVenuesVersion(loaded.version);
+  const applyVenues = useCallback((loaded: { venues: Venue[]; version: number }) => {
+    setVenues(loaded.venues);
+    setVenuesVersion(loaded.version);
 
-      // Keep the venue on screen if it is still there; otherwise fall back as at start.
-      setActiveVenueId((current) => {
-        if (current && loaded.venues.some((venue) => venue.id === current)) {
-          return current;
-        }
-        const requested = new URLSearchParams(window.location.search).get('venue');
-        return (loaded.venues.find((venue) => venue.id === requested) ?? loaded.venues[0])?.id ?? null;
-      });
-    } catch (cause) {
-      if (!signal?.aborted) {
-        setError(cause instanceof Error ? cause.message : '매장 정보를 불러오지 못했습니다');
-        report('venues-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
+    // Keep the venue on screen if it is still there; otherwise fall back as at start.
+    setActiveVenueId((current) => {
+      if (current && loaded.venues.some((venue) => venue.id === current)) {
+        return current;
       }
-    }
+      const requested = new URLSearchParams(window.location.search).get('venue');
+      return (loaded.venues.find((venue) => venue.id === requested) ?? loaded.venues[0])?.id ?? null;
+    });
   }, []);
 
+  // Replaces any fetch still going or waiting, so only the newest answer lands.
+  const loadVenues = useCallback(() => {
+    venuesRetry.current?.stop();
+    venuesRetry.current = retryUntilDone(
+      async (signal) => {
+        const loaded = await fetchVenues(signal);
+        if (signal.aborted) {
+          return;
+        }
+        applyVenues(loaded);
+        setVenuesRetryError(null);
+        if (hadVenuesFailure.current) {
+          hadVenuesFailure.current = false;
+          // Whatever the live data said while the venues were missing is stale now.
+          void loadRef.current();
+        }
+      },
+      {
+        visibility: document,
+        onFailure: (cause, failures, delayMs) => {
+          const message = cause instanceof Error ? cause.message : '매장 정보를 불러오지 못했습니다';
+          hadVenuesFailure.current = true;
+          setVenuesRetryError(message);
+          report('venues-fetch-failed', { message, failures, retryInMs: delayMs });
+        },
+      },
+    );
+  }, [applyVenues]);
+
   useEffect(() => {
-    const controller = new AbortController();
-    void loadVenues(controller.signal);
-    return () => controller.abort();
+    loadVenues();
+    return () => venuesRetry.current?.stop();
   }, [loadVenues]);
 
   const activeVenue = useMemo(
@@ -98,6 +126,8 @@ export default function App() {
     try {
       const next = await fetchLive(controller.signal);
       setLive(next);
+      // The API answers, so the venue list may too: try it now rather than after the wait.
+      venuesRetry.current?.now();
       setError(next.venues.find((venue) => venue.error)?.error ?? null);
     } catch (cause) {
       if (!controller.signal.aborted) {
@@ -108,6 +138,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    loadRef.current = load;
     void load();
     return () => abortRef.current?.abort();
   }, [load]);
@@ -116,7 +147,7 @@ export default function App() {
   const liveVenuesVersion = live?.venuesVersion;
   useEffect(() => {
     if (liveVenuesVersion !== undefined && venuesVersion !== null && liveVenuesVersion !== venuesVersion) {
-      void loadVenues();
+      loadVenues();
     }
   }, [liveVenuesVersion, venuesVersion, loadVenues]);
 
@@ -245,6 +276,11 @@ export default function App() {
   }, []);
 
   const handleManualRefresh = useCallback(async () => {
+    // No venues yet: ask for them again first - refreshing the streams alone would still
+    // leave nothing to show them in.
+    if (venuesVersion === null) {
+      loadVenues();
+    }
     setIsRefreshing(true);
     try {
       const next = await requestRefresh();
@@ -255,7 +291,7 @@ export default function App() {
     } finally {
       setIsRefreshing(false);
     }
-  }, []);
+  }, [venuesVersion, loadVenues]);
 
   // --- render ---------------------------------------------------------------
 
@@ -287,10 +323,16 @@ export default function App() {
       </header>
 
       <div className="stage">
-        {error && (
+        {venuesRetryError ? (
           <div className="stage__error" role="alert">
-            {error}
+            서버에 다시 연결하는 중… ({venuesRetryError})
           </div>
+        ) : (
+          error && (
+            <div className="stage__error" role="alert">
+              {error}
+            </div>
+          )
         )}
 
         <main className="stage__main">

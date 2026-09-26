@@ -79,6 +79,16 @@ console.log(`\n→ ${out.pathname}`);
 
 async function run(scenario) {
   const browser = await scenario.engine.launch();
+  // Closed however the scenario ends: a browser left open by one that threw kept the
+  // script from exiting after the last scenario.
+  try {
+    return await measure(scenario, browser);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+async function measure(scenario, browser) {
   const isChromium = scenario.engine === chromium;
   const context = await browser.newContext({
     ...scenario.context,
@@ -204,8 +214,6 @@ async function run(scenario) {
     await session.send('HeapProfiler.collectGarbage');
     jsHeapAfterGcMb = await heapMb();
   }
-
-  await browser.close();
 
   return {
     playersPeak,
