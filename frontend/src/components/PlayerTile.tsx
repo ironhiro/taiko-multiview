@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { IdleMessage } from '../lib/venue';
 import type { LiveStream } from '../lib/types';
 import { describePlayerError, report } from '../lib/diagnostics';
 import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
+import { compactPlayerBudget } from '../lib/playerBudget';
 import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
@@ -21,6 +22,17 @@ interface PlayerTileProps {
    * phones and tablets, where a player per tile would eat data and battery.
    */
   lazy?: boolean;
+  /**
+   * Hold the thumbnail even on screen: another tile has the viewer's attention (its chat
+   * is open, on a phone). A tap on the thumbnail moves the attention - and the chat - here.
+   */
+  suspended?: boolean;
+  /**
+   * Lay a sheet over the player so YouTube's own controls cannot be touched. On a phone a
+   * scrolling thumb kept catching the seek bar and the channel link; the tile's own
+   * buttons cover sound and chat.
+   */
+  shielded?: boolean;
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
   idle: IdleMessage;
 }
@@ -34,6 +46,8 @@ export function PlayerTile({
   onRequestChat,
   compact,
   lazy,
+  suspended,
+  shielded,
   idle,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
@@ -52,7 +66,8 @@ export function PlayerTile({
   startedAtRef.current = stream?.actualStartTime;
 
   const playableId = stream?.embeddable ? stream.videoId : undefined;
-  const mountedId = isActivated ? playableId : undefined;
+  const isPlaying = isActivated && !suspended;
+  const mountedId = isPlaying ? playableId : undefined;
 
   // Whether a lazy tile is on screen right now, so a new stream arriving on a visible
   // tile starts at once instead of waiting for the next scroll.
@@ -62,12 +77,17 @@ export function PlayerTile({
     setIsActivated(!lazy || isOnScreenRef.current);
   }, [lazy, playableId]);
 
-  // Lazy tiles autoplay while at least half on screen and fall back to the thumbnail
-  // once scrolled away. Both edges wait a moment: tiles flicked past should not start
-  // loading, and a small scroll back and forth should not tear the player down.
+  // Lazy tiles build their player once at least half on screen, and on leaving keep it
+  // paused rather than tearing it down, so a scroll back finds it ready; the budget takes
+  // it only when others need players more (lib/playerBudget.ts). Both edges wait a
+  // moment: tiles flicked past should not start loading.
+  const budgetKey = useId();
+  const [isHidden, setIsHidden] = useState(false);
+
   useEffect(() => {
     const tile = tileRef.current;
     if (!lazy || !playableId || !tile) {
+      setIsHidden(false);
       return;
     }
 
@@ -77,7 +97,18 @@ export function PlayerTile({
         const onScreen = entry.isIntersecting;
         isOnScreenRef.current = onScreen;
         window.clearTimeout(timer);
-        timer = window.setTimeout(() => setIsActivated(onScreen), onScreen ? LAZY_START_MS : LAZY_STOP_MS);
+        timer = window.setTimeout(
+          () => {
+            if (onScreen) {
+              compactPlayerBudget.claim(budgetKey, () => setIsActivated(false));
+              setIsActivated(true);
+            } else {
+              compactPlayerBudget.hide(budgetKey);
+            }
+            setIsHidden(!onScreen);
+          },
+          onScreen ? LAZY_START_MS : LAZY_STOP_MS,
+        );
       },
       { threshold: 0.5 },
     );
@@ -86,8 +117,27 @@ export function PlayerTile({
     return () => {
       observer.disconnect();
       window.clearTimeout(timer);
+      compactPlayerBudget.release(budgetKey);
     };
-  }, [lazy, playableId]);
+  }, [lazy, playableId, budgetKey]);
+
+  // A kept player waits paused while its tile is away, and picks up at the live edge -
+  // not where it stopped - when the tile returns.
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !mountedId) {
+      return;
+    }
+    try {
+      if (isHidden) {
+        player.pauseVideo();
+      } else if (jumpToLive(player, startedAtRef) === null) {
+        player.playVideo();
+      }
+    } catch {
+      // Not ready yet; it starts playing on its own once it is.
+    }
+  }, [isHidden, mountedId]);
 
   useEffect(() => {
     if (!mountedId) {
@@ -120,7 +170,7 @@ export function PlayerTile({
           playerVars: {
             autoplay: 1,
             mute: 1,
-            controls: 1,
+            controls: shielded ? 0 : 1,
             playsinline: 1,
             rel: 0,
             modestbranding: 1,
@@ -224,11 +274,15 @@ export function PlayerTile({
           />
         )}
 
-        {stream && stream.embeddable && !failed && !isActivated && (
-          <ThumbnailPoster stream={stream} onActivate={() => setIsActivated(true)} />
+        {stream && stream.embeddable && !failed && !isPlaying && (
+          <ThumbnailPoster
+            stream={stream}
+            onActivate={suspended && onRequestChat ? onRequestChat : () => setIsActivated(true)}
+          />
         )}
 
         {mountedId && !failed && <div className="tile__player" ref={hostRef} />}
+        {mountedId && !failed && shielded && <div className="tile__shield" aria-hidden="true" />}
         {mountedId && !failed && stream && <LoadingCover stream={stream} gone={isPictureUp} />}
       </div>
 
