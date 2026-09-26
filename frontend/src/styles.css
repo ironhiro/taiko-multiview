@@ -182,6 +182,7 @@ input {
 
 /* The one signature move: every button sits on a base and sinks into it when pressed. */
 .venue-tab,
+.venue-more,
 .choice,
 .layout-picker__option,
 .btn {
@@ -206,6 +207,7 @@ input {
 }
 
 .venue-tab:hover,
+.venue-more:hover,
 .choice:hover,
 .layout-picker__option:hover,
 .btn:hover:not(:disabled) {
@@ -214,6 +216,7 @@ input {
 }
 
 .venue-tab:active,
+.venue-more:active,
 .choice:active,
 .layout-picker__option:active,
 .btn:active:not(:disabled) {
@@ -223,6 +226,7 @@ input {
 
 /* 카: what the viewer chose. */
 .venue-tab[aria-selected='true'],
+.venue-more[aria-expanded='true'],
 .choice[aria-pressed='true'],
 .layout-picker__option[aria-pressed='true'] {
   background: var(--color-button-chosen);
@@ -232,6 +236,7 @@ input {
 }
 
 .venue-tab[aria-selected='true']:active,
+.venue-more[aria-expanded='true']:active,
 .choice[aria-pressed='true']:active,
 .layout-picker__option[aria-pressed='true']:active {
   box-shadow: 0 0 0 var(--color-button-chosen-base);
@@ -289,6 +294,99 @@ input {
 .venue-tab__count--live {
   background: var(--color-live);
   color: var(--color-live-ink);
+}
+
+/* The phone's folded venue row: the open venue's tab, then "전체 매장" opening the rest
+   as a list laid over the page. Only a phone renders these (see VenueTabs). */
+.venue-more {
+  flex: none;
+}
+
+.venue-more__caret {
+  font-size: var(--text-xs);
+  color: var(--color-ink-3);
+}
+
+/* Over the page, under the marquee's own row: absolutely placed, so opening it leaves
+   the sticky bar - and the playing slots judged below it - the height it was. */
+.venue-list {
+  position: absolute;
+  top: calc(100% + var(--space-2xs));
+  left: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  width: min(22rem, calc(100vw - 2 * var(--space-xs)));
+  max-height: min(24rem, 60dvh);
+  margin: 0;
+  padding: var(--space-3xs);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  background: var(--color-paper-3);
+  border: var(--rule-hair) solid var(--color-rule-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-base);
+}
+
+.venue-list[hidden] {
+  display: none;
+}
+
+.venue-list__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-height: 2.75rem;
+  padding: 0 var(--space-xs);
+  border: var(--rule-hair) solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--color-ink-2);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.venue-list__option:hover {
+  background: var(--color-button);
+  color: var(--color-ink);
+}
+
+.venue-list__option:focus-visible {
+  outline: var(--rule-mark) solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+/* 카: the venue on screen. */
+.venue-list__option[aria-selected='true'] {
+  background: var(--color-button-chosen);
+  border-color: var(--color-ka);
+  color: var(--color-ka);
+}
+
+.venue-list__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The whole row on one line, measured and never seen; clipped so it cannot widen the page. */
+.venue-probe {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.venue-tabs--probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  flex-wrap: nowrap !important;
 }
 
 /* ------------------------------------------------------------ view picker */
@@ -980,12 +1078,38 @@ input {
     display: none;
   }
 
-  /* Every venue in sight: the tabs wrap to a second row rather than scroll sideways,
-     which hid venues past the edge and, on iPhones, would not always scroll. */
+  /* One venue row. Tabs never scroll sideways, which hid venues past the edge and, on
+     iPhones, would not always scroll; nor do they wrap, which grew the sticky bar with
+     every venue. When they do not fit, VenueTabs folds them behind "전체 매장". The
+     wrap stays only for the first frame before the row is measured. */
   .venue-tabs {
     flex-wrap: wrap;
     row-gap: var(--space-2xs);
     overflow: visible;
+  }
+
+  .control-group--venues {
+    position: relative;
+    gap: var(--space-2xs);
+  }
+
+  /* The open venue's tab gives way before the button does: a long name ellipsizes. */
+  .venue-tabs--folded {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+  }
+
+  .venue-tabs--folded .venue-tab {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .venue-tabs--folded .venue-tab__name {
+    min-width: 0;
+  }
+
+  .venue-more {
+    min-height: 2.5rem;
   }
 
   .control-group--venues,
@@ -1219,8 +1343,11 @@ input {
     flex-wrap: nowrap;
   }
 
+  /* The venues take what the views leave, whatever their tabs would like, so the width
+     VenueTabs measures against does not follow its own folding. */
   .control-group--venues {
-    flex: 0 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .marquee__controls {
