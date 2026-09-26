@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { offline, venueNames } from './support';
 
 test.beforeEach(async ({ page }) => {
@@ -89,15 +89,107 @@ test.describe('phone', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
-  test('the chat opens as a sheet over the lower part of the screen', async ({ page }) => {
+  test("a tile's label and buttons sit under its picture, clear of YouTube's controls", async ({ page }) => {
+    await page.goto('/?venue=taikolabs');
+    const tile = page.locator('.tile').filter({ has: page.getByRole('button', { name: /채팅 열기$/ }) }).first();
+    const picture = (await tile.locator('.tile__body').boundingBox())!;
+
+    for (const part of ['.tile__header', '.tile__controls']) {
+      const box = (await tile.locator(part).boundingBox())!;
+      expect(box.y).toBeGreaterThanOrEqual(picture.y + picture.height - 1);
+    }
+  });
+
+  test('every venue tab is on screen, wrapping rather than scrolling sideways', async ({ page }) => {
+    await page.goto('/?venue=taikolabs');
+    const width = page.viewportSize()!.width;
+
+    for (const tab of await page.getByRole('tab').all()) {
+      const box = (await tab.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+  });
+
+  test("the chat pins its tile's picture to the top, the sheet right under it", async ({ page }) => {
     await page.goto('/?venue=taikolabs');
     await page.getByRole('button', { name: /채팅 열기$/ }).first().tap();
 
-    const sheet = page.locator('.chat');
-    await expect(sheet).toBeVisible();
-    const box = (await sheet.boundingBox())!;
     const viewport = page.viewportSize()!;
-    expect(box.width).toBeCloseTo(viewport.width, 0);
-    expect(box.y).toBeGreaterThan(viewport.height * 0.3);
+    const picture = (await page.locator('.tile--chat .tile__body').boundingBox())!;
+    const sheet = (await page.locator('.chat').boundingBox())!;
+
+    expect(picture.y).toBeCloseTo(0, 0);
+    expect(picture.width).toBeCloseTo(viewport.width, 0);
+    expect(sheet.y).toBeCloseTo(picture.y + picture.height, 0);
+    expect(sheet.y + sheet.height).toBeCloseTo(viewport.height, 0);
+
+    // Scrolling the wall behind leaves the picture where it is.
+    await page.evaluate(() => window.scrollBy(0, 400));
+    expect((await page.locator('.tile--chat .tile__body').boundingBox())!.y).toBeCloseTo(0, 0);
+  });
+
+  test('the chat sheet resizes by its grip and keeps the size', async ({ page }) => {
+    await page.goto('/?venue=taikolabs');
+    await page.getByRole('button', { name: /채팅 열기$/ }).first().tap();
+    const sheet = page.locator('.chat');
+    const full = (await sheet.boundingBox())!.height;
+
+    await dragGrip(page, 200);
+    const dragged = (await sheet.boundingBox())!.height;
+    expect(dragged).toBeLessThan(full - 150);
+
+    // Never shorter than the floor, however far it is dragged.
+    await dragGrip(page, 2000);
+    expect((await sheet.boundingBox())!.height).toBeCloseTo(160, 0);
+
+    await dragGrip(page, -100);
+    const kept = (await sheet.boundingBox())!.height;
+    await page.reload();
+    await page.getByRole('button', { name: /채팅 열기$/ }).first().tap();
+    expect((await sheet.boundingBox())!.height).toBeCloseTo(kept, 0);
+  });
+
+  test('the chat cannot take the page away, and says where to write', async ({ page }) => {
+    await page.goto('/?venue=taikolabs');
+    await page.getByRole('button', { name: /채팅 열기$/ }).first().tap();
+    const sheet = page.locator('.chat');
+
+    await expect(sheet.locator('iframe')).toHaveAttribute('sandbox', /allow-scripts/);
+    await expect(sheet.locator('iframe')).not.toHaveAttribute('sandbox', /allow-top-navigation/);
+    await expect(sheet.getByRole('button', { name: /유튜브에서 채팅/ })).toBeVisible();
+
+    // The frame, cropped of YouTube's input panel, ends where the hint begins.
+    const frame = (await sheet.locator('.chat__frame--crop').boundingBox())!;
+    const hint = (await sheet.locator('.chat__hint').boundingBox())!;
+    expect(frame.y + frame.height).toBeLessThanOrEqual(hint.y + 1);
+  });
+
+  test('a phone held sideways, wider than 820px, still gets the phone layout', async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.goto('/?venue=taikolabs');
+    await expect(page.locator('.layout-picker')).toBeHidden();
+
+    // A tile fills the height; with the chat open, picture left and chat right.
+    await page.getByRole('button', { name: /채팅 열기$/ }).first().tap();
+    const picture = (await page.locator('.tile--chat .tile__body').boundingBox())!;
+    const sheet = (await page.locator('.chat').boundingBox())!;
+    expect(picture.x).toBeCloseTo(0, 0);
+    expect(sheet.x).toBeCloseTo(picture.x + picture.width, 0);
+    expect(sheet.height).toBeCloseTo(390, 0);
   });
 });
+
+/** Drags the chat sheet's grip by `dy` (down is positive), as a finger would. */
+async function dragGrip(page: Page, dy: number) {
+  await page.locator('.chat__grip').evaluate((grip, dy) => {
+    const box = grip.getBoundingClientRect();
+    const at = { pointerId: 1, bubbles: true, pointerType: 'touch', isPrimary: true, clientX: box.x + box.width / 2 };
+    const y = box.y + box.height / 2;
+    grip.dispatchEvent(new PointerEvent('pointerdown', { ...at, clientY: y }));
+    for (let step = 1; step <= 10; step += 1) {
+      grip.dispatchEvent(new PointerEvent('pointermove', { ...at, clientY: y + (dy * step) / 10 }));
+    }
+    grip.dispatchEvent(new PointerEvent('pointerup', { ...at, clientY: y + dy }));
+  }, dy);
+}
