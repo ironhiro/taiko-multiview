@@ -56,16 +56,16 @@ describe('createPlayerBudget', () => {
   });
 
   it('enrolls a parked player it did not hold, and takes it when room is needed', () => {
-    // The tile pinned above the chat built its player outside the budget.
+    // A tile built its player on a desktop, outside the budget, before the window narrowed.
     let clock = 0;
     const budget = createPlayerBudget(1, () => clock);
-    const pinned = vi.fn();
-    budget.park('pinned', pinned);
-    expect(budget.holders()).toEqual(['pinned']);
+    const desktop = vi.fn();
+    budget.park('desktop', desktop);
+    expect(budget.holders()).toEqual(['desktop']);
 
     clock = 1;
     budget.claim('b', vi.fn());
-    expect(pinned).toHaveBeenCalledOnce();
+    expect(desktop).toHaveBeenCalledOnce();
     expect(budget.holders()).toEqual(['b']);
   });
 

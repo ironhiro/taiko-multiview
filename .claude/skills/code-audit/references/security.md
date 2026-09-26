@@ -14,7 +14,7 @@
 
 ## 프론트엔드
 - XSS: `innerHTML`, `dangerouslySetInnerHTML`, URL을 속성에 넣는 곳(`href`에 `javascript:` 가능성), 매장 설정의 `logo`·`channelUrl`이 그대로 렌더되는 곳.
-- iframe: 채팅 iframe의 `sandbox`(top-navigation 금지 유지), 플레이어 iframe 출처, `postMessage` 수신 시 origin 확인.
+- iframe: 플레이어 iframe 출처, `postMessage` 수신 시 origin 확인.
 - `window.open`: `noopener` 여부(열린 창이 opener를 조작할 수 있나), 열리는 URL의 출처 고정.
 - 저장소: `localStorage`에 민감 정보가 없나.
 - 의존성: `cd frontend && npm audit --omit=dev`.

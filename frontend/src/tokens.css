@@ -22,7 +22,7 @@
   --color-ink-3: oklch(66% 0.025 270);
 
   /* 카 — the drum's rim, blue: what the viewer chose. Chosen view and layout, the tile
-     with sound, the open chat, focus. */
+     with sound, focus. */
   --color-ka: oklch(74% 0.14 230);
   --color-ka-deep: oklch(52% 0.13 235);
   --color-accent: var(--color-ka);
@@ -90,8 +90,6 @@
   --radius-control: 10px;
   --radius-chip: 4px;
   --radius-pill: 999px;
-
-  --chat-width: 22rem;
 
   color-scheme: dark;
 }

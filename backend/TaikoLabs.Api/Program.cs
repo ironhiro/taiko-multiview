@@ -283,7 +283,7 @@ static void SetCacheHeaders(HttpContext context)
         : "no-cache";
 }
 
-// The page embeds YouTube players and chat, loads the iframe API from youtube.com, and
+// The page embeds YouTube players, loads the iframe API from youtube.com, and
 // shows thumbnails and logos from wherever a venue keeps them. connect-src is left open
 // on purpose: the desktop shell can load this page and point it at an API elsewhere.
 // Swagger UI and /status run inline script of their own, so they go without a CSP.

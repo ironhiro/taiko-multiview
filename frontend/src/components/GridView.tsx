@@ -9,8 +9,6 @@ interface GridViewProps {
   streamsByStation: Map<string, LiveStream>;
   audioStationId: string | null;
   onRequestAudio: (stationId: string) => void;
-  chatStationId: string | null;
-  onRequestChat: (stationId: string) => void;
   /** The chosen N×N layout; fewer columns are used when there are fewer cabinets. */
   gridSize: number;
   lazy?: boolean;
@@ -27,8 +25,6 @@ export function GridView({
   streamsByStation,
   audioStationId,
   onRequestAudio,
-  chatStationId,
-  onRequestChat,
   gridSize,
   lazy,
   idle,
@@ -45,13 +41,7 @@ export function GridView({
           stream={streamsByStation.get(station.id)}
           isAudioActive={audioStationId === station.id}
           onRequestAudio={() => onRequestAudio(station.id)}
-          isChatOpen={chatStationId === station.id}
-          onRequestChat={() => onRequestChat(station.id)}
-          // On a phone the tile with its chat open is pinned above the chat and keeps
-          // playing however far the wall is scrolled; the rest stay thumbnails meanwhile,
-          // since players built and torn down on every scroll ran Safari out of memory.
-          lazy={lazy && chatStationId !== station.id}
-          suspended={lazy && chatStationId !== null && chatStationId !== station.id}
+          lazy={lazy}
           shielded={lazy}
           pausesWhenAway={lazy}
           idle={idle}

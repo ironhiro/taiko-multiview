@@ -11,27 +11,6 @@ const internals = (window as { __TAURI_INTERNALS__?: { invoke?: Invoke } }).__TA
 
 export const isDesktopShell = typeof internals?.invoke === 'function';
 
-export interface PanelBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/**
- * Shows the chat as a native webview over the given bounds, or closes it when called
- * with no video. Rejects when the shell lacks the command (an older build).
- */
-export function showNativeChat(videoId: string | null, bounds: PanelBounds | null): Promise<unknown> {
-  if (!internals?.invoke) {
-    return Promise.reject(new Error('not running in the desktop shell'));
-  }
-
-  return internals.invoke('chat_panel', { videoId, bounds });
-}
-
-// ------------------------------------------------------------------ venue editor
-
 export interface OpenedSettings {
   path: string;
   text: string;

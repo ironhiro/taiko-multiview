@@ -74,7 +74,7 @@ export interface PlaybackSlots {
   sight: (key: string, sighting: Sighting) => void;
   /** The viewer tapped the tile to play it. */
   tap: (key: string, sighting?: Sighting) => void;
-  /** The tile cannot play any more (unmounted, no stream, or its chat took over). */
+  /** The tile cannot play any more (unmounted, or no stream). */
   leave: (key: string) => void;
   /** Tiles holding a slot, for tests. */
   playing: () => string[];

@@ -30,7 +30,7 @@ Custom, written in `frontend/src/tokens.css`.
 - `--color-ink-3`    oklch(66% 0.025 270) — floor for readable text
 - `--color-don`      oklch(64% 0.21 27)   — **on air**. The drum's 돈. Live badge, live counts.
 - `--color-ka`       oklch(74% 0.14 230)  — **what the viewer chose**. The drum's 카.
-  Chosen view and layout, the tile with sound, the open chat, focus.
+  Chosen view and layout, the tile with sound, focus.
 - `--venue-accent`   data, per venue      — **identity only**: the venue's lamp and logo.
 
 Never swap these roles. Red is never a selection; blue is never "live"; a venue's own
@@ -66,7 +66,7 @@ bounces, glows or lifts.
 
 ## Microinteractions stance
 - Silent success; status goes to the credit strip, never a toast.
-- One tile holds the sound; one tile's chat is open.
+- One tile holds the sound.
 
 ## Per-screen allowances
 - The wall MAY scroll when cabinets outnumber the chosen layout.
@@ -85,4 +85,4 @@ bounces, glows or lifts.
 
 ## Phones
 The marquee compresses to a brand row and scrolling rows of venues and views; the credit
-strip moves under it. One tile to a row; only on-screen tiles play. The chat is a sheet.
+strip moves under it. One tile to a row; only on-screen tiles play.

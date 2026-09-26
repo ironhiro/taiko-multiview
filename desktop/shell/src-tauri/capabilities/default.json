@@ -1,11 +1,10 @@
 {
   "identifier": "default",
-  "description": "The multiview window may call one app command, chat_panel, to lay YouTube's chat over its chat panel as a webview of its own.",
+  "description": "The multiview window calls no app command of its own; it keeps Tauri's core defaults only.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default",
-    "allow-chat-panel"
+    "core:default"
   ]
 }

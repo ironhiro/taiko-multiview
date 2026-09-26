@@ -16,9 +16,6 @@ interface PlayerTileProps {
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
   onRequestAudio: () => void;
-  /** True when this tile's chat is the one open in the chat panel. */
-  isChatOpen?: boolean;
-  onRequestChat?: () => void;
   /** Rendered small inside the floor plan, larger in the plain grid. */
   compact?: boolean;
   /**
@@ -29,18 +26,13 @@ interface PlayerTileProps {
   lazy?: boolean;
   /**
    * Pause while the page is hidden, and tear the player down if it stays hidden
-   * (lib/pageAway.ts). Phones and tablets, including the tile pinned above the chat.
+   * (lib/pageAway.ts). Phones and tablets.
    */
   pausesWhenAway?: boolean;
   /**
-   * Hold the thumbnail even on screen: another tile has the viewer's attention (its chat
-   * is open, on a phone). A tap on the thumbnail moves the attention - and the chat - here.
-   */
-  suspended?: boolean;
-  /**
    * Lay a sheet over the player so YouTube's own controls cannot be touched. On a phone a
    * scrolling thumb kept catching the seek bar and the channel link; the tile's own
-   * buttons cover sound and chat.
+   * button covers sound.
    */
   shielded?: boolean;
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
@@ -52,12 +44,9 @@ export function PlayerTile({
   stream,
   isAudioActive,
   onRequestAudio,
-  isChatOpen,
-  onRequestChat,
   compact,
   lazy,
   pausesWhenAway,
-  suspended,
   shielded,
   idle,
 }: PlayerTileProps) {
@@ -81,12 +70,12 @@ export function PlayerTile({
   const isAway = Boolean(pausesWhenAway) && away !== 'here';
   // Hidden long enough that every player goes, lazy or not; the wall rebuilds on return.
   const isGone = Boolean(pausesWhenAway) && away === 'gone';
-  const hasPlayer = isActivated && !suspended && !isGone;
+  const hasPlayer = isActivated && !isGone;
   const mountedId = hasPlayer ? playableId : undefined;
 
   // A lazy tile plays only while it holds a slot, and builds its player on first getting
   // one. Losing the slot pauses the player and keeps it; the budget takes it only when
-  // others need players more (lib/playerBudget.ts). Suspended tiles give theirs up.
+  // others need players more (lib/playerBudget.ts).
   const tileKey = useId();
   const [hasSlot, setHasSlot] = useState(false);
   const shouldPlay = lazy ? hasSlot && !isAway : !isAway;
@@ -96,7 +85,7 @@ export function PlayerTile({
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
-  const joinsSlots = Boolean(lazy && !suspended && playableId);
+  const joinsSlots = Boolean(lazy && playableId);
 
   useEffect(() => {
     if (!joinsSlots) {
@@ -294,19 +283,15 @@ export function PlayerTile({
   }, [isAudioActive, mountedId]);
 
   // A tap on a lazy tile's thumbnail asks for a slot, taking one from the least visible
-  // tile playing; on a suspended tile it moves the chat here instead.
-  const activate =
-    suspended && onRequestChat
-      ? onRequestChat
-      : lazy
-        ? () => compactPlaybackSlots.tap(tileKey, sightingRef.current)
-        : () => setIsActivated(true);
+  // tile playing.
+  const activate = lazy
+    ? () => compactPlaybackSlots.tap(tileKey, sightingRef.current)
+    : () => setIsActivated(true);
 
   const className = [
     'tile',
     compact ? 'tile--compact' : '',
     isAudioActive ? 'tile--audio' : '',
-    isChatOpen ? 'tile--chat' : '',
     stream ? '' : 'tile--idle',
   ]
     .filter(Boolean)
@@ -355,19 +340,6 @@ export function PlayerTile({
       </div>
 
       <div className="tile__controls">
-        {stream?.isLive && onRequestChat && (
-          <button
-            type="button"
-            className="tile__control"
-            onClick={onRequestChat}
-            aria-pressed={isChatOpen}
-            aria-label={isChatOpen ? `${label} 채팅 닫기` : `${label} 채팅 열기`}
-          >
-            <ChatIcon />
-            <span className="tile__control-text">채팅</span>
-          </button>
-        )}
-
         <button
           type="button"
           className="tile__control"
@@ -739,20 +711,6 @@ function ThumbnailPoster({
       </span>
       <span className="visually-hidden">재생</span>
     </button>
-  );
-}
-
-function ChatIcon() {
-  return (
-    <svg className="tile__control-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path
-        d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

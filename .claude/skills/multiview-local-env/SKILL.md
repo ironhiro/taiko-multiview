@@ -23,7 +23,7 @@ description: "태고 멀티뷰의 로컬 실행 환경(백엔드 .NET API, Vite 
 - **dotnet 버전.** PATH의 `dotnet`은 Homebrew .NET 8이고, API는 .NET 10이 필요하다. `/usr/local/share/dotnet/dotnet`에 10.0이 있으므로 `DOTNET_ROOT=/usr/local/share/dotnet /usr/local/share/dotnet/dotnet ...`으로 실행한다. stack.sh는 이미 이렇게 한다. e2e는 `DOTNET=/usr/local/share/dotnet/dotnet DOTNET_ROOT=/usr/local/share/dotnet npx playwright test`.
 - **Mock 매장.** `ASPNETCORE_ENVIRONMENT=Mock`은 `appsettings.Mock.json`을 읽는다. 매장은 `venues.mock.json`(git 제외), 방송은 `YouTube:MockVideoIds`의 실제 24시간 라이브다. 매장 수를 바꾸려면 `node scripts/mock-venues.mjs --venues N --stations M`. API가 파일 변경을 감지해 다시 읽는다.
 - **e2e용 Mock은 다르다.** Playwright e2e(`frontend/playwright.config.ts`)는 5190/5174에 자체 서버를 띄운다. `MockVideoIds` 없이 가짜 id, 임베드 불가, 네트워크 없음. 그래서 e2e는 플레이어 재생을 검증하지 못하고, 그건 perf-check나 mobile-verification이 맡는다.
-- **헤드리스 브라우저와 유튜브.** 유튜브는 `HeadlessChrome` UA에 "오래된 브라우저" 페이지를 준다. Playwright 컨텍스트의 userAgent에서 `HeadlessChrome`을 `Chrome`으로 바꾼다. 유튜브 채팅은 로드에 6~10초 걸리니 충분히 기다린다.
+- **헤드리스 브라우저와 유튜브.** 유튜브는 `HeadlessChrome` UA에 "오래된 브라우저" 페이지를 준다. Playwright 컨텍스트의 userAgent에서 `HeadlessChrome`을 `Chrome`으로 바꾼다. 유튜브 플레이어는 뜨는 데 몇 초 걸리니 충분히 기다린다.
 - **실제 방송 id.** 임베드 가능 여부는 바뀐다. 오늘 확인된 것은 `4xDzrJKXOOY`, `S_MOd40zlYU`(둘 다 lofi girl 계열 24시간 라이브). `jfKfPfyJRdk` 등은 localhost에서 오류 150(임베드 거부)이었다.
 - **공개 레지스트리 push**(ghcr.io)는 이 세션의 권한 검사에 막힌다. 배포 절차는 deploy-dev 스킬을 본다.
 
