@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { embeddedChatUrl, openChatWindow } from '../lib/chat';
+import { embeddedChatUrl, openYouTubeChat } from '../lib/chat';
 import { report } from '../lib/diagnostics';
 import { isDesktopShell, showNativeChat } from '../lib/shell';
 import type { LiveStream } from '../lib/types';
@@ -14,7 +14,7 @@ interface ChatPanelProps {
 /**
  * The chat of one chosen tile, docked beside the wall (a sheet on phones).
  *
- * In a browser the chat is a youtube.com frame: readable, but the browser keeps the
+ * In a browser the chat is a youtube.com frame, read-only: the browser keeps the
  * viewer's YouTube sign-in from it, so writing opens YouTube's own chat window. In the
  * desktop shell the panel leaves a hole instead and the shell lays a webview of its own
  * over it - youtube.com proper, where signing in works and the chat can be written to.
@@ -23,17 +23,26 @@ export function ChatPanel({ label, stream, onClose }: ChatPanelProps) {
   const [nativeFailed, setNativeFailed] = useState(false);
   const useNative = isDesktopShell && !nativeFailed;
   const fallBackToFrame = useCallback(() => setNativeFailed(true), []);
+  const { height, isResizing, gripProps } = useSheetResize();
 
   return (
-    <aside className="chat" aria-label={`${label} 채팅`}>
+    <aside
+      className={isResizing ? 'chat chat--resizing' : 'chat'}
+      aria-label={`${label} 채팅`}
+      style={height ? ({ '--chat-height': `${height}px` } as React.CSSProperties) : undefined}
+    >
+      {/* Phones only: drag to make the sheet taller or shorter. */}
+      <div className="chat__grip" aria-hidden="true" {...gripProps}>
+        <span className="chat__grip-bar" />
+      </div>
       <header className="chat__header">
         <h2 className="chat__title">
           <span className="chat__station">{label}</span> 채팅
         </h2>
         <div className="chat__actions">
           {stream && !useNative && (
-            <button type="button" className="btn chat__write" onClick={() => openChatWindow(stream.videoId)}>
-              입력하기 ↗
+            <button type="button" className="btn chat__youtube" onClick={() => openYouTubeChat(stream.videoId)}>
+              유튜브에서 채팅 ↗
             </button>
           )}
           <button type="button" className="chat__close" onClick={onClose} aria-label="채팅 닫기">
@@ -50,16 +59,94 @@ export function ChatPanel({ label, stream, onClose }: ChatPanelProps) {
         <NativeChatSlot videoId={stream.videoId} onUnavailable={fallBackToFrame} />
       ) : (
         // Keyed by video so a new broadcast on the same cabinet gets a fresh chat.
-        <iframe key={stream.videoId} className="chat__frame" src={embeddedChatUrl(stream.videoId)} title={`${label} 라이브 채팅`} />
+        // Read-only. Sandboxed without top navigation, since the chat's own "sign in to
+        // chat" link took the whole multiview away to Google's sign-in; and that link's
+        // panel along the bottom - dead once sandboxed - is cropped off. Writing happens in
+        // YouTube's own chat window, from the button above.
+        <div className="chat__frame chat__frame--crop">
+          <iframe
+            key={stream.videoId}
+            src={embeddedChatUrl(stream.videoId)}
+            title={`${label} 라이브 채팅`}
+            sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          />
+        </div>
       )}
 
       <p className="chat__hint">
         {useNative
           ? 'YouTube에 로그인하면 여기서 바로 입력할 수 있습니다.'
-          : '입력은 YouTube 로그인이 필요해 새 창에서 합니다.'}
+          : '채팅 입력은 ‘유튜브에서 채팅’ 창에서 할 수 있습니다.'}
       </p>
     </aside>
   );
+}
+
+const SHEET_HEIGHT_KEY = 'taiko-multiview:chat-height';
+const SHEET_MIN_HEIGHT = 160;
+
+/**
+ * The phone sheet's height, set by dragging its grip and remembered for next time.
+ * Undefined means as tall as it goes - up to the video pinned above it; the stylesheet
+ * caps any height at that, so only the lower bound is kept here.
+ */
+function useSheetResize() {
+  const [height, setHeight] = useState<number | undefined>(readSheetHeight);
+  const [isResizing, setIsResizing] = useState(false);
+  // Read by the move handler, which can run before a render has caught up with the press.
+  const draggingRef = useRef(false);
+
+  const onPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    draggingRef.current = true;
+    setIsResizing(true);
+    try {
+      // Keeps the drag when the finger strays off the grip.
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Not a live pointer (a synthetic event): the drag works while on the grip.
+    }
+  }, []);
+
+  const onPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) {
+      return;
+    }
+    // The sheet is anchored to the bottom edge, so its top follows the finger.
+    const next = Math.round(window.innerHeight - event.clientY);
+    setHeight(Math.min(window.innerHeight, Math.max(SHEET_MIN_HEIGHT, next)));
+  }, []);
+
+  const onPointerEnd = useCallback(() => {
+    draggingRef.current = false;
+    setIsResizing(false);
+  }, []);
+
+  useEffect(() => {
+    if (isResizing || height === undefined) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(SHEET_HEIGHT_KEY, String(height));
+    } catch {
+      // Private mode and the like: the size just is not remembered.
+    }
+  }, [isResizing, height]);
+
+  return {
+    height,
+    isResizing,
+    gripProps: { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd },
+  };
+}
+
+function readSheetHeight(): number | undefined {
+  try {
+    const stored = Number(window.localStorage.getItem(SHEET_HEIGHT_KEY));
+    return stored >= SHEET_MIN_HEIGHT ? stored : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

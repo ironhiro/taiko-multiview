@@ -12,6 +12,7 @@ export interface YTPlayer {
   unMute(): void;
   setVolume(volume: number): void;
   playVideo(): void;
+  pauseVideo(): void;
   getPlayerState(): number;
   getCurrentTime(): number;
   /** The watch URL of whatever is loaded now - which can drift from the video asked for. */

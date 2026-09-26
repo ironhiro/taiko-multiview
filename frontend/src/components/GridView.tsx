@@ -47,7 +47,12 @@ export function GridView({
           onRequestAudio={() => onRequestAudio(station.id)}
           isChatOpen={chatStationId === station.id}
           onRequestChat={() => onRequestChat(station.id)}
-          lazy={lazy}
+          // On a phone the tile with its chat open is pinned above the chat and keeps
+          // playing however far the wall is scrolled; the rest stay thumbnails meanwhile,
+          // since players built and torn down on every scroll ran Safari out of memory.
+          lazy={lazy && chatStationId !== station.id}
+          suspended={lazy && chatStationId !== null && chatStationId !== station.id}
+          shielded={lazy}
           idle={idle}
         />
       ))}

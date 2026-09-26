@@ -65,8 +65,9 @@ test.describe('desktop', () => {
     const panel = page.getByRole('complementary', { name: `${label} 채팅` });
     await expect(panel).toBeVisible();
     await expect(panel.locator('iframe')).toHaveAttribute('src', /live_chat\?v=mock-/);
-    // In a browser the chat is read-only; writing opens YouTube's own window.
-    await expect(panel.getByRole('button', { name: /입력하기/ })).toBeVisible();
+    // In a browser the chat is read-only, and may not take the page away to sign in.
+    await expect(panel.locator('iframe')).not.toHaveAttribute('sandbox', /allow-top-navigation/);
+    await expect(panel.getByRole('button', { name: /유튜브에서 채팅/ })).toBeVisible();
 
     await panel.getByRole('button', { name: '채팅 닫기' }).click();
     await expect(panel).toHaveCount(0);
