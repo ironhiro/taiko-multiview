@@ -40,6 +40,14 @@ public sealed class YouTubeOptions
     /// </summary>
     public int ManualRefreshCooldownSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// Real, embeddable YouTube video ids for <see cref="LiveSourceMode.Mock"/>. Empty (the
+    /// default) keeps mock streams fake and non-embeddable, so no player is ever built.
+    /// Given ids - 24/7 live streams suit best - every cabinet goes on air with one of them
+    /// and the wall builds real players: what a load test needs.
+    /// </summary>
+    public List<string> MockVideoIds { get; set; } = [];
+
     public int PollIntervalSecondsClamped => Math.Clamp(PollIntervalSeconds, 15, 3600);
 
     public int ClosedPollIntervalSecondsClamped =>

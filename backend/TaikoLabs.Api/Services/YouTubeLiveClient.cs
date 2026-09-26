@@ -35,7 +35,7 @@ public sealed class YouTubeLiveClient(
         {
             return mode switch
             {
-                LiveSourceMode.Mock => BuildMockSnapshot(venue),
+                LiveSourceMode.Mock => BuildMockSnapshot(venue, Options.MockVideoIds),
                 LiveSourceMode.Public => await FetchFromPublicPagesAsync(venue, ct),
                 LiveSourceMode.Api => await FetchFromApiAsync(venue, ct),
                 _ => await FetchFromPublicPagesAsync(venue, ct),
@@ -288,25 +288,28 @@ public sealed class YouTubeLiveClient(
 
     /// <summary>
     /// Fully offline data for exercising the UI: a few stations "streaming" but flagged
-    /// as non-embeddable, the rest empty so the 준비중 placeholder renders too.
+    /// as non-embeddable, the rest empty so the 준비중 placeholder renders too. Given
+    /// real video ids instead, every station streams one of them, embeddable - players
+    /// and all, for measuring load (the player then does reach YouTube).
     /// </summary>
-    private static LiveSnapshot BuildMockSnapshot(Venue venue)
+    internal static LiveSnapshot BuildMockSnapshot(Venue venue, IReadOnlyList<string> videoIds)
     {
         var today = DateOnly.FromDateTime(DateTime.Now).ToString("yy.MM.dd");
+        var playable = videoIds.Count > 0;
 
         // Every other cabinet, so both the live tile and the 준비중 placeholder render.
         var streams = venue.Stations
-            .Where((_, index) => index % 2 == 0)
+            .Where((_, index) => playable || index % 2 == 0)
             .Select((s, index) => new LiveStream
             {
                 StationId = s.Id,
-                VideoId = $"mock-{venue.Id}-{s.Id}",
+                VideoId = playable ? videoIds[index % videoIds.Count] : $"mock-{venue.Id}-{s.Id}",
                 Title = $"{venue.Name} {s.Label} Live Streaming {today} - 1부",
                 Name = s.Label,
                 StreamDate = today,
                 Part = 1,
                 IsLive = true,
-                Embeddable = false,
+                Embeddable = playable,
                 ConcurrentViewers = 10 + (index * 7),
                 ActualStartTime = DateTimeOffset.UtcNow.AddMinutes(-30 - (index * 5)),
             })
