@@ -483,7 +483,9 @@ input {
 }
 
 /* Over the player on touch screens: YouTube's controls stay out of reach, and a thumb
-   on the picture scrolls the page instead of the player. Under the loading cover. */
+   on the picture scrolls the page instead of the player. Above the loading cover too
+   (the cover has no z-index), which does not show: the shield is clear, and the cover
+   catches no clicks either way. The thumbnail laid over a parked player sits above both. */
 .tile__shield {
   position: absolute;
   inset: 0;
@@ -641,6 +643,11 @@ input {
   border: 0;
   background: var(--color-video);
   cursor: pointer;
+}
+
+/* Over a paused player the tile keeps: above the shield, so the tap reaches the poster. */
+.poster--over {
+  z-index: 2;
 }
 
 .poster__image {

@@ -88,6 +88,7 @@ export function FloorPlanView({
               isChatOpen={chatStationId === unit.stationId}
               onRequestChat={() => onRequestChat(unit.stationId)}
               lazy={lazy}
+              pausesWhenAway={lazy}
               idle={idle}
             />
           </div>

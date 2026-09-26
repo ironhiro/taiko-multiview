@@ -3,7 +3,11 @@ import type { IdleMessage } from '../lib/venue';
 import type { LiveStream } from '../lib/types';
 import { describePlayerError, report } from '../lib/diagnostics';
 import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
+import { usePageAway } from '../lib/pageAway';
+import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib/playbackSlots';
 import { compactPlayerBudget } from '../lib/playerBudget';
+import { nextPlayerAction } from '../lib/tilePlayer';
+import { useCoveredTop } from '../lib/stickyCover';
 import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
@@ -18,10 +22,16 @@ interface PlayerTileProps {
   /** Rendered small inside the floor plan, larger in the plain grid. */
   compact?: boolean;
   /**
-   * Build the player only while the tile is on screen, as a thumbnail otherwise. Used on
-   * phones and tablets, where a player per tile would eat data and battery.
+   * Play only while the tile holds one of the few playing slots (lib/playbackSlots.ts),
+   * and build a player only once it has; a thumbnail otherwise. Used on phones and
+   * tablets, where a player per tile would eat data and battery.
    */
   lazy?: boolean;
+  /**
+   * Pause while the page is hidden, and tear the player down if it stays hidden
+   * (lib/pageAway.ts). Phones and tablets, including the tile pinned above the chat.
+   */
+  pausesWhenAway?: boolean;
   /**
    * Hold the thumbnail even on screen: another tile has the viewer's attention (its chat
    * is open, on a phone). A tap on the thumbnail moves the attention - and the chat - here.
@@ -46,6 +56,7 @@ export function PlayerTile({
   onRequestChat,
   compact,
   lazy,
+  pausesWhenAway,
   suspended,
   shielded,
   idle,
@@ -66,78 +77,120 @@ export function PlayerTile({
   startedAtRef.current = stream?.actualStartTime;
 
   const playableId = stream?.embeddable ? stream.videoId : undefined;
-  const isPlaying = isActivated && !suspended;
-  const mountedId = isPlaying ? playableId : undefined;
+  const away = usePageAway();
+  const isAway = Boolean(pausesWhenAway) && away !== 'here';
+  // Hidden long enough that every player goes, lazy or not; the wall rebuilds on return.
+  const isGone = Boolean(pausesWhenAway) && away === 'gone';
+  const hasPlayer = isActivated && !suspended && !isGone;
+  const mountedId = hasPlayer ? playableId : undefined;
 
-  // Whether a lazy tile is on screen right now, so a new stream arriving on a visible
-  // tile starts at once instead of waiting for the next scroll.
-  const isOnScreenRef = useRef(false);
+  // A lazy tile plays only while it holds a slot, and builds its player on first getting
+  // one. Losing the slot pauses the player and keeps it; the budget takes it only when
+  // others need players more (lib/playerBudget.ts). Suspended tiles give theirs up.
+  const tileKey = useId();
+  const [hasSlot, setHasSlot] = useState(false);
+  const shouldPlay = lazy ? hasSlot && !isAway : !isAway;
+  // Read by the player's own callbacks, which outlive any one render.
+  const shouldPlayRef = useRef(shouldPlay);
+  shouldPlayRef.current = shouldPlay;
+  // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
+  const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
+
+  const joinsSlots = Boolean(lazy && !suspended && playableId);
 
   useEffect(() => {
-    setIsActivated(!lazy || isOnScreenRef.current);
-  }, [lazy, playableId]);
+    if (!joinsSlots) {
+      return;
+    }
+    compactPlaybackSlots.join(tileKey, setHasSlot);
+    return () => {
+      compactPlaybackSlots.leave(tileKey);
+      setHasSlot(false);
+    };
+  }, [joinsSlots, tileKey]);
 
-  // Lazy tiles build their player once at least half on screen, and on leaving keep it
-  // paused rather than tearing it down, so a scroll back finds it ready; the budget takes
-  // it only when others need players more (lib/playerBudget.ts). Both edges wait a
-  // moment: tiles flicked past should not start loading.
-  const budgetKey = useId();
-  const [isHidden, setIsHidden] = useState(false);
+  // The part of the screen under the sticky marquee does not count as seen. The observer
+  // is rebuilt when the marquee changes height; the tile keeps its slot meanwhile, since
+  // the new observer reports at once.
+  const coveredTop = useCoveredTop(Boolean(lazy));
 
   useEffect(() => {
     const tile = tileRef.current;
-    if (!lazy || !playableId || !tile) {
-      setIsHidden(false);
+    if (!joinsSlots || !tile) {
       return;
     }
 
+    // Sightings settle a moment before they count: tiles flicked past should not start.
     let timer: number | undefined;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const onScreen = entry.isIntersecting;
-        isOnScreenRef.current = onScreen;
+        const sighting = {
+          ratio: entry.isIntersecting ? entry.intersectionRatio : 0,
+          pageTop: entry.boundingClientRect.top + window.scrollY,
+        };
+        sightingRef.current = sighting;
         window.clearTimeout(timer);
-        timer = window.setTimeout(
-          () => {
-            if (onScreen) {
-              compactPlayerBudget.claim(budgetKey, () => setIsActivated(false));
-              setIsActivated(true);
-            } else {
-              compactPlayerBudget.hide(budgetKey);
-            }
-            setIsHidden(!onScreen);
-          },
-          onScreen ? LAZY_START_MS : LAZY_STOP_MS,
-        );
+        timer = window.setTimeout(() => compactPlaybackSlots.sight(tileKey, sighting), SIGHTING_SETTLE_MS);
       },
-      { threshold: 0.5 },
+      { threshold: SIGHTING_THRESHOLDS, rootMargin: `${-coveredTop}px 0px 0px 0px` },
     );
 
     observer.observe(tile);
     return () => {
       observer.disconnect();
       window.clearTimeout(timer);
-      compactPlayerBudget.release(budgetKey);
     };
-  }, [lazy, playableId, budgetKey]);
+  }, [joinsSlots, coveredTop, tileKey]);
 
-  // A kept player waits paused while its tile is away, and picks up at the live edge -
-  // not where it stopped - when the tile returns.
+  // Whether the tile has a player and what the budget hears, decided in one place
+  // (lib/tilePlayer.ts): a lazy tile builds a player only once it holds a slot.
+  const wantsPlayerRef = useRef(isActivated);
+  wantsPlayerRef.current = isActivated;
+  const builtForRef = useRef(playableId);
+
+  useEffect(() => {
+    const action = nextPlayerAction({
+      lazy: Boolean(lazy),
+      joinsSlots,
+      hasSlot,
+      isGone,
+      wantsPlayer: wantsPlayerRef.current,
+      newStream: builtForRef.current !== playableId,
+    });
+    const evict = () => setIsActivated(false);
+
+    if (action.budget === 'claim') {
+      compactPlayerBudget.claim(tileKey, evict);
+    } else if (action.budget === 'park') {
+      compactPlayerBudget.park(tileKey, evict);
+    } else {
+      compactPlayerBudget.release(tileKey);
+    }
+    if (action.wantsPlayer) {
+      builtForRef.current = playableId;
+    }
+    setIsActivated(action.wantsPlayer);
+  }, [lazy, joinsSlots, hasSlot, isGone, playableId, tileKey]);
+
+  useEffect(() => () => compactPlayerBudget.release(tileKey), [tileKey]);
+
+  // A kept player waits paused while it has no slot or the page is away, and picks up at
+  // the live edge - not where it stopped - when it plays again.
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !mountedId) {
       return;
     }
     try {
-      if (isHidden) {
+      if (!shouldPlay) {
         player.pauseVideo();
       } else if (jumpToLive(player, startedAtRef) === null) {
         player.playVideo();
       }
     } catch {
-      // Not ready yet; it starts playing on its own once it is.
+      // Not ready yet; onReady plays or pauses it as it should be by then.
     }
-  }, [isHidden, mountedId]);
+  }, [shouldPlay, mountedId]);
 
   useEffect(() => {
     if (!mountedId) {
@@ -168,7 +221,7 @@ export function PlayerTile({
         playerRef.current = new YT.Player(mount, {
           videoId: mountedId,
           playerVars: {
-            autoplay: 1,
+            autoplay: shouldPlayRef.current ? 1 : 0,
             mute: 1,
             controls: shielded ? 0 : 1,
             playsinline: 1,
@@ -178,11 +231,16 @@ export function PlayerTile({
           },
           events: {
             onReady: (event) => {
-              // Autoplay only survives while muted; audio is granted separately.
+              // Autoplay only survives while muted; audio is granted separately. The slot
+              // may have gone while the player loaded.
               event.target.mute();
-              event.target.playVideo();
-              watchdog = watchPlayback(event.target, where, isLiveRef, startedAtRef);
-              stopResync = resyncWhenShownAgain(event.target, tileRef.current, where, startedAtRef);
+              if (shouldPlayRef.current) {
+                event.target.playVideo();
+              } else {
+                event.target.pauseVideo();
+              }
+              watchdog = watchPlayback(event.target, where, isLiveRef, startedAtRef, shouldPlayRef);
+              stopResync = resyncWhenShownAgain(event.target, tileRef.current, where, startedAtRef, shouldPlayRef);
             },
             // Checked at once rather than on the next tick, so a start far behind live is
             // corrected before much old footage is on screen.
@@ -235,6 +293,15 @@ export function PlayerTile({
     }
   }, [isAudioActive, mountedId]);
 
+  // A tap on a lazy tile's thumbnail asks for a slot, taking one from the least visible
+  // tile playing; on a suspended tile it moves the chat here instead.
+  const activate =
+    suspended && onRequestChat
+      ? onRequestChat
+      : lazy
+        ? () => compactPlaybackSlots.tap(tileKey, sightingRef.current)
+        : () => setIsActivated(true);
+
   const className = [
     'tile',
     compact ? 'tile--compact' : '',
@@ -274,16 +341,17 @@ export function PlayerTile({
           />
         )}
 
-        {stream && stream.embeddable && !failed && !isPlaying && (
-          <ThumbnailPoster
-            stream={stream}
-            onActivate={suspended && onRequestChat ? onRequestChat : () => setIsActivated(true)}
-          />
+        {stream && stream.embeddable && !failed && !hasPlayer && (
+          <ThumbnailPoster stream={stream} onActivate={activate} />
         )}
 
         {mountedId && !failed && <div className="tile__player" ref={hostRef} />}
         {mountedId && !failed && shielded && <div className="tile__shield" aria-hidden="true" />}
         {mountedId && !failed && stream && <LoadingCover stream={stream} gone={isPictureUp} />}
+        {/* A kept player without a slot sits paused under its thumbnail, which a tap plays. */}
+        {mountedId && !failed && stream && lazy && !hasSlot && (
+          <ThumbnailPoster stream={stream} onActivate={activate} over />
+        )}
       </div>
 
       <div className="tile__controls">
@@ -344,8 +412,11 @@ function thumbnailOf(stream: LiveStream): string {
 }
 
 const COVER_LIMIT_MS = 12_000;
-const LAZY_START_MS = 300;
-const LAZY_STOP_MS = 2_000;
+/**
+ * How long a sighting must hold before it counts. Short, so a tile scrolled into place
+ * starts at once; long enough that tiles flicked past do not start loading.
+ */
+const SIGHTING_SETTLE_MS = 300;
 
 const WATCH_INTERVAL_MS = 5_000;
 const AUTOPLAY_GRACE_MS = 30_000;
@@ -370,7 +441,8 @@ const ENDED_RELOAD_MS = 15_000;
  * Two of these are also repaired, because they put a non-live picture on a live tile:
  * the player wandering off to another video (the end screen can start an older upload
  * from the channel), and a player stuck on "ended" while the broadcast is still live.
- * Both reload the broadcast the tile was given.
+ * Both reload the broadcast the tile was given - cued rather than played when the tile
+ * has it paused on purpose.
  */
 interface Watchdog {
   check: () => void;
@@ -399,8 +471,12 @@ function watchPlayback(
   where: { station: string; videoId: string },
   isLiveRef: { current: boolean },
   startedAtRef: { current: string | undefined },
+  shouldPlayRef: { current: boolean },
 ): Watchdog {
-  const startedAt = Date.now();
+  // The autoplay grace counts only while the tile wants the player playing: on a phone a
+  // player can be built and then paused on purpose (it lost its slot before it started),
+  // and that is not autoplay failing.
+  let askedToPlayAt = Date.now();
   let everPlayed = false;
   // A live embed does not always start at live: signed in, YouTube resumed hours-long
   // broadcasts from their first minute, and loadVideoById (the reloads below) does the
@@ -412,6 +488,16 @@ function watchPlayback(
   let bufferingSince: number | null = null;
   let endedSince: number | null = null;
   const open = { autoplay: false, buffering: false, stall: false, ended: false, behind: false };
+
+  // Loading starts playback; a player paused on purpose (no slot on a phone, or the page
+  // away) only gets the broadcast cued, and starts it when it is asked to play again.
+  const reload = () => {
+    if (shouldPlayRef.current) {
+      player.loadVideoById(where.videoId);
+    } else {
+      player.cueVideoById(where.videoId);
+    }
+  };
 
   const tick = () => {
     let state: number;
@@ -426,10 +512,13 @@ function watchPlayback(
     }
 
     const now = Date.now();
+    if (!shouldPlayRef.current) {
+      askedToPlayAt = now;
+    }
 
     if (loadedId && loadedId !== where.videoId) {
       report('video-swapped', { ...where, loaded: loadedId, state });
-      player.loadVideoById(where.videoId);
+      reload();
       jumpOnPlay = 'reload';
       return;
     }
@@ -457,9 +546,9 @@ function watchPlayback(
       everPlayed = true;
       if (open.autoplay) {
         open.autoplay = false;
-        report('autoplay-recovered', { ...where, afterSeconds: Math.round((now - startedAt) / 1000) });
+        report('autoplay-recovered', { ...where, afterSeconds: Math.round((now - askedToPlayAt) / 1000) });
       }
-    } else if (!everPlayed && !open.autoplay && now - startedAt > AUTOPLAY_GRACE_MS) {
+    } else if (!everPlayed && !open.autoplay && now - askedToPlayAt > AUTOPLAY_GRACE_MS) {
       open.autoplay = true;
       report('autoplay-timeout', { ...where, state });
     }
@@ -506,7 +595,7 @@ function watchPlayback(
       if (now - endedSince > ENDED_RELOAD_MS) {
         report('ended-reload', where);
         endedSince = null;
-        player.loadVideoById(where.videoId);
+        reload();
         jumpOnPlay = 'reload';
       }
     } else if (state !== PlayerState.Ended) {
@@ -535,11 +624,16 @@ function resyncWhenShownAgain(
   tile: HTMLElement | null,
   where: { station: string; videoId: string },
   startedAtRef: { current: string | undefined },
+  shouldPlayRef: { current: boolean },
 ): () => void {
   let isVisible = true;
   let hiddenSince: number | null = null;
 
   const resync = (reason: string) => {
+    // A paused player (no slot on a phone) stays paused; it jumps to live when it plays.
+    if (!shouldPlayRef.current) {
+      return;
+    }
     const hiddenSeconds = hiddenSince === null ? 0 : Math.round((Date.now() - hiddenSince) / 1000);
     hiddenSince = null;
 
@@ -619,12 +713,23 @@ function UnavailablePlaceholder({
   );
 }
 
-/** A lazy tile's stand-in while off screen or about to start; tapping starts it at once. */
-function ThumbnailPoster({ stream, onActivate }: { stream: LiveStream; onActivate: () => void }) {
+/**
+ * A lazy tile's stand-in while it does not play; tapping starts it. `over` lays it on a
+ * paused player the tile keeps, above the shield.
+ */
+function ThumbnailPoster({
+  stream,
+  onActivate,
+  over,
+}: {
+  stream: LiveStream;
+  onActivate: () => void;
+  over?: boolean;
+}) {
   const poster = thumbnailOf(stream);
 
   return (
-    <button type="button" className="poster" onClick={onActivate}>
+    <button type="button" className={over ? 'poster poster--over' : 'poster'} onClick={onActivate}>
       <img className="poster__image" src={poster} alt="" loading="lazy" decoding="async" />
       <span className="poster__scrim" aria-hidden="true" />
       <span className="poster__play" aria-hidden="true">

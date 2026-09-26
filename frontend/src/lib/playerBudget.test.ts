@@ -2,36 +2,36 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPlayerBudget } from './playerBudget';
 
 describe('createPlayerBudget', () => {
-  it('keeps a hidden player while there is room', () => {
+  it('keeps a parked player while there is room', () => {
     const budget = createPlayerBudget(2);
     const evict = vi.fn();
     budget.claim('a', evict);
-    budget.hide('a');
+    budget.park('a', evict);
     budget.claim('b', vi.fn());
 
     expect(budget.holders()).toEqual(['a', 'b']);
     expect(evict).not.toHaveBeenCalled();
   });
 
-  it('gives up the player hidden longest when over budget', () => {
+  it('gives up the player parked longest when over budget', () => {
     let clock = 0;
     const budget = createPlayerBudget(2, () => clock);
     const evicted: string[] = [];
-    const claim = (key: string) => budget.claim(key, () => evicted.push(key));
+    const evictOf = (key: string) => () => evicted.push(key);
 
-    claim('a');
-    claim('b');
+    budget.claim('a', evictOf('a'));
+    budget.claim('b', evictOf('b'));
     clock = 1;
-    budget.hide('a');
+    budget.park('a', evictOf('a'));
     clock = 2;
-    budget.hide('b');
-    claim('c');
+    budget.park('b', evictOf('b'));
+    budget.claim('c', evictOf('c'));
 
     expect(evicted).toEqual(['a']);
     expect(budget.holders()).toEqual(['b', 'c']);
   });
 
-  it('never takes a player that is on screen', () => {
+  it('never takes the player of a tile that holds a slot', () => {
     const budget = createPlayerBudget(1);
     const evict = vi.fn();
     budget.claim('a', evict);
@@ -40,18 +40,46 @@ describe('createPlayerBudget', () => {
     expect(evict).not.toHaveBeenCalled();
     expect(budget.holders()).toEqual(['a', 'b']);
 
-    // Once one leaves, the budget catches up.
-    budget.hide('a');
+    // Once one loses its slot, the budget catches up.
+    budget.park('a', evict);
     expect(evict).toHaveBeenCalledOnce();
     expect(budget.holders()).toEqual(['b']);
   });
 
-  it('a returning tile claims its player again rather than a second one', () => {
+  it('a tile getting its slot back claims its player again rather than a second one', () => {
     const budget = createPlayerBudget(2);
     budget.claim('a', vi.fn());
-    budget.hide('a');
+    budget.park('a', vi.fn());
     budget.claim('a', vi.fn());
 
     expect(budget.holders()).toEqual(['a']);
+  });
+
+  it('enrolls a parked player it did not hold, and takes it when room is needed', () => {
+    // The tile pinned above the chat built its player outside the budget.
+    let clock = 0;
+    const budget = createPlayerBudget(1, () => clock);
+    const pinned = vi.fn();
+    budget.park('pinned', pinned);
+    expect(budget.holders()).toEqual(['pinned']);
+
+    clock = 1;
+    budget.claim('b', vi.fn());
+    expect(pinned).toHaveBeenCalledOnce();
+    expect(budget.holders()).toEqual(['b']);
+  });
+
+  it('parking twice keeps the first time, so a tile does not jump the queue', () => {
+    let clock = 0;
+    const budget = createPlayerBudget(2, () => clock);
+    const evicted: string[] = [];
+    budget.park('a', () => evicted.push('a'));
+    clock = 1;
+    budget.park('b', () => evicted.push('b'));
+    clock = 2;
+    budget.park('a', () => evicted.push('a'));
+    budget.claim('c', vi.fn());
+
+    expect(evicted).toEqual(['a']);
   });
 });
