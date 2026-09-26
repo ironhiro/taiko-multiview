@@ -38,3 +38,9 @@ venues.mock.json
 
 # Performance run results (frontend/perf)
 frontend/perf/results/
+
+# Harness intermediate artifacts (multiview-harness)
+_workspace/
+_workspace_*/
+_review/
+_review_*/
