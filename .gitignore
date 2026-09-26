@@ -32,3 +32,9 @@ closures.cache.json
 
 # Soak-test output
 logs/
+
+# Generated mock venues for load tests (scripts/mock-venues.mjs)
+venues.mock.json
+
+# Performance run results (frontend/perf)
+frontend/perf/results/

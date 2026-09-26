@@ -225,6 +225,10 @@ dotnet user-secrets set "YouTube:ApiKey" "<키>"
 
 서버는 환경 변수 `YouTube__ApiKey`. Azure 는 컨테이너 앱 시크릿 사용 (아래 참고).
 
+## 성능 측정
+
+가짜 매장과 실제 재생되는 플레이어로 로컬에서 부하를 재는 방법: [frontend/perf/README.md](frontend/perf/README.md)
+
 ## 배포
 
 환경 하나에 컨테이너 하나. 루트의 `Dockerfile` 이 프론트엔드를 빌드해 API의 `wwwroot` 에 포함하므로, 화면과 `/api` 가 같은 주소. 프록시·CORS 설정 불필요.

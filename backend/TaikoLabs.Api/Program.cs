@@ -35,7 +35,9 @@ builder.Services.AddRateLimiter(limiter =>
 // that changes as venues come and go, edited with the venue editor and reviewed in git,
 // while appsettings.json holds how the app runs. Both bind into the one "Venues"
 // section, and edits are picked up while running (VenueRegistry rebuilds on change).
-builder.Configuration.AddJsonFile("venues.json", optional: false, reloadOnChange: true);
+// Venues:File swaps in another list - the generated mock venues for local load tests
+// (scripts/mock-venues.mjs) - without touching the real one.
+builder.Configuration.AddJsonFile(builder.Configuration["Venues:File"] ?? "venues.json", optional: false, reloadOnChange: true);
 
 builder.Services.Configure<YouTubeOptions>(builder.Configuration.GetSection(YouTubeOptions.SectionName));
 builder.Services.Configure<VenuesOptions>(builder.Configuration.GetSection(VenuesOptions.SectionName));
