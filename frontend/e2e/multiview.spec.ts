@@ -100,14 +100,74 @@ test.describe('phone', () => {
     }
   });
 
-  test('every venue tab is on screen, wrapping rather than scrolling sideways', async ({ page }) => {
+  test('many venues fold behind one list, and the bar stays one venue row tall', async ({ page }) => {
+    const names = await withManyVenues(page, 9);
     await page.goto('/?venue=taikolabs');
+    await expect(page.locator('.tile').first()).toBeVisible();
+    const bar = page.locator('.marquee');
     const width = page.viewportSize()!.width;
 
-    for (const tab of await page.getByRole('tab').all()) {
-      const box = (await tab.boundingBox())!;
+    // One venue row and one view row, however many venues there are.
+    expect((await bar.boundingBox())!.height).toBeLessThanOrEqual(120);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await expect(page.getByRole('tab')).toHaveCount(1);
+    const more = page.getByRole('button', { name: /전체 매장/ });
+    for (const control of [page.getByRole('tab'), more]) {
+      const box = (await control.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+
+    // The list lies over the page: the bar keeps its height, so the playing slots do too.
+    const closedHeight = (await bar.boundingBox())!.height;
+    await more.tap();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    const list = page.getByRole('listbox', { name: '매장 목록' });
+    await expect(list.getByRole('option')).toHaveCount(names.length);
+    expect((await bar.boundingBox())!.height).toBe(closedHeight);
+
+    // Every venue is reachable: the last one, past what a row could hold.
+    const last = names[names.length - 1];
+    await list.getByRole('option', { name: new RegExp(last) }).tap();
+    await expect(list).toBeHidden();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByRole('tab', { selected: true })).toHaveAttribute('title', last);
+  });
+
+  test('the venue list closes on Escape and on a tap elsewhere', async ({ page }) => {
+    await withManyVenues(page, 9);
+    await page.goto('/?venue=taikolabs');
+    const more = page.getByRole('button', { name: /전체 매장/ });
+    const list = page.getByRole('listbox', { name: '매장 목록' });
+
+    await more.tap();
+    await expect(list).toBeVisible();
+    await expect(list.getByRole('option', { selected: true })).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(list).toBeHidden();
+    await expect(more).toBeFocused();
+
+    // Below the list, on the wall.
+    await more.tap();
+    const viewport = page.viewportSize()!;
+    await page.touchscreen.tap(viewport.width / 2, viewport.height - 8);
+    await expect(list).toBeHidden();
+  });
+
+  test('venues that fit stay as tabs on one row', async ({ page }) => {
+    await page.goto('/?venue=taikolabs');
+    await expect(page.locator('.tile').first()).toBeVisible();
+    const tabs = await page.getByRole('tab').all();
+    const count = (await venueNames(page)).length;
+
+    if (tabs.length === count) {
+      // All in: one row, nothing folded.
+      const tops = await Promise.all(tabs.map(async (tab) => (await tab.boundingBox())!.y));
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(1);
+      await expect(page.getByRole('button', { name: /전체 매장/ })).toHaveCount(0);
+    } else {
+      // Too wide for this phone: folded instead, never wrapped.
+      await expect(page.getByRole('tab')).toHaveCount(1);
     }
   });
 
@@ -192,4 +252,25 @@ async function dragGrip(page: Page, dy: number) {
     }
     grip.dispatchEvent(new PointerEvent('pointerup', { ...at, clientY: y + dy }));
   }, dy);
+}
+
+/**
+ * Serves `/api/venues` with the configured venues and copies of them up to `total`, so a
+ * phone has more venues than its row holds. The copies have no live snapshot, which the
+ * page shows as nothing on air.
+ */
+async function withManyVenues(page: Page, total: number): Promise<string[]> {
+  const names: string[] = [];
+  await page.route('**/api/venues', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { venues: { id: string; name: string }[] };
+    const originals = body.venues;
+    for (let index = originals.length; index < total; index += 1) {
+      const source = originals[index % originals.length];
+      body.venues.push({ ...source, id: `${source.id}-copy-${index}`, name: `${source.name} 복제 ${index}` });
+    }
+    names.splice(0, names.length, ...body.venues.map((venue) => venue.name));
+    await route.fulfill({ response, json: body });
+  });
+  return names;
 }
