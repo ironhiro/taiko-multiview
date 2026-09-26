@@ -19,8 +19,8 @@ export interface PlayerBudget {
   claim: (key: string, evict: () => void) => void;
   /**
    * The tile lost its slot, or never had one, and keeps its player paused; it may be
-   * taken for another. Enrolls a player the budget does not hold yet (the tile pinned
-   * above the chat built its own), with `evict` for when it is taken.
+   * taken for another. Enrolls a player the budget does not hold yet (one built on a
+   * desktop before the window narrowed), with `evict` for when it is taken.
    */
   park: (key: string, evict: () => void) => void;
   /** The tile no longer has a player at all. */

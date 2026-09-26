@@ -10,7 +10,6 @@ import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
-import { ChatPanel } from './components/ChatPanel';
 import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
 
 // v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
@@ -27,10 +26,6 @@ export default function App() {
 
   // Only one tile may hold the audio at a time.
   const [audioStationId, setAudioStationId] = useState<string | null>(null);
-
-  // The tile whose chat is open, if any. Kept by station rather than video so a new
-  // broadcast on the same cabinet carries the panel over.
-  const [chatStationId, setChatStationId] = useState<string | null>(null);
 
   const isCompactDevice = useCompactDevice();
   const abortRef = useRef<AbortController | null>(null);
@@ -238,7 +233,6 @@ export default function App() {
     hasChosenView.current = true;
     setActiveVenueId(venueId);
     setAudioStationId(null);
-    setChatStationId(null);
   }, []);
 
   const selectView = useCallback((next: ViewMode) => {
@@ -249,12 +243,6 @@ export default function App() {
   const handleRequestAudio = useCallback((stationId: string) => {
     setAudioStationId((current) => (current === stationId ? null : stationId));
   }, []);
-
-  const handleRequestChat = useCallback((stationId: string) => {
-    setChatStationId((current) => (current === stationId ? null : stationId));
-  }, []);
-
-  const chatStation = chatStationId ? activeVenue?.stations.find((station) => station.id === chatStationId) : undefined;
 
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -271,12 +259,8 @@ export default function App() {
 
   // --- render ---------------------------------------------------------------
 
-
   return (
-    <div
-      className={chatStation ? 'app app--chat venue-scope' : 'app venue-scope'}
-      style={accentStyle(activeVenue?.accent)}
-    >
+    <div className="app venue-scope" style={accentStyle(activeVenue?.accent)}>
       {/* The marquee: the cabinet's lit sign. Who is on screen, and every control. */}
       <header className="marquee">
         <div className="marquee__brand">
@@ -315,8 +299,6 @@ export default function App() {
             streamsByStation={streamsByStation}
             audioStationId={audioStationId}
             onRequestAudio={handleRequestAudio}
-            chatStationId={chatStationId}
-            onRequestChat={handleRequestChat}
             gridSize={gridSize}
             lazy={isCompactDevice}
             idle={idle}
@@ -369,14 +351,6 @@ export default function App() {
           {isRefreshing ? '갱신 중…' : '새로고침'}
         </button>
       </footer>
-
-      {chatStation && (
-        <ChatPanel
-          label={chatStation.label}
-          stream={streamsByStation.get(chatStation.id)}
-          onClose={() => setChatStationId(null)}
-        />
-      )}
     </div>
   );
 }

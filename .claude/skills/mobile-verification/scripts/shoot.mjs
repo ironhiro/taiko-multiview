@@ -5,11 +5,11 @@
  *
  *   node shoot.mjs --url http://localhost:5175 --out _workspace/shots
  *                  [--devices "iPhone 15 Pro,iPhone 15 Pro landscape,iPhone SE,Pixel 7,desktop"]
- *                  [--chat] [--scroll 600] [--wait 6000] [--path "/?venue=taikolabs"]
+ *                  [--scroll 600] [--wait 6000] [--path "/?venue=taikolabs"]
  *
  * Per device: <out>/<device>.png and a line in <out>/boxes.json with the page's sideways
- * overflow, the first tile's picture and control bar, and - with --chat - the pinned
- * picture, the chat sheet, its cropped frame and the hint. Uses the frontend's Playwright.
+ * overflow, the first tile's picture and control bar, and how many players are up. Uses
+ * the frontend's Playwright.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -57,10 +57,6 @@ for (const name of names) {
     await page.waitForSelector('.tile', { timeout: 20000 });
     await page.waitForTimeout(wait);
 
-    if (args.chat) {
-      await page.getByRole('button', { name: /채팅 열기$/ }).first().click();
-      await page.waitForTimeout(Math.min(wait, 6000));
-    }
     if (args.scroll) {
       await page.evaluate((dy) => window.scrollBy(0, dy), Number(args.scroll));
       await page.waitForTimeout(1500);
@@ -81,10 +77,6 @@ for (const name of names) {
         sidewaysOverflow: document.documentElement.scrollWidth - innerWidth,
         tilePicture: box('.tile .tile__body'),
         tileControls: box('.tile .tile__controls'),
-        pinnedPicture: box('.tile--chat .tile__body'),
-        chatSheet: box('.chat'),
-        chatFrame: box('.chat__frame--crop'),
-        chatHint: box('.chat__hint'),
         players: document.querySelectorAll('.tile iframe').length,
       };
     });
@@ -96,7 +88,7 @@ for (const name of names) {
   }
 }
 
-writeFileSync(join(out, 'boxes.json'), `${JSON.stringify({ url, chat: !!args.chat, report }, null, 2)}\n`);
+writeFileSync(join(out, 'boxes.json'), `${JSON.stringify({ url, report }, null, 2)}\n`);
 for (const r of report) {
   console.log(r.error ? `✗ ${r.device}: ${r.error}` : `✓ ${r.device} (${r.engine}) → ${join(out, r.screenshot)}`);
 }

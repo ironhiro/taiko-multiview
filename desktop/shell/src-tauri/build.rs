@@ -4,7 +4,7 @@ fn main() {
     // Tauri treats as remote and never lets reach an undeclared command.
     tauri_build::try_build(
         tauri_build::Attributes::new()
-            .app_manifest(tauri_build::AppManifest::new().commands(&["chat_panel", "editor_open", "editor_save", "editor_fetch"])),
+            .app_manifest(tauri_build::AppManifest::new().commands(&["editor_open", "editor_save", "editor_fetch"])),
     )
     .expect("failed to run the Tauri build script");
 }

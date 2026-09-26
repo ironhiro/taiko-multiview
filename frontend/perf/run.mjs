@@ -34,9 +34,7 @@ const SCENARIOS = [
   // Jumps between the top and the bottom mixed with quick flicks: the pattern that builds
   // players over and over, which the gentle back-and-forth of phone-scroll never does.
   { name: 'phone-scroll-aggressive', engine: chromium, context: PHONE, aggressive: true },
-  { name: 'phone-chat-scroll', engine: chromium, context: PHONE, scroll: true, chat: true },
   { name: 'phone-scroll (webkit)', engine: webkit, context: PHONE, scroll: true },
-  { name: 'phone-chat-scroll (webkit)', engine: webkit, context: PHONE, scroll: true, chat: true },
 ];
 
 const only = args.only?.split(',');
@@ -143,11 +141,6 @@ async function run(scenario) {
   await page.waitForSelector('.tile');
   // Let the first players come up before the clock starts.
   await page.waitForTimeout(5000);
-
-  if (scenario.chat) {
-    await page.getByRole('button', { name: /채팅 열기$/ }).first().click();
-    await page.waitForTimeout(2000);
-  }
 
   const cpuBefore = cdp ? await cpuSeconds(cdp) : null;
   const started = Date.now();

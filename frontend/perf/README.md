@@ -38,9 +38,8 @@ npm run perf -- --only phone-scroll-aggressive --seconds 50
 | --- | --- |
 | `desktop-3x3`, `desktop-4x4` | 1920×1080 크롬, 배치 3×3 / 4×4 |
 | `phone-scroll` | iPhone 15 Pro 에뮬레이션, 벽을 위아래로 계속 스크롤 |
-| `phone-chat-scroll` | 같은 조건에 채팅을 연 채로 |
 | `phone-scroll-aggressive` | 같은 폰에서 맨 아래↔맨 위 점프, 700px 빠른 플릭 4번(아래·위), 중간 점프를 반복. 동작마다 표본을 떠서 시간순 기록(`timeline`: 시각, scrollY, 플레이어·재생 수, 누적 생성 수, RSS)을 결과 JSON에 남김. 플레이어를 계속 새로 만드는 패턴을 재는 용도. `--seconds 50` 권장 |
-| `… (webkit)` | 위 두 폰 시나리오를 WebKit 으로 |
+| `phone-scroll (webkit)` | `phone-scroll` 을 WebKit 으로 |
 
 | 지표 | 의미 |
 | --- | --- |

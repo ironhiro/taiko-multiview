@@ -21,21 +21,11 @@ describe('nextPlayerAction', () => {
     expect(next({ wantsPlayer: true })).toEqual({ budget: 'park', wantsPlayer: true });
   });
 
-  it('parks the pinned tile\'s player when its chat closes, in the budget from then on', () => {
-    // Pinned above the chat: outside the phone rules and the budget.
+  it('parks a player built on a desktop when the window narrows into the phone rules', () => {
+    // Desktop: outside the phone rules and the budget.
     expect(next({ lazy: false, joinsSlots: false })).toEqual({ budget: 'release', wantsPlayer: true });
-    // Chat closed, before its first sighting settles: kept, paused, and counted.
+    // Narrowed, before its first sighting settles: kept, paused, and counted.
     expect(next({ wantsPlayer: true })).toEqual({ budget: 'park', wantsPlayer: true });
-  });
-
-  it('gives up the player of a suspended tile, and waits for a slot once the suspense lifts', () => {
-    // Another tile's chat opened: the player goes, and so does its place in the budget.
-    expect(next({ joinsSlots: false, wantsPlayer: true, hasSlot: true })).toEqual({
-      budget: 'release',
-      wantsPlayer: false,
-    });
-    // The chat closed with the tile off screen: nothing is built until a slot comes.
-    expect(next({ wantsPlayer: false })).toEqual({ budget: 'release', wantsPlayer: false });
   });
 
   it('gives up the player when the stream goes, and waits for a slot when one returns', () => {

@@ -14,7 +14,7 @@ description: "태고 멀티뷰의 성능(플레이어 생성 수, 동시 플레�
 3. 측정:
    ```bash
    cd frontend && npm run perf                         # 전체, 시나리오당 20초
-   npm run perf -- --only phone-scroll,phone-chat-scroll --seconds 30
+   npm run perf -- --only phone-scroll,phone-scroll-aggressive --seconds 30
    ```
    결과 JSON은 `frontend/perf/results/`에 쌓인다.
 4. **같은 시나리오를 2회 이상 재고 비교한다.** 첫 실행은 Vite 컴파일 때문에 LCP가 튄다(5초대). 차이가 작으면(±10%) 잡음으로 본다.

@@ -12,17 +12,11 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # "devtools" keeps the developer tools reachable in release builds too; the shell is
 # a debugging aid for the multiview as much as a way to watch it.
-# "unstable" is what allows a second webview inside a window - the chat panel's.
-tauri = { version = "2", features = ["devtools", "unstable"] }
+tauri = { version = "2", features = ["devtools"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
 ureq = "2"
-
-# Reads the window's view height for placing the chat panel (see title_bar_height).
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
 
 [profile.release]
 lto = true
