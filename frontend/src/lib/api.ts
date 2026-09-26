@@ -38,6 +38,21 @@ export function fetchLive(signal?: AbortSignal): Promise<LiveResponse> {
   return getJson<LiveResponse>('/api/live', { signal });
 }
 
-export function requestRefresh(signal?: AbortSignal): Promise<LiveResponse> {
-  return getJson<LiveResponse>('/api/live/refresh', { method: 'POST', signal });
+export async function requestRefresh(signal?: AbortSignal): Promise<LiveResponse> {
+  const response = await fetch(endpoint('/api/live/refresh'), {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+
+  // Pressed too often: the server's copy is as fresh as a refresh would make it anyway.
+  if (response.status === 429) {
+    return fetchLive(signal);
+  }
+
+  if (!response.ok) {
+    throw new Error(`백엔드 응답 오류 (${response.status})`);
+  }
+
+  return (await response.json()) as LiveResponse;
 }

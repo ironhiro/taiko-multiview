@@ -1,9 +1,35 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using TaikoLabs.Api.Models;
 using TaikoLabs.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// The stack is nobody's business.
+builder.WebHost.ConfigureKestrel(kestrel => kestrel.AddServerHeader = false);
+
+// Azure Container Apps ends TLS at its ingress and passes the client on in X-Forwarded-*.
+// The proxy's address is not fixed, so none is listed; ForwardLimit (1) still takes only
+// the last hop, the one the ingress itself appended, so a client cannot pick its own IP.
+builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
+{
+    forwarded.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    forwarded.KnownIPNetworks.Clear();
+    forwarded.KnownProxies.Clear();
+});
+
+// A person presses 새로고침 now and then; anything faster is a script. The per-venue
+// cooldown already keeps YouTube calls down - this keeps the requests themselves down.
+const string RefreshLimit = "refresh";
+builder.Services.AddRateLimiter(limiter =>
+{
+    limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    limiter.AddPolicy(RefreshLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1) }));
+});
 
 // The venue list lives in a file of its own, apart from the app's settings: it is data
 // that changes as venues come and go, edited with the venue editor and reviewed in git,
@@ -96,7 +122,14 @@ var startedAt = DateTimeOffset.UtcNow;
 var frontendIndex = app.Environment.WebRootPath is { } webRoot ? Path.Combine(webRoot, "index.html") : null;
 var hasFrontend = frontendIndex is not null && File.Exists(frontendIndex);
 
+app.UseForwardedHeaders();
+app.Use((context, next) =>
+{
+    SetSecurityHeaders(context, app.Environment);
+    return next(context);
+});
 app.UseCors(CorsPolicy);
+app.UseRateLimiter();
 
 if (hasFrontend)
 {
@@ -198,9 +231,10 @@ app.MapPost("/api/live/refresh", async (
     await poller.RefreshAsync(ct, venueId);
     return TypedResults.Ok(ProjectAll(registry, store, schedule, options.Value));
 })
+    .RequireRateLimiting(RefreshLimit)
     .WithTags("라이브")
     .WithSummary("지금 다시 확인")
-    .WithDescription("venueId를 주면 그 매장만, 없으면 전체를 바로 폴링합니다. 매장마다 쿨다운이 있어 연달아 불러도 유튜브 API는 한 번만 호출됩니다.");
+    .WithDescription("venueId를 주면 그 매장만, 없으면 전체를 바로 폴링합니다. 매장마다 쿨다운이 있어 연달아 불러도 유튜브 API는 한 번만 호출됩니다. IP당 분당 6회 제한(초과 시 429).");
 
 // Playback trouble reported by clients (the desktop shell's webview has no reachable
 // console). Off unless Diagnostics:ClientReports is set, so production never maps it.
@@ -245,6 +279,38 @@ static void SetCacheHeaders(HttpContext context)
     context.Response.Headers.CacheControl = context.Request.Path.StartsWithSegments("/assets")
         ? "public, max-age=31536000, immutable"
         : "no-cache";
+}
+
+// The page embeds YouTube players and chat, loads the iframe API from youtube.com, and
+// shows thumbnails and logos from wherever a venue keeps them. connect-src is left open
+// on purpose: the desktop shell can load this page and point it at an API elsewhere.
+// Swagger UI and /status run inline script of their own, so they go without a CSP.
+const string ContentSecurityPolicy =
+    "script-src 'self' https://www.youtube.com https://s.ytimg.com; " +
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com; " +
+    "img-src 'self' data: https:; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    "font-src 'self' data:; " +
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+static void SetSecurityHeaders(HttpContext context, IWebHostEnvironment env)
+{
+    var headers = context.Response.Headers;
+    headers.XContentTypeOptions = "nosniff";
+    headers.XFrameOptions = "DENY";
+    // The browser default, stated. YouTube refuses to play embeds that send no referrer.
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+
+    if (!context.Request.Path.StartsWithSegments("/swagger") && !context.Request.Path.StartsWithSegments("/status"))
+    {
+        headers.ContentSecurityPolicy = ContentSecurityPolicy;
+    }
+
+    // Only over HTTPS, and never on a developer's localhost, which HSTS would pin for a year.
+    if (context.Request.IsHttps && !env.IsDevelopment())
+    {
+        headers.StrictTransportSecurity = "max-age=31536000";
+    }
 }
 
 static LiveResponse ProjectAll(
