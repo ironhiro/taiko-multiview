@@ -897,9 +897,11 @@ input {
 
 /* ----------------------------------------------------------------- mobile */
 
-/* Phones: the marquee compresses to a brand row and scrolling rows of venues and views,
-   the credit line sits under it, and the wall grows with its tiles, one to a row.
-   Layouts are a desktop control - the phone pins tile size itself. */
+/* Phones: the page itself scrolls. The venue and view rows stay pinned at the top, the
+   credit line scrolls away with the wall, and the wall is one tile to a row. A pinned
+   header and credit line took a third of a portrait screen and half of a landscape one.
+   The brand row goes: the chosen venue tab already names the venue. Layouts are a
+   desktop control - the phone pins tile size itself. */
 @media (max-width: 820px) {
   body {
     font-size: var(--text-base);
@@ -909,31 +911,34 @@ input {
   .app--chat {
     display: flex;
     flex-direction: column;
+    height: auto;
+    min-height: 100%;
   }
 
   .marquee {
     order: 0;
+    position: sticky;
+    top: 0;
+    z-index: 5;
     flex-wrap: wrap;
     gap: var(--space-2xs);
-    padding: var(--space-xs);
+    padding: max(var(--space-2xs), env(safe-area-inset-top)) var(--space-xs) var(--space-2xs);
     /* Honour the notch on phones held in landscape. */
     padding-left: max(var(--space-xs), env(safe-area-inset-left));
     padding-right: max(var(--space-xs), env(safe-area-inset-right));
   }
 
   .marquee__brand {
-    flex: 1 0 100%;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-2xs);
+    display: none;
   }
 
-  .marquee__venue-name {
-    font-size: var(--text-md);
-  }
-
-  .venue-mark--brand {
-    height: 1.75rem;
+  /* With the brand row gone, the chosen tab spells out its venue even when it has a logo. */
+  .venue-tab[aria-selected='true'] .venue-tab__name.visually-hidden {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    clip: auto;
   }
 
   .control-group--venues,
@@ -966,20 +971,50 @@ input {
     min-height: 2.5rem;
   }
 
+  /* Views are the lesser row: a size down from the venue tabs, still a thumb's width. */
+  .choice {
+    min-height: 2.25rem;
+    font-size: var(--text-sm);
+  }
+
+  /* One slim line: the tally, its note and the time run together, refresh at the end. */
   .credit {
     order: 1;
     gap: var(--space-xs);
-    padding: var(--space-2xs) var(--space-xs) calc(var(--space-2xs) + var(--press-depth));
+    padding: var(--space-3xs) var(--space-xs) calc(var(--space-3xs) + var(--press-depth));
+    padding-left: max(var(--space-xs), env(safe-area-inset-left));
+    padding-right: max(var(--space-xs), env(safe-area-inset-right));
     border-top: 0;
-    border-bottom: var(--rule-mark) solid var(--color-rule);
+    border-bottom: var(--rule-hair) solid var(--color-rule);
+    font-size: var(--text-sm);
   }
 
   .credit__readout {
+    align-items: center;
     column-gap: var(--space-xs);
   }
 
+  .tally__count {
+    font-size: var(--text-base);
+  }
+
+  .credit__refresh {
+    min-height: 2.25rem;
+    font-size: var(--text-sm);
+  }
+
+  /* The page scrolls now, not the wall. */
   .stage {
     order: 2;
+    flex: 1 0 auto;
+  }
+
+  .stage__main {
+    overflow: visible;
+  }
+
+  .stage__error {
+    padding-inline: var(--space-xs);
   }
 
   /* On a phone the chat is a sheet over the lower part of the wall. */
@@ -1005,6 +1040,9 @@ input {
     /* One tile per row: nine players on a phone is neither usable nor affordable. */
     grid-template-columns: minmax(0, 1fr) !important;
     padding: var(--space-xs);
+    padding-left: max(var(--space-xs), env(safe-area-inset-left));
+    padding-right: max(var(--space-xs), env(safe-area-inset-right));
+    padding-bottom: max(var(--space-xs), env(safe-area-inset-bottom));
     gap: var(--space-xs);
   }
 
@@ -1020,11 +1058,25 @@ input {
   }
 }
 
-/* Landscape phones: every row goes to the picture. */
+/* Landscape phones: every row goes to the picture. Venues and views share one row that
+   scrolls away with the page, and a tile is sized to fill the screen's height. */
 @media (max-height: 520px) and (orientation: landscape) {
-  .marquee__brand,
-  .credit__readout {
-    display: none;
+  .marquee {
+    position: static;
+    flex-wrap: nowrap;
+  }
+
+  .control-group--venues {
+    flex: 0 1 auto;
+  }
+
+  .marquee__controls {
+    flex: 0 1 auto;
+    margin-left: 0;
+  }
+
+  .grid-view {
+    grid-template-columns: minmax(0, calc((100dvh - 2 * var(--space-xs)) * 16 / 9)) !important;
   }
 }
 
