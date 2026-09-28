@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nextPlayerAction, type TilePlayerState } from './tilePlayer';
+import { joinsPlaybackSlots, nextPlayerAction, type TilePlayerState } from './tilePlayer';
 
 const phoneTile: TilePlayerState = {
   lazy: true,
@@ -8,6 +8,7 @@ const phoneTile: TilePlayerState = {
   isGone: false,
   wantsPlayer: false,
   newStream: false,
+  failed: false,
 };
 const next = (change: Partial<TilePlayerState>) => nextPlayerAction({ ...phoneTile, ...change });
 
@@ -46,5 +47,37 @@ describe('nextPlayerAction', () => {
 
   it('always has a player outside the phone rules', () => {
     expect(next({ lazy: false, joinsSlots: false, isGone: true })).toEqual({ budget: 'release', wantsPlayer: true });
+  });
+
+  // A tile whose embed failed used to keep both the player and the playing slot, which left
+  // one video playing on a wall that promises two.
+  it('gives up the player and the budget when the embed failed, even while it holds a slot', () => {
+    expect(next({ failed: true, hasSlot: true, wantsPlayer: true })).toEqual({
+      budget: 'release',
+      wantsPlayer: false,
+    });
+    expect(next({ failed: true })).toEqual({ budget: 'release', wantsPlayer: false });
+  });
+
+  it('gives up the player of a failed tile outside the phone rules too', () => {
+    expect(next({ failed: true, lazy: false, joinsSlots: false, wantsPlayer: true })).toEqual({
+      budget: 'release',
+      wantsPlayer: false,
+    });
+  });
+});
+
+describe('joinsPlaybackSlots', () => {
+  it('takes in a phone tile with a broadcast', () => {
+    expect(joinsPlaybackSlots({ lazy: true, hasStream: true, failed: false })).toBe(true);
+  });
+
+  it('leaves out a desktop tile and one with nothing to play', () => {
+    expect(joinsPlaybackSlots({ lazy: false, hasStream: true, failed: false })).toBe(false);
+    expect(joinsPlaybackSlots({ lazy: true, hasStream: false, failed: false })).toBe(false);
+  });
+
+  it('leaves out a tile whose embed failed, so its slot goes to one that can play', () => {
+    expect(joinsPlaybackSlots({ lazy: true, hasStream: true, failed: true })).toBe(false);
   });
 });

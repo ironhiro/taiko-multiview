@@ -572,6 +572,14 @@ input {
   inset: 0;
 }
 
+/* The host stays in the tile whether or not a player lives in it, so nothing can detach
+   an iframe before the player owning it is destroyed. With nothing to show it takes no
+   clicks, so the thumbnail and the placeholders drawn after it stay tappable. */
+.tile__player--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* Over the player on touch screens: YouTube's controls stay out of reach, and a thumb
    on the picture scrolls the page instead of the player. Above the loading cover too
    (the cover has no z-index), which does not show: the shield is clear, and the cover

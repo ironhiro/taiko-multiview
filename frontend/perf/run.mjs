@@ -6,11 +6,15 @@
  * tasks and bytes downloaded.
  *
  *   npm run perf -- [--url http://localhost:5173] [--venue mock-1] [--seconds 20]
- *                   [--only desktop-3x3,phone-scroll]
+ *                   [--only desktop-3x3,phone-scroll] [--break-embed A1,A2]
  *
  * CPU and memory need Chromium (they come from its DevTools protocol and `ps`); the
  * WebKit scenarios report the rest. Neither stands in for a real iPhone, whose memory
  * ceiling is what crashes Safari - measure that on the device with Web Inspector.
+ *
+ * --break-embed hands the named tiles a video that cannot play (lib/embedFailureDrill.ts),
+ * which is the only way to watch what a broadcast blocked from embedding does to the wall:
+ * whether two others still play, and whether the failed tiles take their timers with them.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -20,12 +24,16 @@ const args = parseArgs(process.argv.slice(2));
 const BASE = args.url ?? 'http://localhost:5173';
 const VENUE = args.venue ?? 'mock-1';
 const SECONDS = Number(args.seconds ?? 20);
+const BREAK_EMBED = args['break-embed'];
 
 // YouTube turns away headless browsers ("outdated browser"), so every context claims
 // to be the ordinary browser it emulates.
 const DESKTOP_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const PHONE = devices['iPhone 15 Pro'];
+
+/** WATCH_INTERVAL_MS in PlayerTile.tsx: the period that tells a watchdog from other timers. */
+const WATCHDOG_INTERVAL_MS = 5000;
 
 const SCENARIOS = [
   { name: 'desktop-3x3', engine: chromium, context: { viewport: { width: 1920, height: 1080 }, userAgent: DESKTOP_UA }, grid: 3 },
@@ -57,6 +65,8 @@ console.table(
     'players (peak)': r.playersPeak,
     'playing (peak)': r.playingPeak,
     'players built': r.playersBuilt,
+    'watchdogs (end)': r.watchdogsAtEnd,
+    'watchdogs (peak)': r.watchdogsPeak,
     'CPU (cores)': r.cpuCores,
     'RSS peak (MB)': r.rssPeakMb,
     'JS heap (MB)': r.jsHeapMb,
@@ -72,7 +82,10 @@ console.table(
 
 mkdirSync(new URL('./results/', import.meta.url), { recursive: true });
 const out = new URL(`./results/${new Date().toISOString().replace(/[:.]/g, '-')}.json`, import.meta.url);
-writeFileSync(out, `${JSON.stringify({ base: BASE, venue: VENUE, seconds: SECONDS, results }, null, 2)}\n`);
+writeFileSync(
+  out,
+  `${JSON.stringify({ base: BASE, venue: VENUE, seconds: SECONDS, breakEmbed: BREAK_EMBED, results }, null, 2)}\n`,
+);
 console.log(`\n→ ${out.pathname}`);
 
 // ---------------------------------------------------------------------------
@@ -127,6 +140,40 @@ async function measure(scenario, browser) {
       // WebKit has neither; those columns stay empty.
     }
   });
+  // What the wall leaves behind: a player torn down must take its five-second watchdog
+  // (PlayerTile.tsx) and the listener its resync observer adds with it. Counted by
+  // wrapping the page's own timers here rather than by a counter in the product, so
+  // nothing measured exists in a build.
+  await context.addInitScript((period) => {
+    const leaks = (window.__leaks = { watchdogs: 0, intervals: 0, visibilityListeners: 0 });
+    const delays = new Map();
+    const { setInterval: start, clearInterval: stop } = window;
+    window.setInterval = (handler, delay, ...rest) => {
+      const id = start(handler, delay, ...rest);
+      delays.set(id, delay);
+      leaks.intervals += 1;
+      if (delay === period) leaks.watchdogs += 1;
+      return id;
+    };
+    window.clearInterval = (id) => {
+      if (delays.has(id)) {
+        leaks.intervals -= 1;
+        if (delays.get(id) === period) leaks.watchdogs -= 1;
+        delays.delete(id);
+      }
+      return stop(id);
+    };
+    const add = document.addEventListener.bind(document);
+    const remove = document.removeEventListener.bind(document);
+    document.addEventListener = (type, ...rest) => {
+      if (type === 'visibilitychange') leaks.visibilityListeners += 1;
+      return add(type, ...rest);
+    };
+    document.removeEventListener = (type, ...rest) => {
+      if (type === 'visibilitychange') leaks.visibilityListeners -= 1;
+      return remove(type, ...rest);
+    };
+  }, WATCHDOG_INTERVAL_MS);
 
   const page = await context.newPage();
 
@@ -147,7 +194,8 @@ async function measure(scenario, browser) {
 
   const cdp = isChromium ? await browser.newBrowserCDPSession() : null;
 
-  await page.goto(`${BASE}/?venue=${VENUE}&view=all-grid`);
+  const drill = BREAK_EMBED ? `&breakEmbed=${encodeURIComponent(BREAK_EMBED)}` : '';
+  await page.goto(`${BASE}/?venue=${VENUE}&view=all-grid${drill}`);
   await page.waitForSelector('.tile');
   // Let the first players come up before the clock starts.
   await page.waitForTimeout(5000);
@@ -156,6 +204,8 @@ async function measure(scenario, browser) {
   const started = Date.now();
   let playersPeak = 0;
   let playingPeak = 0;
+  let watchdogsPeak = 0;
+  let leaks = { watchdogs: 0, intervals: 0, visibilityListeners: 0 };
   let rssPeak = 0;
   await page.evaluate(() => (window.__perf.measuring = true));
 
@@ -179,8 +229,10 @@ async function measure(scenario, browser) {
     const players = await page.locator('.tile iframe').count();
     const playing = await playingCount(page);
     const rss = cdp ? await rssMb(cdp) : undefined;
+    leaks = await page.evaluate(() => window.__leaks);
     playersPeak = Math.max(playersPeak, players);
     playingPeak = Math.max(playingPeak, playing);
+    watchdogsPeak = Math.max(watchdogsPeak, leaks.watchdogs);
     if (rss !== undefined) rssPeak = Math.max(rssPeak, rss);
     timeline?.push({
       t: round((Date.now() - started) / 1000),
@@ -188,6 +240,7 @@ async function measure(scenario, browser) {
       players,
       playing,
       built: playersBuilt,
+      watchdogs: leaks.watchdogs,
       rssMb: rss === undefined ? undefined : Math.round(rss),
     });
   }
@@ -219,6 +272,12 @@ async function measure(scenario, browser) {
     playersPeak,
     playingPeak,
     playersBuilt,
+    // Timers and listeners still live as the run ends: they should sit at one watchdog per
+    // player on screen, and one more visibilitychange listener than the wall itself adds.
+    watchdogsAtEnd: leaks.watchdogs,
+    watchdogsPeak,
+    intervalsAtEnd: leaks.intervals,
+    visibilityListenersAtEnd: leaks.visibilityListeners,
     cpuCores: cdp ? round((cpuAfter - cpuBefore) / elapsed, 2) : undefined,
     rssPeakMb: cdp ? Math.round(rssPeak) : undefined,
     jsHeapMb,
