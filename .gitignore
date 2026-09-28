@@ -11,9 +11,6 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Vercel
-.vercel
-
 # Secrets - never commit the YouTube API key.
 # Match the key file exactly: a wildcard like *API* also hides every Api-named
 # source file, because git ignores case on Windows.
