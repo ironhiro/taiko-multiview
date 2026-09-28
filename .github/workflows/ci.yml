@@ -1,6 +1,7 @@
 # Tests on every push and pull request; the backend (and with it venues.json) deploys
 # to Azure Container Apps from main once the repository is set up for it - see the
-# deploy job. The frontend deploys itself: Vercel builds main on its own.
+# deploy job. The frontend is not deployed on its own: the image built there carries it
+# in the API's wwwroot, so one container serves both (see "배포" in README.md).
 
 name: ci
 

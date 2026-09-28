@@ -1,8 +1,9 @@
 import type { LiveResponse, Venue } from './types';
 
 /**
- * Empty in the browser: Vercel rewrites (and the Vite dev proxy) put /api on the
- * same origin. The desktop shell injects an absolute base instead.
+ * Empty in the browser: the deployed container serves the site and /api from one origin,
+ * and the dev proxy in vite.config.ts does the same locally (see "배포" in README.md). The
+ * desktop shell injects an absolute base instead.
  */
 const API_BASE =
   (window as { __TAIKO_API_BASE__?: string }).__TAIKO_API_BASE__ ??
