@@ -76,6 +76,7 @@ builder.Services.AddSingleton<VenueRegistry>();
 builder.Services.AddSingleton<EndedBroadcastCache>();
 builder.Services.AddSingleton<VenueClosureStore>();
 builder.Services.AddSingleton<VenueScheduleProvider>();
+builder.Services.AddSingleton<LiveSnapshotCache>();
 builder.Services.AddSingleton<LiveStreamStore>();
 builder.Services.AddSingleton<ChannelAvatarCache>();
 

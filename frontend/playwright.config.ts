@@ -38,6 +38,9 @@ export default defineConfig({
         // No key, so nothing reaches YouTube - not even the channel avatar lookup.
         YouTube__ApiKey: '',
         Venues__ClosureCachePath: '/tmp/taiko-e2e-closures.json',
+        // Out of the repository, and out of the next run's way: a restored snapshot would
+        // otherwise carry one run's mock streams into the one after it.
+        Venues__LiveCachePath: '/tmp/taiko-e2e-live.json',
       },
     },
     {

@@ -373,7 +373,9 @@ export default function App() {
             </p>
           )}
 
-          {activeLive && (
+          {/* No time at all means the server has not polled yet, which is not the same as
+              "as of now": saying nothing is the honest answer until the first poll lands. */}
+          {activeLive?.updatedAt && (
             <p className="credit__updated">
               <time dateTime={activeLive.updatedAt}>
                 {new Date(activeLive.updatedAt).toLocaleTimeString('ko-KR')}
