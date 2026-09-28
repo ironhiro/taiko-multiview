@@ -26,17 +26,35 @@ node .claude/skills/mobile-verification/scripts/shoot.mjs --url http://localhost
 - 폰에서 `tileControls.y >= tilePicture.y + tilePicture.h` (버튼 줄이 영상 아래, 유튜브 컨트롤과 겹치지 않음)
 - 가로 폰: 폰 레이아웃이 적용됨(배치 선택기 숨김). 실제 iPhone 가로는 폭 844~932px라 820px 기준만으로는 빠진다.
 
-## 3. e2e
+## 3. 재생 실패 타일 검증 (`?breakEmbed=`)
 
-```bash
-cd frontend && DOTNET=/usr/local/share/dotnet/dotnet DOTNET_ROOT=/usr/local/share/dotnet npx playwright test
+임베드 차단 방송(오류 101/150)이 섞인 벽은 **에뮬레이션으로는 재현되지 않는다** — mock 방송은 전부 임베드 가능하고, e2e는 오프라인이라 플레이어가 아예 안 뜬다. 그래서 개발 서버 전용 드릴이 있다(`frontend/src/lib/embedFailureDrill.ts`, `import.meta.env.DEV` 게이트라 프로덕션 번들에는 들어가지 않는다).
+
+```
+http://localhost:5173/?venue=mock-1&view=all-grid&breakEmbed=A1,A2
 ```
 
-Chromium, WebKit, iPhone 세 프로젝트다. 폰 동작은 `e2e/multiview.spec.ts`의 `phone` 그룹에 있다. 새 동작을 만들면 여기에 테스트를 더한다. e2e는 오프라인 Mock이라 플레이어는 뜨지 않는다.
+지정한 타일(라벨 쉼표 구분, 또는 `all`)이 플레이어를 만든 2.5초 뒤 유튜브가 돌려줄 오류를 **같은 핸들러로 보고**한다. 실제 `onError`를 유발하는 것이 아니라 보고만 하므로, 유튜브의 `onError` 배선 자체는 이 드릴로 검증되지 않는다(실기기 항목).
+
+**오판 주의 — 정지 화면의 "재생 0개"는 정상일 수 있다.** 재생 슬롯은 절반 이상(`AUTOPLAY_MIN_RATIO 0.5`) 보이는 타일에만 가고, 실패한 타일은 슬롯에서 빠진다. 맨 위 두 타일을 깨고 화면을 정지해 두면 자격 있는 타일이 없어 0개가 맞다. **스크롤하거나 타일을 탭해 "슬롯을 받을 수 있는 타일이 화면에 있는" 상태에서 센다.** 판정은 앱과 같은 root(`rootMargin: -coveredTop`)로 타일별 `intersectionRatio`를 직접 재서, "ratio ≥ 0.5인데 플레이어가 없는 타일"이 있는지로 한다.
+
+타이머 누수를 볼 때는 `setInterval`을 래핑해 5초 주기만 센다(제품 코드에 계측을 넣지 않는다). 기준은 **감시 타이머 수 == iframe 수**이고, 전부 깨면 둘 다 0이어야 한다.
+
+## 4. e2e
+
+```bash
+cd frontend && npx playwright test
+```
+
+macOS에서는 PATH의 `dotnet`이 .NET 8이라 `DOTNET=/usr/local/share/dotnet/dotnet DOTNET_ROOT=/usr/local/share/dotnet`을 앞에 붙인다. Windows는 PATH의 dotnet이 10이라 그대로 된다.
+
+⚠ **mock 스택이 떠 있으면 e2e가 빌드 단계에서 죽는다** — 5180 API가 `bin`을 잠가 Playwright의 5190 서버가 빌드되지 않는다. 스택을 멈추지 말고 5190을 다른 출력 경로로 먼저 띄워 `reuseExistingServer`가 재사용하게 한다(multiview-local-env의 "실행 중인 API가 빌드를 막는다" 절에 명령이 있다).
+
+Chromium, WebKit, iPhone 세 프로젝트다. 폰 동작은 `e2e/multiview.spec.ts`의 `phone` 그룹에 있다. 새 동작을 만들면 여기에 테스트를 더한다. e2e는 오프라인 Mock이라 플레이어는 뜨지 않는다 — **재생·실패 타일 경로는 e2e로 고정되지 않으므로**, 그 동작의 회귀 방지는 `lib/`의 순수 함수 단위 테스트(`tilePlayer.test.ts`)와 위 드릴 측정이 맡는다.
 
 **새 테스트는 통과만 보고 믿지 않는다.** 고친 코드를 잠깐 되돌려 테스트가 실제로 실패하는지 확인하고(뮤테이션 체크), 반드시 원래대로 되돌린 뒤 `git diff`로 되돌린 것을 확인한다. 되돌리기 전에 중단되면 파일이 망가진 채 남는다.
 
-## 4. 경계면 교차 확인
+## 5. 경계면 교차 확인
 
 UI만 보지 말고 연결 지점을 맞춰 본다:
 - API 응답(`/api/live`, `/api/venues`)의 실제 JSON과 `frontend/src/lib/types.ts`의 타입. curl로 받은 필드와 타입 필드를 1:1로 대조한다.
@@ -46,6 +64,7 @@ UI만 보지 말고 연결 지점을 맞춰 본다:
 
 - **iOS 메모리 한도.** 탭 크래시("문제가 지속적으로 발생했습니다")는 재현되지 않는다. 플레이어를 만들고 부수는 횟수로 간접 판단하고(perf-check), 확정은 실제 기기의 Safari 웹 인스펙터로 한다.
 - **Safari의 iframe 클리핑.** iOS Safari는 고정 위치 영역 안 iframe의 `overflow: hidden`을 무시할 수 있다. 자르려면 `clip-path: inset(0)`을 쓴다. 에뮬레이터에서는 멀쩡히 잘려 보인다.
+- **헤드리스 WebKit에서는 재생 자체가 안 된다.** 이 PC의 headless WebKit에는 H.264가 없어 iframe은 뜨지만 한 프레임도 재생되지 않고 `NOW LOADING`에 머무른다. 그러니 **재생 개수 판정은 Chromium으로만** 하고, WebKit은 레이아웃·클리핑 확인에 쓴다. 사파리에서 진짜로 몇 개가 재생되는가는 실기기 항목이다.
 - **iPhone Chrome 툴바, 주소창 높이 변화.** 실제 기기에서만 보인다.
 - **로그인.** 다른 사이트에 넣은 유튜브 프레임에는 브라우저가 로그인을 넘기지 않는다(iPhone 전부, 크롬 시크릿).
 
