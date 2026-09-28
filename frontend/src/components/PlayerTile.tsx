@@ -6,7 +6,8 @@ import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
 import { usePageAway } from '../lib/pageAway';
 import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib/playbackSlots';
 import { compactPlayerBudget } from '../lib/playerBudget';
-import { nextPlayerAction } from '../lib/tilePlayer';
+import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
+import { joinsPlaybackSlots, nextPlayerAction } from '../lib/tilePlayer';
 import { useCoveredTop } from '../lib/stickyCover';
 import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
@@ -72,6 +73,9 @@ export function PlayerTile({
   const isGone = Boolean(pausesWhenAway) && away === 'gone';
   const hasPlayer = isActivated && !isGone;
   const mountedId = hasPlayer ? playableId : undefined;
+  // A failed player is still mounted for the moment it takes to tear down, and must show
+  // nothing meanwhile: the tile is already offering the link to YouTube instead.
+  const showsPlayer = Boolean(mountedId) && !failed;
 
   // A lazy tile plays only while it holds a slot, and builds its player on first getting
   // one. Losing the slot pauses the player and keeps it; the budget takes it only when
@@ -85,7 +89,7 @@ export function PlayerTile({
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
-  const joinsSlots = Boolean(lazy && playableId);
+  const joinsSlots = joinsPlaybackSlots({ lazy: Boolean(lazy), hasStream: Boolean(playableId), failed });
 
   useEffect(() => {
     if (!joinsSlots) {
@@ -145,6 +149,7 @@ export function PlayerTile({
       isGone,
       wantsPlayer: wantsPlayerRef.current,
       newStream: builtForRef.current !== playableId,
+      failed,
     });
     const evict = () => setIsActivated(false);
 
@@ -159,7 +164,7 @@ export function PlayerTile({
       builtForRef.current = playableId;
     }
     setIsActivated(action.wantsPlayer);
-  }, [lazy, joinsSlots, hasSlot, isGone, playableId, tileKey]);
+  }, [lazy, joinsSlots, hasSlot, isGone, playableId, failed, tileKey]);
 
   useEffect(() => () => compactPlayerBudget.release(tileKey), [tileKey]);
 
@@ -181,8 +186,15 @@ export function PlayerTile({
     }
   }, [shouldPlay, mountedId]);
 
+  // A new broadcast deserves a try of its own: the failure belonged to the id that failed.
+  // Kept out of the effect below, which a failed tile no longer runs.
+  useEffect(() => setFailed(false), [playableId]);
+
   useEffect(() => {
-    if (!mountedId) {
+    // A failed embed leaves through this effect's cleanup, which is why `failed` is a
+    // dependency: on its own the render would merely stop showing the player, while the
+    // player object, its five-second watchdog and its listeners carried on running.
+    if (!mountedId || failed) {
       return;
     }
 
@@ -190,8 +202,17 @@ export function PlayerTile({
     let watchdog: Watchdog | undefined;
     let stopResync: (() => void) | undefined;
     const where = { station: label, videoId: mountedId };
-    setFailed(false);
     setIsPictureUp(false);
+
+    // Whatever the reason - YouTube's own error, or an API that never loaded - the tile
+    // reads as failed from here on, and lib/tilePlayer.ts takes the player away.
+    const fail = (code: number) => {
+      report('player-error', { ...where, code, meaning: describePlayerError(code) });
+      setFailed(true);
+    };
+    // Development only, and only for a tile the address names: the error a broadcast whose
+    // channel forbids embedding reports, which no mock stream can (lib/embedFailureDrill.ts).
+    const cancelDrill = scheduleEmbedFailure(label, fail);
     // Autoplay can be refused, leaving YouTube's own play button to press: never keep it
     // covered for long.
     const uncover = window.setTimeout(() => setIsPictureUp(true), COVER_LIMIT_MS);
@@ -220,6 +241,12 @@ export function PlayerTile({
           },
           events: {
             onReady: (event) => {
+              // The tile may have been torn down while the player loaded. Starting the
+              // watchdog now would leave a timer nothing ever stops, ticking against a
+              // player that is already destroyed.
+              if (disposed) {
+                return;
+              }
               // Autoplay only survives while muted; audio is granted separately. The slot
               // may have gone while the player loaded.
               event.target.mute();
@@ -239,10 +266,7 @@ export function PlayerTile({
                 setIsPictureUp(true);
               }
             },
-            onError: (event) => {
-              report('player-error', { ...where, code: event.data, meaning: describePlayerError(event.data) });
-              setFailed(true);
-            },
+            onError: (event) => fail(event.data),
           },
         });
       })
@@ -254,19 +278,40 @@ export function PlayerTile({
     return () => {
       disposed = true;
       window.clearTimeout(uncover);
+      cancelDrill();
+      // The timers go at once: a tile that has lost its player must not keep polling it.
       watchdog?.stop();
       stopResync?.();
-      try {
-        playerRef.current?.destroy();
-      } catch {
-        // The player may already be gone if the iframe was torn down first.
-      }
+
+      const player = playerRef.current;
       playerRef.current = null;
-      if (hostRef.current) {
-        hostRef.current.innerHTML = '';
-      }
+      // Whatever this player put in the host, so the sweep below cannot touch a player
+      // mounted into the same host in the meantime.
+      const leftovers = hostRef.current ? [...hostRef.current.childNodes] : [];
+
+      // A real teardown is worth several milliseconds - YouTube empties its own registry and
+      // the browser takes a live frame down - so it waits a turn rather than adding itself to
+      // the render that evicted the player, which on a phone is already busy building the next
+      // one. The host div stays mounted whatever happens here, so the iframe is still in the
+      // page by the time this runs and YouTube can take its listeners off it: the point of
+      // doing it here at all.
+      window.setTimeout(() => {
+        try {
+          player?.destroy();
+        } catch (cause) {
+          // Worth seeing rather than swallowing: a throw means the player kept whatever
+          // destroy() had not got to, which is how memory grows over a long scroll.
+          report('player-destroy-failed', {
+            ...where,
+            message: cause instanceof Error ? cause.message : String(cause),
+          });
+        }
+        for (const node of leftovers) {
+          node.remove();
+        }
+      }, 0);
     };
-  }, [mountedId]);
+  }, [mountedId, failed]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -308,6 +353,13 @@ export function PlayerTile({
       </div>
 
       <div className="tile__body">
+        {/* The player's host is part of the tile, not of the player: React removing it
+            would detach the iframe before the effect above could destroy it, and every
+            eviction on a phone went that way. First in the body and inert while it holds
+            no picture, so the placeholders and thumbnails that follow stay on top of it
+            and keep taking taps. */}
+        <div className={showsPlayer ? 'tile__player' : 'tile__player tile__player--hidden'} ref={hostRef} />
+
         {!stream && <IdlePlaceholder message={idle} />}
 
         {stream && !stream.embeddable && (
@@ -330,11 +382,10 @@ export function PlayerTile({
           <ThumbnailPoster stream={stream} onActivate={activate} />
         )}
 
-        {mountedId && !failed && <div className="tile__player" ref={hostRef} />}
-        {mountedId && !failed && shielded && <div className="tile__shield" aria-hidden="true" />}
-        {mountedId && !failed && stream && <LoadingCover stream={stream} gone={isPictureUp} />}
+        {showsPlayer && shielded && <div className="tile__shield" aria-hidden="true" />}
+        {showsPlayer && stream && <LoadingCover stream={stream} gone={isPictureUp} />}
         {/* A kept player without a slot sits paused under its thumbnail, which a tap plays. */}
-        {mountedId && !failed && stream && lazy && !hasSlot && (
+        {showsPlayer && stream && lazy && !hasSlot && (
           <ThumbnailPoster stream={stream} onActivate={activate} over />
         )}
       </div>

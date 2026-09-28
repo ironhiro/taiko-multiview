@@ -8,11 +8,17 @@
  * wanting a player, so players came back for tiles off screen, all at once. One function
  * now decides, and the rule it keeps is simple: a lazy tile builds a player only once it
  * has a slot.
+ *
+ * A fourth question was missing until a review found it: whether the broadcast plays in
+ * an embed at all. A tile whose player failed used to keep the player, its watchdog timer
+ * and - worst of all - one of the only two playing slots, so a wall whose top tile was
+ * blocked played one video instead of the two the release promised. Failure belongs here
+ * with the rest, not in the component.
  */
 export interface TilePlayerState {
   /** The tile follows the phone rules (slots, budget); false on a desktop. */
   lazy: boolean;
-  /** A lazy tile with a stream: it can take part in the slots. */
+  /** A lazy tile with a stream that can play: it takes part in the slots. */
   joinsSlots: boolean;
   hasSlot: boolean;
   /** The page has been hidden long enough that every player goes (lib/pageAway.ts). */
@@ -24,6 +30,13 @@ export interface TilePlayerState {
    * the old broadcast, so there is nothing to keep: the new one waits for a slot.
    */
   newStream: boolean;
+  /**
+   * This broadcast would not play in our embed: YouTube reported an error (101 or 150 when
+   * the channel forbids embedding - which the backend cannot always tell in advance) or the
+   * IFrame API never loaded. The tile offers a link to YouTube instead of a picture, so the
+   * player it cannot use is only cost.
+   */
+  failed: boolean;
 }
 
 export type BudgetMove = 'claim' | 'park' | 'release';
@@ -33,6 +46,23 @@ export interface PlayerAction {
   wantsPlayer: boolean;
 }
 
+/**
+ * Whether the tile takes part in the playing slots (lib/playbackSlots.ts): a lazy tile
+ * with a broadcast that can play. A tile that failed leaves them, so its slot goes to a
+ * tile that can use it, and its sightings stop being reported.
+ */
+export function joinsPlaybackSlots({
+  lazy,
+  hasStream,
+  failed,
+}: {
+  lazy: boolean;
+  hasStream: boolean;
+  failed: boolean;
+}): boolean {
+  return lazy && hasStream && !failed;
+}
+
 export function nextPlayerAction({
   lazy,
   joinsSlots,
@@ -40,7 +70,14 @@ export function nextPlayerAction({
   isGone,
   wantsPlayer,
   newStream,
+  failed,
 }: TilePlayerState): PlayerAction {
+  // A broadcast that will not play in an embed gets no player, on a phone or a desktop:
+  // there is nothing for it to show, and the timers and the slot are needed elsewhere.
+  // Checked first, so this holds however the rest of the state reads.
+  if (failed) {
+    return { budget: 'release', wantsPlayer: false };
+  }
   // Outside the phone rules the tile always has a player, and the budget never counts it.
   if (!lazy) {
     return { budget: 'release', wantsPlayer: true };

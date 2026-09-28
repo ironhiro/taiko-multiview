@@ -275,6 +275,12 @@ public sealed class YouTubeLiveClient(
                 StreamDate = parsed.StreamDate,
                 Part = parsed.Part,
                 IsLive = false,
+                // An assumption, not a fact: nothing on this path knows whether the channel
+                // allows the broadcast to be embedded. The RSS feed does not say, and the
+                // watch-page probe reads only liveBroadcastDetails (PublicLiveProbe.cs), so
+                // "unknown" is sent as true. A broadcast that turns out to be blocked reaches
+                // the wall and fails in the player instead, which the tile then has to handle
+                // (lib/tilePlayer.ts). Api mode reads status.embeddable and knows for real.
                 Embeddable = true,
                 PublishedAt = ParseDate(entry.Element(Atom + "published")?.Value),
                 ThumbnailUrl = group?.Element(MediaNs + "thumbnail")?.Attribute("url")?.Value,
