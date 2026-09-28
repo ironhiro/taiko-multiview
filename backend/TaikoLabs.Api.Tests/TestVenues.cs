@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaikoLabs.Api.Models;
@@ -39,13 +39,20 @@ internal static class TestVenues
     public static VenuesOptions Options(params VenueDefinition[] venues) => new()
     {
         TimeZone = "Asia/Seoul",
-        // Somewhere harmless: the closure store reads and writes this.
+        // Somewhere harmless: the stores read and write these.
         ClosureCachePath = Path.Combine(Path.GetTempPath(), $"taiko-closures-{Guid.NewGuid():N}.json"),
+        LiveCachePath = Path.Combine(Path.GetTempPath(), $"taiko-live-{Guid.NewGuid():N}.json"),
         Items = [.. venues],
     };
 
     public static VenueClosureStore Closures(VenuesOptions options) =>
-        new(Microsoft.Extensions.Options.Options.Create(options), new FakeHost(), NullLogger<VenueClosureStore>.Instance);
+        new(Microsoft.Extensions.Options.Options.Create(options), Host(), NullLogger<VenueClosureStore>.Instance);
+
+    /// <summary>A host rooted somewhere harmless, for the stores that resolve a relative cache path.</summary>
+    public static IHostEnvironment Host() => new FakeHost();
+
+    public static VenueRegistry Registry(VenuesOptions options) =>
+        new(new TestOptionsMonitor<VenuesOptions>(options), NullLogger<VenueRegistry>.Instance);
 
     private sealed class FakeHost : IHostEnvironment
     {

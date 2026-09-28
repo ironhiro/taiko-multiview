@@ -20,8 +20,10 @@ APIKey.txt
 apikey.txt
 *.key
 
-# Runtime cache, regenerated on startup
+# Runtime caches, regenerated on startup
 closures.cache.json
+live.cache.json
+live.cache.json.tmp
 
 
 # Local design-tool notes (Hallmark)

@@ -79,8 +79,12 @@ public sealed record VenueLive
 {
     public required string VenueId { get; init; }
 
-    /// <summary>When this venue was last polled.</summary>
-    public required DateTimeOffset UpdatedAt { get; init; }
+    /// <summary>
+    /// When this venue was last polled. Absent until the first poll of the server's life
+    /// comes back; a snapshot restored from disk carries the time of the poll that produced
+    /// it, not the time of the restart.
+    /// </summary>
+    public DateTimeOffset? UpdatedAt { get; init; }
 
     /// <summary>Streams matched to a station, at most one per station.</summary>
     public required IReadOnlyList<LiveStream> Streams { get; init; }

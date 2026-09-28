@@ -35,9 +35,12 @@ COPY --from=frontend /src/dist ./wwwroot
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
-# Runs as the image's non-root user, which cannot write /app: the closure cache (a startup
-# shortcut, rebuilt when missing) goes to /tmp instead.
+# Runs as the image's non-root user, which cannot write /app: the closure and live-snapshot
+# caches (startup shortcuts, rebuilt when missing) go to /tmp instead. /tmp is the replica's
+# own, so these survive a restart of the process but not a new replica; point them at a
+# mounted volume to carry them across a scale to zero.
 ENV Venues__ClosureCachePath=/tmp/closures.cache.json
+ENV Venues__LiveCachePath=/tmp/live.cache.json
 USER $APP_UID
 
 ENTRYPOINT ["dotnet", "TaikoLabs.Api.dll"]

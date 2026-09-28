@@ -147,6 +147,12 @@ public sealed class VenuesOptions
 
     public string ClosureCachePath { get; set; } = "closures.cache.json";
 
+    /// <summary>
+    /// Where the last poll of every venue is mirrored, so a restart has a wall to draw
+    /// before its first poll returns. A startup shortcut, rebuilt when missing.
+    /// </summary>
+    public string LiveCachePath { get; set; } = "live.cache.json";
+
     public List<VenueDefinition> Items { get; set; } = [];
 
     /// <summary>
