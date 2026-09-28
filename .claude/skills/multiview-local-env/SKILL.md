@@ -59,7 +59,7 @@ e2e가 끝나면 5190만 종료한다(5180·5173은 살려 둔다).
 - **개발 환경은 폴링 간격이 다르다.** `appsettings.Development.json`이 `PollIntervalSeconds: 120`으로 덮어써서, 시작 로그의 예상 쿼터가 `Mock`·운영(60초)과 다르게 찍힌다(4,407 units / 44.1% vs 8,474 / 84.7%). 쿼터 수치를 볼 때는 어느 환경으로 띄웠는지 먼저 확인한다.
 - **e2e용 Mock은 또 다르다.** Playwright e2e는 5190/5174에 자체 서버를 띄운다. `MockVideoIds` 없이 가짜 id, 임베드 불가, 네트워크 없음(`e2e/support.ts`의 `offline()`). 그래서 **e2e는 플레이어 재생을 검증하지 못한다** — 재생·실패 타일 동작은 perf-check나 mobile-verification이 맡는다.
 - **헤드리스 브라우저와 유튜브.** 유튜브는 `HeadlessChrome` UA에 "오래된 브라우저" 페이지를 준다. Playwright 컨텍스트의 userAgent에서 `HeadlessChrome`을 `Chrome`으로 바꾼다. 유튜브 플레이어는 뜨는 데 몇 초 걸리니 충분히 기다린다.
-- **헤드리스 WebKit에는 H.264가 없다**(이 PC에서 확인). iframe은 뜨지만 한 프레임도 재생되지 않고 화면은 `NOW LOADING`에 머문다. **재생 개수를 세는 판정은 Chromium으로만 한다.** WebKit은 레이아웃·클리핑 확인용이다.
+- **헤드리스 WebKit에는 `MediaSource`가 없다**(이 PC에서 확인: `window.MediaSource`가 `undefined`). 유튜브 임베드는 MSE로 스트림을 붙이므로, iframe은 뜨지만 소스가 붙은 적이 없어 한 프레임도 재생되지 않고 화면은 `NOW LOADING`에 머문다(`video.error`는 `null`, `networkState 0`). `canPlayType`이 H.264를 `probably`라고 답하는 것에 속지 말 것 — 코덱 문제가 아니다. **재생 개수를 세는 판정은 Chromium으로만 한다.** WebKit은 레이아웃·클리핑 확인용이다. 확인 절차는 mobile-verification의 "재생이 '되고 있는지' 확인하는 법".
 - **실제 방송 id.** 임베드 가능 여부는 바뀐다. 확인된 것은 `4xDzrJKXOOY`, `S_MOd40zlYU`(둘 다 lofi girl 계열 24시간 라이브). `jfKfPfyJRdk` 등은 localhost에서 오류 150(임베드 거부)이었다. 임베드 실패를 **일부러** 만들려면 재생 불가 id를 물리지 말고 `?breakEmbed=`를 쓴다(mobile-verification 참고) — 유튜브가 같은 id에 오류 대신 API가 못 읽는 페이지를 주는 날이 있어 재현이 흔들린다.
 - **공개 레지스트리 push**(ghcr.io)는 이 세션의 권한 검사에 막힌다. 배포 절차는 deploy-dev 스킬을 본다.
 

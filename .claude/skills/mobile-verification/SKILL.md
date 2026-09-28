@@ -40,6 +40,27 @@ http://localhost:5173/?venue=mock-1&view=all-grid&breakEmbed=A1,A2
 
 타이머 누수를 볼 때는 `setInterval`을 래핑해 5초 주기만 센다(제품 코드에 계측을 넣지 않는다). 기준은 **감시 타이머 수 == iframe 수**이고, 전부 깨면 둘 다 0이어야 한다.
 
+### 재생이 "되고 있는지" 확인하는 법
+
+iframe이 떠 있는 것과 재생되는 것은 다르다. `iframe` 개수나 스크린샷만으로 판정하지 말고 세 층을 순서대로 본다.
+
+1. **엔진이 무엇을 재생할 수 있다고 주장하는지** — `video.canPlayType('video/mp4; codecs="avc1.42E01E"')`. 단 이건 주장일 뿐이고, MSE 없이도 `probably`가 나온다. 판정 근거로 쓰지 말고 참고만 한다.
+2. **유튜브가 쓰는 경로가 있는지** — `typeof window.MediaSource`, `MediaSource.isTypeSupported(...)`. 유튜브 임베드는 MSE로 스트림을 붙인다. 없으면 어떤 코덱을 지원하든 재생되지 않는다.
+3. **실제로 시간이 흐르는지** — `page.frames()`에서 `youtube.com/embed/` 프레임을 찾아 그 안의 `<video>`를 잰다:
+
+```js
+for (const frame of page.frames()) {
+  if (!/youtube\.com\/embed/.test(frame.url())) continue;
+  console.log(await frame.evaluate(() => {
+    const v = document.querySelector('video');
+    return v && { currentTime: v.currentTime, readyState: v.readyState, paused: v.paused,
+                  networkState: v.networkState, error: v.error?.code ?? null };
+  }));
+}
+```
+
+`currentTime > 0.5`가 재생의 증거다. 안 될 때는 `readyState`·`networkState`·`error`로 원인이 갈린다: `error.code 4`(SRC_NOT_SUPPORTED)면 코덱, `error`가 `null`인데 `networkState 0`·`src` 없음이면 **소스가 붙은 적이 없다**(MSE 부재나 플레이어가 시작 못 함), `readyState ≥ 2`인데 `paused`면 자동재생 정책이다. 콘솔도 함께 받아 둔다 — 이 PC의 WebKit은 `Unable to post message to https://www.youtube.com`도 같이 찍는다.
+
 ## 4. e2e
 
 ```bash
@@ -64,7 +85,7 @@ UI만 보지 말고 연결 지점을 맞춰 본다:
 
 - **iOS 메모리 한도.** 탭 크래시("문제가 지속적으로 발생했습니다")는 재현되지 않는다. 플레이어를 만들고 부수는 횟수로 간접 판단하고(perf-check), 확정은 실제 기기의 Safari 웹 인스펙터로 한다.
 - **Safari의 iframe 클리핑.** iOS Safari는 고정 위치 영역 안 iframe의 `overflow: hidden`을 무시할 수 있다. 자르려면 `clip-path: inset(0)`을 쓴다. 에뮬레이터에서는 멀쩡히 잘려 보인다.
-- **헤드리스 WebKit에서는 재생 자체가 안 된다.** 이 PC의 headless WebKit에는 H.264가 없어 iframe은 뜨지만 한 프레임도 재생되지 않고 `NOW LOADING`에 머무른다. 그러니 **재생 개수 판정은 Chromium으로만** 하고, WebKit은 레이아웃·클리핑 확인에 쓴다. 사파리에서 진짜로 몇 개가 재생되는가는 실기기 항목이다.
+- **헤드리스 WebKit에서는 재생 자체가 안 된다 — `MediaSource`가 없어서다.** 측정값: `window.MediaSource`가 `undefined`, 그래서 유튜브가 스트림을 붙일 곳이 없어 `video.src`는 `(none)`, `networkState 0`, `readyState 0`이고 **`video.error`는 `null`**(오류가 아니라 아무것도 시작되지 않은 상태). `canPlayType('video/mp4; codecs="avc1.42E01E"')`는 `probably`라고 답하니 **코덱 지원 여부로 오진하지 말 것** — canPlayType은 주장이고 MSE 부재가 실제 원인이다. 그러니 **재생 개수 판정은 Chromium으로만** 하고, WebKit은 레이아웃·클리핑 확인에 쓴다. 실제 iPhone 사파리는 임베드 재생 경로가 이것과 달라서 이 공백이 실기기 동작을 말해 주지 않는다 — 재생은 실기기로만 확정한다.
 - **iPhone Chrome 툴바, 주소창 높이 변화.** 실제 기기에서만 보인다.
 - **로그인.** 다른 사이트에 넣은 유튜브 프레임에는 브라우저가 로그인을 넘기지 않는다(iPhone 전부, 크롬 시크릿).
 
