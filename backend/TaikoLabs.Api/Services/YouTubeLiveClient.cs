@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.Extensions.Options;
@@ -44,6 +45,16 @@ public sealed class YouTubeLiveClient(
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
+        }
+        catch (YouTubeQuotaExceededException ex)
+        {
+            // Logged apart from the rest because the fix is a configuration one - fewer
+            // venues, longer intervals, or Public mode - and because every venue will fail
+            // the same way until the allowance resets.
+            logger.LogError(
+                "YouTube daily quota is exhausted; '{Venue}' and every other venue stay empty until it resets at midnight Pacific time. Compare the quota estimate logged at startup with YouTube:PollIntervalSeconds",
+                venue.Id);
+            return LiveSnapshot.Empty(mode, ex.Message);
         }
         catch (Exception ex)
         {
@@ -370,6 +381,16 @@ public sealed class YouTubeLiveClient(
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(ct);
+
+            if (IsQuotaExceeded(response.StatusCode, body))
+            {
+                // Deliberately without the upstream body: this message ends up in the
+                // snapshot any anonymous client can read, and it already says everything
+                // that can be done about it.
+                throw new YouTubeQuotaExceededException(
+                    "YouTube Data API daily quota is exhausted; it resets at midnight Pacific time.");
+            }
+
             throw new HttpRequestException(
                 $"YouTube API returned {(int)response.StatusCode} {response.ReasonPhrase}: {Truncate(body, 400)}");
         }
@@ -377,6 +398,16 @@ public sealed class YouTubeLiveClient(
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         return await JsonDocument.ParseAsync(stream, cancellationToken: ct);
     }
+
+    /// <summary>
+    /// Whether a refused call was refused for want of quota. The Data API answers 403 to
+    /// several unrelated things - a key restricted to other referrers, the API switched off
+    /// for the project - so the reason in the body has to be read, not just the status.
+    /// </summary>
+    internal static bool IsQuotaExceeded(HttpStatusCode status, string body) =>
+        status == HttpStatusCode.Forbidden
+        && (body.Contains("quotaExceeded", StringComparison.Ordinal)
+            || body.Contains("dailyLimitExceeded", StringComparison.Ordinal));
 
     private static string? ReadThumbnail(JsonElement? snippet)
     {

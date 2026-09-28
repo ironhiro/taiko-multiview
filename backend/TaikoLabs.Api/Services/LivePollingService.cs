@@ -36,6 +36,8 @@ public sealed class LivePollingService(
             interval.TotalSeconds,
             options.Value.EffectiveMode);
 
+        LogQuotaEstimate();
+
         using var timer = new PeriodicTimer(interval);
 
         do
@@ -43,6 +45,48 @@ public sealed class LivePollingService(
             await PollDueAsync(stoppingToken);
         }
         while (await SafeWaitAsync(timer, stoppingToken));
+    }
+
+    /// <summary>
+    /// Prints what this configuration costs in YouTube quota per day, so that adding a venue
+    /// or shortening an interval shows up in the log of the very next start rather than as a
+    /// day of blank walls once the allowance runs out (see <see cref="QuotaEstimate"/>).
+    /// Only Api mode spends anything, but the estimate is printed in every mode: it is how an
+    /// operator decides whether a key can be turned on at all.
+    /// </summary>
+    private void LogQuotaEstimate()
+    {
+        var quota = QuotaEstimate.For(registry.All, options.Value);
+        var mode = options.Value.EffectiveMode;
+
+        if (mode == LiveSourceMode.Api)
+        {
+            logger.LogInformation(
+                "Estimated quota: {Units} units/day for {Venues} venue(s) open {OpenHours}h/day combined - {Percent}% of the {Limit} unit daily limit",
+                quota.UnitsPerDay,
+                quota.Venues,
+                quota.OpenHoursPerDay,
+                quota.PercentOfLimit,
+                QuotaEstimate.DailyLimit);
+        }
+        else
+        {
+            logger.LogInformation(
+                "{Mode} mode spends no quota. The same {Venues} venue(s), open {OpenHours}h/day combined, would cost about {Units} units/day in Api mode - {Percent}% of the {Limit} unit daily limit",
+                mode,
+                quota.Venues,
+                quota.OpenHoursPerDay,
+                quota.UnitsPerDay,
+                quota.PercentOfLimit,
+                QuotaEstimate.DailyLimit);
+        }
+
+        if (quota.IsCrowded)
+        {
+            logger.LogWarning(
+                "That leaves {Spare}% of the daily quota spare, which is less than one more venue costs. Adding one will exhaust the quota and empty every wall until it resets at midnight Pacific time; raise YouTube:PollIntervalSeconds before adding venues",
+                Math.Round(100 - quota.PercentOfLimit, 1));
+        }
     }
 
     /// <summary>
