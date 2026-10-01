@@ -640,8 +640,29 @@ input {
   line-height: 1.6;
 }
 
+/* A cabinet the venue's settings do not list yet. A plain note, not a state colour: it is
+   neither on air (the LIVE badge beside it says that) nor anything the viewer chose. The
+   edge is a shadow so the tag stands exactly as tall as the badge. */
+.tile__tag {
+  flex: none;
+  padding: 0 var(--space-2xs);
+  border-radius: var(--radius-chip);
+  background: var(--color-paper-2);
+  box-shadow: inset 0 0 0 1px var(--color-rule-strong);
+  color: var(--color-ink-2);
+  font-family: var(--font-body);
+  font-size: var(--text-tile-meta);
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* One line and its full width, always: a narrow row broke "1,234명" before 명, since a
+   Hangul syllable after a digit is a place to wrap. The label is what gives way. */
 .tile__viewers {
+  flex: none;
   margin-left: auto;
+  white-space: nowrap;
   font-family: var(--font-data);
   font-size: var(--text-tile-meta);
   font-variant-numeric: tabular-nums;
@@ -1135,23 +1156,28 @@ input {
     padding: 0 var(--space-xs) var(--press-depth) 0;
   }
 
-  /* The bar stays one row, whatever the label and the viewer count. On a phone as narrow
-     as an iPhone SE the chat gives up its word first - a long cabinet label with a
-     four-digit count pushed the buttons onto a row of their own - and should that still
-     not be room enough, the label is cut short rather than the row folding. */
+  /* The bar stays one row, whatever the label and the viewer count. On a narrow phone the
+     buttons give up their words first - a long cabinet label with a four-digit count pushed
+     them onto a row of their own - and should that still not be room enough, the label is
+     cut short rather than the row folding. */
   .grid-view .tile__label {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  @container (max-width: 359px) {
-    .grid-view .tile__control--chat .tile__control-text {
+  /* Up to a tile 380px wide - an iPhone SE's and a 15 Pro's, not a Pixel 7's - both buttons
+     keep only their icons. With the words, the label of a cabinet with a tag, LIVE and a
+     five-digit count came down to one letter ("T…"), and the label is the one thing on the
+     bar that says which cabinet this is. Sound on still reads at a glance: the chosen (카)
+     edge and colour carry it, and the button's name says it to a screen reader. */
+  @container (max-width: 380px) {
+    .grid-view .tile__control-text {
       display: none;
     }
 
-    /* Square, the height of the button beside it, so the thumb has as much to hit. */
-    .grid-view .tile__control--chat {
+    /* Square, as tall as before, so the thumb has as much to hit. */
+    .grid-view .tile__control {
       justify-content: center;
       min-width: 2.25rem;
       padding: 0;

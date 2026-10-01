@@ -1,14 +1,15 @@
 import { useLayoutEffect, useRef } from 'react';
-import type { LiveStream, Station } from '../lib/types';
 import type { IdleMessage } from '../lib/venue';
+import type { WallTile } from '../lib/wallTiles';
 import { gridColumns } from './LayoutPicker';
 import { PlayerTile } from './PlayerTile';
 
 interface GridViewProps {
-  stations: Station[];
-  streamsByStation: Map<string, LiveStream>;
-  audioStationId: string | null;
-  onRequestAudio: (stationId: string) => void;
+  /** The cabinets in order, and what each has on air (lib/wallTiles.ts). */
+  tiles: WallTile[];
+  /** The id of the tile holding the sound. */
+  audioTileId: string | null;
+  onRequestAudio: (tileId: string) => void;
   /** The chosen N×N layout; fewer columns are used when there are fewer cabinets. */
   gridSize: number;
   lazy?: boolean;
@@ -21,26 +22,26 @@ interface GridViewProps {
  * as large as the screen allows at 16:9. More cabinets than N×N scroll.
  */
 export function GridView({
-  stations,
-  streamsByStation,
-  audioStationId,
+  tiles,
+  audioTileId,
   onRequestAudio,
   gridSize,
   lazy,
   idle,
 }: GridViewProps) {
-  const columns = gridColumns(gridSize, stations.length);
+  const columns = gridColumns(gridSize, tiles.length);
   const gridRef = useGlideOnRelayout(columns);
 
   return (
     <div ref={gridRef} className="grid-view" style={{ '--grid-columns': columns } as React.CSSProperties}>
-      {stations.map((station) => (
+      {tiles.map((tile) => (
         <PlayerTile
-          key={station.id}
-          label={station.label}
-          stream={streamsByStation.get(station.id)}
-          isAudioActive={audioStationId === station.id}
-          onRequestAudio={() => onRequestAudio(station.id)}
+          key={tile.id}
+          label={tile.label}
+          unregistered={tile.unregistered}
+          stream={tile.stream}
+          isAudioActive={audioTileId === tile.id}
+          onRequestAudio={() => onRequestAudio(tile.id)}
           lazy={lazy}
           shielded={lazy}
           pausesWhenAway={lazy}

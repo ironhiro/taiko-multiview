@@ -25,6 +25,8 @@ public sealed class LivePollingService(
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Dictionary<string, DateTimeOffset> _lastPolled = [];
     private readonly SemaphoreSlim _manualGate = new(1, 1);
+    // Per venue, the unregistered cabinet names the last good poll saw on air.
+    private readonly Dictionary<string, HashSet<string>> _unregisteredOnAir = [];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -179,6 +181,15 @@ public sealed class LivePollingService(
                     venue.Id,
                     snapshot.Streams.Count,
                     snapshot.Unmatched.Count);
+
+                var newlyOnAir = NoteUnregisteredOnAir(venue.Id, snapshot);
+                if (newlyOnAir.Count > 0)
+                {
+                    logger.LogWarning(
+                        "{Venue}: unregistered cabinet(s) on air: {Names}. Add them to the venue's stations to give them a place of their own",
+                        venue.Id,
+                        string.Join(", ", newlyOnAir));
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -188,6 +199,36 @@ public sealed class LivePollingService(
             {
                 logger.LogError(ex, "Live snapshot refresh failed for venue '{Id}'", venue.Id);
             }
+        }
+    }
+
+    /// <summary>
+    /// Records which cabinets the venue does not list are on air, and returns the ones
+    /// that were not on the previous poll. The wall shows them regardless; the warning is
+    /// for whoever keeps the venue settings, once per appearance rather than every round.
+    /// A poll that failed says nothing about what is on air and changes nothing, so a
+    /// passing error does not repeat the warning.
+    /// </summary>
+    internal IReadOnlyList<string> NoteUnregisteredOnAir(string venueId, LiveSnapshot snapshot)
+    {
+        if (snapshot.Error is not null)
+        {
+            return [];
+        }
+
+        var onAir = snapshot.Unmatched
+            .GroupBy(stream => Venue.Normalize(stream.Name))
+            .ToDictionary(group => group.Key, group => group.First().Name, StringComparer.Ordinal);
+
+        lock (_unregisteredOnAir)
+        {
+            var before = _unregisteredOnAir.GetValueOrDefault(venueId) ?? [];
+            _unregisteredOnAir[venueId] = [.. onAir.Keys];
+
+            return onAir
+                .Where(entry => !before.Contains(entry.Key))
+                .Select(entry => entry.Value)
+                .ToList();
         }
     }
 

@@ -70,6 +70,42 @@ public class StreamSelectionTests
         Assert.Equal("x", Assert.Single(snapshot.Unmatched).VideoId);
     }
 
+    [Fact]
+    public void An_unknown_cabinet_keeps_only_its_newest_broadcast()
+    {
+        // THE BASE 2 went on air before it was in the settings, and YouTube still had the
+        // morning's 1부 flagged live beside the 2부: the wall put the cabinet up twice.
+        var snapshot = YouTubeLiveClient.BuildSnapshot(
+            Venue,
+            [
+                Unknown("base2-part-1", "THE BASE 2", 1, "2026-09-25T00:53:00Z"),
+                Unknown("base2-part-2", "the base 2", 2, "2026-09-25T05:10:00Z"),
+            ],
+            LiveSourceMode.Api,
+            isFallbackSource: false);
+
+        Assert.Equal("base2-part-2", Assert.Single(snapshot.Unmatched).VideoId);
+    }
+
+    [Fact]
+    public void Unknown_cabinets_break_a_tie_on_part_and_come_out_in_name_order()
+    {
+        var snapshot = YouTubeLiveClient.BuildSnapshot(
+            Venue,
+            [
+                Unknown("z-part-1", "Z9", 1, "2026-09-25T00:53:00Z"),
+                Unknown("b-part-1", "THE BASE 2", 1, "2026-09-25T00:53:00Z"),
+                Unknown("b-part-2", "THE-BASE-2", 2, "2026-09-25T00:53:00Z"),
+            ],
+            LiveSourceMode.Api,
+            isFallbackSource: false);
+
+        Assert.Equal(["b-part-2", "z-part-1"], snapshot.Unmatched.Select(s => s.VideoId));
+    }
+
+    private static LiveStream Unknown(string id, string name, int part, string started) =>
+        Stream(id, name, part, started) with { StationId = null };
+
     [Theory]
     [InlineData("TAIKO LABS A1 Live Streaming 26.09.25 - 1부", "A1", 1)]
     [InlineData("TAIKO LABS THE BASE Live Streaming 26.09.24 - 3부", "THE BASE", 3)]

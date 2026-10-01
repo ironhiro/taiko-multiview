@@ -356,14 +356,20 @@ public sealed class YouTubeLiveClient(
         var streams = live
             .Where(c => c.StationId is not null)
             .GroupBy(c => c.StationId!)
-            .Select(group => group
-                .OrderByDescending(c => c.ActualStartTime ?? c.PublishedAt ?? DateTimeOffset.MinValue)
-                .ThenByDescending(c => c.Part ?? 0)
-                .First())
+            .Select(NewestOf)
             .OrderBy(c => venue.Stations.ToList().FindIndex(s => s.Id == c.StationId))
             .ToList();
 
-        var unmatched = live.Where(c => c.StationId is null).ToList();
+        // A cabinet the venue does not list yet gets a tile of its own on the wall, so it
+        // follows the same one-broadcast rule: without it, a 1부 YouTube left flagged live
+        // beside today's 2부 put the same cabinet up twice. Grouped by the name as a
+        // station alias would be matched, and sorted by it so the wall's order holds still.
+        var unmatched = live
+            .Where(c => c.StationId is null)
+            .GroupBy(c => Venue.Normalize(c.Name))
+            .Select(NewestOf)
+            .OrderBy(c => Venue.Normalize(c.Name), StringComparer.Ordinal)
+            .ToList();
 
         return new LiveSnapshot
         {
@@ -373,6 +379,11 @@ public sealed class YouTubeLiveClient(
             IsFallbackSource = isFallbackSource,
         };
     }
+
+    private static LiveStream NewestOf(IEnumerable<LiveStream> sameCabinet) => sameCabinet
+        .OrderByDescending(c => c.ActualStartTime ?? c.PublishedAt ?? DateTimeOffset.MinValue)
+        .ThenByDescending(c => c.Part ?? 0)
+        .First();
 
     private async Task<JsonDocument> GetJsonAsync(string url, CancellationToken ct)
     {
