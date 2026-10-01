@@ -1,4 +1,4 @@
-import type { WallTile } from './wallTiles';
+import { isOnAir, type WallTile } from './wallTiles';
 
 /** How the wall splits: tiles for the cabinets on air, a strip for the rest. */
 export interface WallSplit {
@@ -21,8 +21,10 @@ export function splitWall(tiles: WallTile[], loading: boolean): WallSplit {
   if (loading) {
     return { tiles, idle: [] };
   }
+  // The strip names cabinets the settings list. An unregistered broadcast that is not live
+  // has no cabinet to name: it is simply not on the wall.
   return {
-    tiles: tiles.filter((tile) => tile.stream),
-    idle: tiles.filter((tile) => !tile.stream),
+    tiles: tiles.filter(isOnAir),
+    idle: tiles.filter((tile) => !tile.unregistered && !isOnAir(tile)),
   };
 }

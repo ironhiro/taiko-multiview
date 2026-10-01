@@ -1,13 +1,3 @@
-import type { Venue, VenueLive } from './types';
-import { wallTilesFor } from './wallTiles';
-
-/**
- * The phone layout, as `styles.css` switches it on. Kept word for word with the media
- * block there: the venue row folds only where the phone rules apply, and the desktop
- * keeps every tab in its row.
- */
-export const PHONE_LAYOUT_QUERY = '(max-width: 820px), (pointer: coarse) and (max-height: 520px)';
-
 export type VenueRowMode = 'tabs' | 'folded';
 
 /**
@@ -39,25 +29,4 @@ export function venueRowMode({
   }
   // Half a pixel of slack for subpixel widths, so a row that fits exactly is not folded.
   return needed <= available + 0.5 ? 'tabs' : 'folded';
-}
-
-/**
- * How many of a venue's cabinets are on air: the tiles on its wall that carry a live
- * stream, counted from the same list the wall is built from (lib/wallTiles.ts). Counting
- * the snapshot's lists directly disagreed with the wall - two unmatched entries under one
- * name are one tile, and an unmatched name the venue list already has plays in that
- * cabinet's tile - and the count has to say what the viewer can see.
- */
-export function liveCountOf(venue: Venue | undefined, live: VenueLive | undefined): number {
-  return wallTilesFor(venue, 'all-grid', live).filter((tile) => tile.stream?.isLive).length;
-}
-
-/**
- * On air in every venue but the open one: what the "전체 매장" button carries, since the
- * open venue's count is already on its own tab beside it.
- */
-export function liveElsewhere(venues: Venue[], liveByVenue: Map<string, VenueLive>, activeVenueId: string): number {
-  return venues
-    .filter((venue) => venue.id !== activeVenueId)
-    .reduce((total, venue) => total + liveCountOf(venue, liveByVenue.get(venue.id)), 0);
 }

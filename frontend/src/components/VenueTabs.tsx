@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { Venue, VenueLive } from '../lib/types';
+import type { Venue } from '../lib/types';
 import { accentStyle } from '../lib/venue';
-import { liveCountOf, liveElsewhere, PHONE_LAYOUT_QUERY, venueRowMode, type VenueRowMode } from '../lib/venueRow';
+import { PHONE_LAYOUT_QUERY, useMediaQuery } from '../lib/media';
+import { venueRowMode, type VenueRowMode } from '../lib/venueRow';
+import { liveElsewhere } from '../lib/wallTiles';
 import { VenueMark } from './VenueMark';
 
 interface VenueTabsProps {
   venues: Venue[];
-  liveByVenue: Map<string, VenueLive>;
+  /** Each venue's cabinets on air, counted once in App from the walls it builds. */
+  liveCounts: Map<string, number>;
   activeVenueId: string;
   onSelect: (venueId: string) => void;
 }
@@ -21,11 +24,15 @@ interface VenueTabsProps {
  * rest open as a list laid over the page, so the sticky marquee stays one venue row and
  * one view row tall however many venues there are (see `venueRowMode`).
  */
-export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: VenueTabsProps) {
+export function VenueTabs({ venues, liveCounts, activeVenueId, onSelect }: VenueTabsProps) {
   const phone = useMediaQuery(PHONE_LAYOUT_QUERY);
   const groupRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<VenueRowMode>('tabs');
+  // The counts as text, so a poll that changed none of them leaves the measuring alone: the
+  // count map is new after every poll, and the observer below used to be torn down and
+  // set up again each time.
+  const countsKey = venues.map((venue) => liveCounts.get(venue.id) ?? 0).join(',');
 
   // The full row is laid out off screen on a phone, so the decision follows its real
   // width: logos loading, fonts arriving, the phone turning, a venue added.
@@ -45,7 +52,7 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
     observer.observe(group);
     observer.observe(probe);
     return () => observer.disconnect();
-  }, [phone, venues, liveByVenue]);
+  }, [phone, venues, countsKey]);
 
   if (venues.length < 2) {
     return null;
@@ -66,7 +73,7 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
         aria-labelledby="venue-tabs-label"
       >
         {shown.map((venue) => {
-          const count = liveCountOf(venue, liveByVenue.get(venue.id));
+          const count = liveCounts.get(venue.id) ?? 0;
           const isActive = venue.id === activeVenueId;
 
           return (
@@ -89,7 +96,7 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
       {folded && (
         <VenueList
           venues={venues}
-          liveByVenue={liveByVenue}
+          liveCounts={liveCounts}
           activeVenueId={activeVenueId}
           onSelect={onSelect}
         />
@@ -102,7 +109,7 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
           <div className="venue-tabs venue-tabs--probe" ref={probeRef}>
             {venues.map((venue) => (
               <span key={venue.id} className="venue-tab" style={accentStyle(venue.accent)}>
-                <TabFace venue={venue} count={liveCountOf(venue, liveByVenue.get(venue.id))} />
+                <TabFace venue={venue} count={liveCounts.get(venue.id) ?? 0} />
               </span>
             ))}
           </div>
@@ -133,12 +140,12 @@ function TabFace({ venue, count }: { venue: Venue; count: number }) {
  * into the marquee, so opening it leaves the bar's height - and with it the phone's
  * playing slots, which are judged below the bar - exactly as it was.
  */
-function VenueList({ venues, liveByVenue, activeVenueId, onSelect }: VenueTabsProps) {
+function VenueList({ venues, liveCounts, activeVenueId, onSelect }: VenueTabsProps) {
   const [open, setOpen] = useState(false);
   const listId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const elsewhere = liveElsewhere(venues, liveByVenue, activeVenueId);
+  const elsewhere = liveElsewhere(liveCounts, activeVenueId);
 
   const close = useCallback((returnFocus: boolean) => {
     setOpen(false);
@@ -249,7 +256,7 @@ function VenueList({ venues, liveByVenue, activeVenueId, onSelect }: VenueTabsPr
         onKeyDown={onListKeyDown}
       >
         {venues.map((venue) => {
-          const count = liveCountOf(venue, liveByVenue.get(venue.id));
+          const count = liveCounts.get(venue.id) ?? 0;
           const isActive = venue.id === activeVenueId;
           return (
             <li
@@ -274,21 +281,4 @@ function VenueList({ venues, liveByVenue, activeVenueId, onSelect }: VenueTabsPr
       </ul>
     </>
   );
-}
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia(query).matches);
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const list = window.matchMedia(query);
-    const onChange = () => setMatches(list.matches);
-    onChange();
-    list.addEventListener('change', onChange);
-    return () => list.removeEventListener('change', onChange);
-  }, [query]);
-
-  return matches;
 }

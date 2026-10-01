@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveStream, Venue, VenueLive } from './types';
-import { normalizeCabinetName, wallTilesFor } from './wallTiles';
+import { splitWall } from './idleCabinets';
+import { isOnAir, liveCountOf as countWall, liveElsewhere, wallTilesFor } from './wallTiles';
 
 const venue = (...stations: [id: string, label: string, zoneId?: string][]): Venue => ({
   id: 'v',
@@ -13,7 +14,7 @@ const venue = (...stations: [id: string, label: string, zoneId?: string][]): Ven
   stations: stations.map(([id, label, zoneId]) => ({ id, label, zoneId })),
 });
 
-const stream = (name: string, stationId: string | null = null): LiveStream => ({
+const stream = (name: string, stationId?: string): LiveStream => ({
   stationId,
   videoId: `video-${name}`,
   title: `TAIKO LABS ${name} Live Streaming 26.09.30 - 1부`,
@@ -35,7 +36,7 @@ const live = (streams: LiveStream[], unmatched: LiveStream[] = []): VenueLive =>
 const labs = venue(['a1', 'A1', 'z0'], ['base', 'THE BASE', 'z1']);
 
 describe('wallTilesFor', () => {
-  it('without unlisted broadcasts, is the venue\'s cabinets with their streams, as before', () => {
+  it('without unregistered broadcasts, is the venue\'s cabinets with their streams, as before', () => {
     const tiles = wallTilesFor(labs, 'all-grid', live([stream('A1', 'a1')]));
 
     expect(tiles).toEqual([
@@ -50,8 +51,8 @@ describe('wallTilesFor', () => {
     expect(tiles.map((tile) => [tile.id, tile.label, tile.unregistered])).toEqual([
       ['a1', 'A1', false],
       ['base', 'THE BASE', false],
-      ['unmatched:THEBASE2', 'THE BASE 2', true],
-      ['unmatched:Z9', 'Z9', true],
+      ['unregistered:THEBASE2', 'THE BASE 2', true],
+      ['unregistered:Z9', 'Z9', true],
     ]);
     expect(tiles[2].stream?.videoId).toBe('video-THE BASE 2');
   });
@@ -90,12 +91,12 @@ describe('wallTilesFor', () => {
     expect(tiles.map((tile) => [tile.id, tile.unregistered])).toEqual([
       ['a1', false],
       ['base', false],
-      ['unmatched:THEBASE2', true],
+      ['unregistered:THEBASE2', true],
     ]);
   });
 
-  it('never lets an unlisted tile take a listed cabinet\'s id', () => {
-    const odd = venue(['unmatched:Z9', 'odd']);
+  it('never lets an unregistered tile take a listed cabinet\'s id', () => {
+    const odd = venue(['unregistered:Z9', 'odd']);
     const tiles = wallTilesFor(odd, 'all-grid', live([], [stream('Z9')]));
 
     expect(new Set(tiles.map((tile) => tile.id)).size).toBe(2);
@@ -106,10 +107,78 @@ describe('wallTilesFor', () => {
   });
 });
 
-describe('normalizeCabinetName', () => {
-  it('compares names the way the server matches aliases', () => {
-    expect(normalizeCabinetName('the-base 2')).toBe('THEBASE2');
-    expect(normalizeCabinetName('SECTOR A 1번 기체')).toBe('SECTORA1번기체');
-    expect(normalizeCabinetName(undefined)).toBe('');
+describe('live counts', () => {
+  // A venue's count, from its whole wall as App builds it.
+  const liveCountOf = (of: Venue | undefined, data: VenueLive | undefined) => countWall(wallTilesFor(of, 'all-grid', data));
+
+  // Four cabinets, S0..S3; the n-th stream belongs to the n-th cabinet.
+  const venue = (id: string): Venue => ({
+    id,
+    name: id,
+    channelId: id,
+    zones: [],
+    stations: [0, 1, 2, 3].map((index) => ({ id: `s${index}`, label: `S${index}` })),
+  });
+  const stream = (isLive: boolean, index: number): LiveStream => ({
+    stationId: `s${index}`,
+    videoId: `v${index}`,
+    title: '',
+    name: `S${index}`,
+    isLive,
+    embeddable: true,
+    watchUrl: '',
+  });
+  const unregistered = (name: string, isLive = true): LiveStream => ({ ...stream(isLive, 0), stationId: undefined, name });
+  const live = (venueId: string, ...streams: boolean[]): VenueLive => ({
+    venueId,
+    updatedAt: '',
+    streams: streams.map(stream),
+    unmatched: [],
+    source: 'Api',
+    isFallbackSource: false,
+    venue: { state: 'Open', localTime: '' },
+  });
+
+  it('counts only the streams on air', () => {
+    expect(liveCountOf(venue('a'), live('a', true, false, true))).toBe(2);
+    expect(liveCountOf(venue('a'), undefined)).toBe(0);
+    expect(liveCountOf(undefined, live('a', true))).toBe(0);
+  });
+
+  it('counts a cabinet on air that the venue does not list yet', () => {
+    expect(liveCountOf(venue('a'), { ...live('a', true), unmatched: [unregistered('NEW'), unregistered('OLD', false)] })).toBe(2);
+  });
+
+  it('counts one for a name that came twice, as the wall shows one tile', () => {
+    const twice = { ...live('a', true), unmatched: [unregistered('THE BASE 2'), unregistered('the-base 2')] };
+    expect(liveCountOf(venue('a'), twice)).toBe(2);
+  });
+
+  it('does not count an unregistered broadcast apart from the listed cabinet it folds into', () => {
+    // The venue list already has S1, the live data still calls it unmatched: one tile.
+    const folded = { ...live('a', true), unmatched: [unregistered('S1')] };
+    expect(liveCountOf(venue('a'), folded)).toBe(2);
+    // Unless the cabinet has a stream of its own already, which is the one on the wall.
+    const both = { ...live('a', true, true), unmatched: [unregistered('S1')] };
+    expect(liveCountOf(venue('a'), both)).toBe(2);
+  });
+
+  it('adds up every venue but the open one', () => {
+    const byVenue = new Map([
+      ['a', live('a', true, true)],
+      ['b', live('b', true, false)],
+      // "c" has not been heard from yet.
+    ]);
+    const counts = new Map(['a', 'b', 'c'].map((id) => [id, liveCountOf(venue(id), byVenue.get(id))]));
+    expect(liveElsewhere(counts, 'a')).toBe(1);
+    expect(liveElsewhere(counts, 'b')).toBe(2);
+    expect(liveElsewhere(counts, 'c')).toBe(3);
+  });
+
+  it('splits the wall and counts it by one answer: a broadcast that is not live is neither', () => {
+    const wall = wallTilesFor(venue('a'), 'all-grid', live('a', true, false));
+    expect(wall.map(isOnAir)).toEqual([true, false, false, false]);
+    expect(splitWall(wall, false).tiles.map((tile) => tile.id)).toEqual(['s0']);
+    expect(liveCountOf(venue('a'), live('a', true, false))).toBe(1);
   });
 });

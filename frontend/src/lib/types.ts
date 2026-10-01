@@ -3,7 +3,11 @@ export type LiveSourceMode = 'Auto' | 'Api' | 'Public' | 'Mock';
 export type VenueState = 'Open' | 'ClosedForHoliday' | 'OutsideHours';
 
 export interface LiveStream {
-  stationId: string | null;
+  /**
+   * The cabinet the title named. Absent, not null, when it named none the venue lists:
+   * the server leaves null fields out of its answers.
+   */
+  stationId?: string;
   videoId: string;
   title: string;
   name: string;
@@ -58,6 +62,12 @@ export interface Venue {
   stations: Station[];
 }
 
+export interface VenuesResponse {
+  /** Moves when the settings file changes; the live data carries the same number. */
+  version: number;
+  venues: Venue[];
+}
+
 // ----------------------------------------------------------- live snapshots
 
 export interface VenueLive {
@@ -76,6 +86,6 @@ export interface VenueLive {
 export interface LiveResponse {
   pollIntervalSeconds: number;
   /** Moves when the settings file changes; the venue list should then be fetched again. */
-  venuesVersion?: number;
+  venuesVersion: number;
   venues: VenueLive[];
 }

@@ -1,0 +1,21 @@
+{
+  "about": "Cabinet names and the key each is compared by. Venue.Normalize (NormalizeTests.cs) and lib/cabinetName.ts (cabinetName.test.ts) must both give these keys.",
+  "cases": [
+    { "name": "the-base 2", "key": "THEBASE2" },
+    { "name": "THE BASE 2", "key": "THEBASE2" },
+    { "name": "SECTOR A 1번 기체", "key": "SECTORA1번기체" },
+    { "name": "  a1  ", "key": "A1" },
+    { "name": "", "key": "" },
+    { "name": "-- · --", "key": "" },
+    { "name": "the base Ⅱ", "key": "THEBASE", "why": "Ⅱ is a letter-like number (Nl), not a decimal digit" },
+    { "name": "BASE²", "key": "BASE", "why": "² is another number (No), not a decimal digit" },
+    { "name": "①", "key": "" },
+    { "name": "straße", "key": "STRAßE", "why": "ß has no one-letter capital, so it stays" },
+    { "name": "ﬁre", "key": "ﬁRE", "why": "the ligature's capital is two letters, so it stays" },
+    { "name": "ǅ", "key": "Ǆ", "why": "a title-case letter has a one-letter capital" },
+    { "name": "Ｔａｉｋｏ１", "key": "ＴＡＩＫＯ１", "why": "full-width letters and digits count, and keep their width" },
+    { "name": "٣", "key": "٣", "why": "a decimal digit of another script counts" },
+    { "name": "istanbul", "key": "ISTANBUL", "why": "never Turkish casing" },
+    { "name": "𝐀1", "key": "1", "why": "a letter past the Basic Multilingual Plane is two UTF-16 units, neither of them a letter on the server" }
+  ]
+}

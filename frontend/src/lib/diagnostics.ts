@@ -1,4 +1,5 @@
 import { endpoint } from './api';
+import { isDesktopShell } from './shell';
 
 /**
  * Reports playback trouble to the backend log, for soak tests of the desktop shell -
@@ -16,7 +17,7 @@ const lastSent = new Map<string, number>();
 /** The same trouble on the same tile is reported at most once a minute. */
 const REPEAT_WINDOW_MS = 60_000;
 
-const client = '__TAURI_INTERNALS__' in window ? 'tauri' : 'browser';
+const client = isDesktopShell ? 'tauri' : 'browser';
 
 export function setDiagnosticsContext(next: Detail): void {
   context = { ...context, ...next };

@@ -1,7 +1,20 @@
 import type { Station, Venue } from './types';
 
-/** The whole wall, plus one entry per zone when a venue has more than one. */
-export type ViewMode = 'all' | 'all-grid' | string;
+/**
+ * The whole wall: every cabinet the venue lists, then those on air that it does not list
+ * yet. What a venue opens on, and the only view of a whole venue - the floor plan it once
+ * had beside it was retired, the plain wall served better.
+ */
+export const WALL_VIEW = 'all-grid';
+
+/**
+ * One zone's cabinets, by the zone's id. Branded so a string from the address bar becomes
+ * one only through isValidView, which checks it against the venue's zones.
+ */
+export type ZoneView = string & { readonly __zoneView: true };
+
+/** The whole wall, or one zone of it; in the address bar as `all-grid` or the zone's id. */
+export type ViewMode = typeof WALL_VIEW | ZoneView;
 
 export interface ViewOption {
   value: ViewMode;
@@ -13,26 +26,18 @@ export function viewOptionsFor(venue: Venue | undefined): ViewOption[] {
     return [];
   }
 
-  const options: ViewOption[] = [];
-
-  // The wall is the only view of a whole venue: the floor plan it once had beside it was
-  // retired, the plain wall served better.
-  options.push({ value: 'all-grid', label: '통합' });
+  const options: ViewOption[] = [{ value: WALL_VIEW, label: '통합' }];
 
   // A single zone adds nothing over 통합.
   if (venue.zones.length > 1) {
     for (const zone of venue.zones) {
       if (venue.stations.some((station) => station.zoneId === zone.id)) {
-        options.push({ value: zone.id, label: zone.label || zone.code });
+        options.push({ value: zone.id as ZoneView, label: zone.label || zone.code });
       }
     }
   }
 
   return options;
-}
-
-export function defaultViewFor(_venue: Venue | undefined, _isCompact: boolean): ViewMode {
-  return 'all-grid';
 }
 
 export function isValidView(venue: Venue | undefined, view: string | null): view is ViewMode {
@@ -48,7 +53,7 @@ export function stationsForView(venue: Venue | undefined, view: ViewMode): Stati
     return [];
   }
 
-  if (view === 'all' || view === 'all-grid') {
+  if (view === WALL_VIEW) {
     return venue.stations;
   }
 

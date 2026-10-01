@@ -1,3 +1,4 @@
+import { normalizeCabinetName } from '../lib/cabinetName';
 import type { StationDraft } from './model';
 import { splitList } from './model';
 
@@ -66,19 +67,16 @@ export function nameIn(regex: RegExp, title: string): string | null {
   return name === undefined ? null : name.trim();
 }
 
-/** The backend's normalisation: case, spaces and separators do not matter. */
-const normalize = (value: string) => value.replace(/[^\p{L}\p{N}]/gu, '').toUpperCase();
-
 /** Which cabinet a name from a title resolves to, the way the backend decides it. */
 export function stationFor(name: string, stations: StationDraft[]): StationDraft | null {
-  const key = normalize(name);
+  const key = normalizeCabinetName(name);
   if (!key) {
     return null;
   }
 
   return (
     stations.find((station) =>
-      [...splitList(station.aliases), station.label, station.id].some((candidate) => normalize(candidate) === key),
+      [...splitList(station.aliases), station.label, station.id].some((candidate) => normalizeCabinetName(candidate) === key),
     ) ?? null
   );
 }

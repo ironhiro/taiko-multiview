@@ -694,19 +694,19 @@ function resyncWhenShownAgain(
     }
   };
 
-  const observer = tile
-    ? new IntersectionObserver(([entry]) => {
-        const nowVisible = entry.isIntersecting;
-        if (!nowVisible && isVisible) {
-          hiddenSince ??= Date.now();
-        } else if (nowVisible && !isVisible && document.visibilityState === 'visible') {
-          resync('scroll');
-        }
-        isVisible = nowVisible;
-      })
-    : null;
-
-  observer?.observe(tile!);
+  let observer: IntersectionObserver | null = null;
+  if (tile) {
+    observer = new IntersectionObserver(([entry]) => {
+      const nowVisible = entry.isIntersecting;
+      if (!nowVisible && isVisible) {
+        hiddenSince ??= Date.now();
+      } else if (nowVisible && !isVisible && document.visibilityState === 'visible') {
+        resync('scroll');
+      }
+      isVisible = nowVisible;
+    });
+    observer.observe(tile);
+  }
   document.addEventListener('visibilitychange', onVisibilityChange);
 
   return () => {

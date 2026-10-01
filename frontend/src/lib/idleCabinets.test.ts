@@ -19,6 +19,14 @@ describe('splitWall', () => {
     expect(split.idle.map((tile) => tile.label)).toEqual(['A2', 'B3', 'B4']);
   });
 
+  it('names no unregistered broadcast in the strip, even one that is not live', () => {
+    const ended = { ...onAir('unregistered:THEBASE3'), label: 'THE BASE 3', unregistered: true };
+    ended.stream = { ...ended.stream!, isLive: false };
+    const split = splitWall([onAir('a1'), empty('a2'), ended], false);
+    expect(split.tiles.map((tile) => tile.id)).toEqual(['a1']);
+    expect(split.idle.map((tile) => tile.label)).toEqual(['A2']);
+  });
+
   it('keeps every tile while the first live answer is still on its way', () => {
     const wall = [empty('a1'), empty('a2')];
     expect(splitWall(wall, true)).toEqual({ tiles: wall, idle: [] });
