@@ -1,9 +1,10 @@
 /**
  * The backend's venue list (backend/TaikoLabs.Api/venues.json), as the editor edits it.
  *
- * Only the keys the editor has fields for are unpacked; anything else on a venue - a
- * floor plan, a key added to the backend after this editor was written - is carried
- * through untouched, as is everything outside Venues:Items.
+ * Only the keys the editor has fields for are unpacked; anything else on a venue - a key
+ * added to the backend after this editor was written - is carried through untouched, as
+ * is everything outside Venues:Items. The one exception is a key the backend no longer
+ * reads (RETIRED), which goes on the next save.
  */
 
 export const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
@@ -60,16 +61,21 @@ export interface VenueDraft {
   hours: HourDraft[];
   /** One yyyy-MM-dd per line. */
   closedDates: string;
-  /** Kept as found; the editor never edits coordinates. */
-  layout: unknown;
   /** Keys this editor has no field for, written back as they were. */
   extra: Json;
 }
 
 const MANAGED = new Set([
   'id', 'name', 'accent', 'logo', 'channelId', 'channelUrl', 'titlePattern', 'naverPlaceId',
-  'zones', 'stations', 'layout', 'hours', 'closedDates',
+  'zones', 'stations', 'hours', 'closedDates',
 ]);
+
+/**
+ * Keys an older file may still have that the backend no longer reads. Carried through like
+ * an unknown key, the floor plan's coordinates would outlive the view they were for in every
+ * file saved from here on, and be copied into each duplicated venue.
+ */
+const RETIRED = new Set(['layout']);
 
 let counter = 0;
 export const newKey = () => `k${++counter}`;
@@ -87,7 +93,7 @@ function fromJson(item: Json): VenueDraft {
   const hours = (item.hours ?? {}) as Json;
   const extra: Json = {};
   for (const [key, value] of Object.entries(item)) {
-    if (!MANAGED.has(key)) {
+    if (!MANAGED.has(key) && !RETIRED.has(key)) {
       extra[key] = value;
     }
   }
@@ -120,7 +126,6 @@ function fromJson(item: Json): VenueDraft {
       return open && close ? { day, open, close, closed: false } : { day, open: '10:00', close: '24:00', closed: true };
     }),
     closedDates: (Array.isArray(item.closedDates) ? item.closedDates : []).filter((d) => typeof d === 'string').join('\n'),
-    layout: item.layout ?? null,
     extra,
   };
 }
@@ -140,19 +145,17 @@ export function newVenue(): VenueDraft {
     stations: [{ key: newKey(), id: '1', label: '1번대', zoneId: '', aliases: '' }],
     hours: WEEK.map((day) => ({ day, open: '10:00', close: '24:00', closed: false })),
     closedDates: '',
-    layout: null,
     extra: {},
   };
 }
 
-/** A copy for the 복제 button. The floor plan stays behind: it is one venue's geometry. */
+/** A copy for the 복제 button, with keys of its own. */
 export function duplicateVenue(venue: VenueDraft): VenueDraft {
   return {
     ...structuredClone(venue),
     key: newKey(),
     id: `${venue.id}-copy`,
     name: `${venue.name} (복사)`,
-    layout: null,
     zones: venue.zones.map((zone) => ({ ...zone, key: newKey() })),
     stations: venue.stations.map((station) => ({ ...station, key: newKey() })),
   };
@@ -198,8 +201,6 @@ function toJson(venue: VenueDraft): Json {
       return node;
     });
 
-  // Null rather than left out, so it reads as a deliberate "no floor plan".
-  item.layout = venue.layout ?? null;
   item.hours = Object.fromEntries(
     venue.hours.map((hour) => [hour.day, hour.closed ? '' : `${hour.open.trim()}-${hour.close.trim()}`]),
   );

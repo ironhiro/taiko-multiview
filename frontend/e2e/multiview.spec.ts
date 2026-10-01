@@ -371,6 +371,47 @@ test.describe('a venue list that does not arrive the first time', () => {
   });
 });
 
+// The server notes a venue it failed to poll in the live data. That is news only on that
+// venue's wall: the notice used to show whichever venue had failed, whatever was on screen.
+test.describe('a venue the server failed to poll', () => {
+  test.skip(({ isMobile }) => isMobile, 'same path on every device');
+
+  test('shows its error on its own wall only, and the refresh button keeps to that', async ({ page }) => {
+    const names = await venueNames(page);
+    const ids = ((await (await page.request.get('/api/venues')).json()) as { venues: { id: string }[] }).venues.map(
+      (venue) => venue.id,
+    );
+    const failing = ids.find((id) => id !== 'taikolabs')!;
+    let served = 0;
+    await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+      const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
+      const body = (await response.json()) as { venues: { venueId: string; error?: string }[] };
+      body.venues.find((venue) => venue.venueId === failing)!.error = '채널 조회 실패 (테스트)';
+      served += 1;
+      await route.fulfill({ response, json: body });
+    });
+
+    await page.goto('/?venue=taikolabs');
+    await expect(page.locator('.grid-view .tile').first()).toBeVisible();
+    await expect.poll(() => served).toBeGreaterThan(0);
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+
+    // The manual refresh answers through the same path.
+    const before = served;
+    await page.getByRole('button', { name: '새로고침' }).click();
+    await expect.poll(() => served).toBeGreaterThan(before);
+    await expect(page.getByRole('button', { name: '새로고침' })).toBeEnabled();
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+
+    await page.locator('.venue-tab').nth(ids.indexOf(failing)).click();
+    await expect(page.locator('.marquee__venue-name')).toHaveText(names[ids.indexOf(failing)]);
+    await expect(page.locator('.stage__error')).toHaveText('채널 조회 실패 (테스트)');
+
+    await page.locator('.venue-tab').nth(ids.indexOf('taikolabs')).click();
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+  });
+});
+
 // A cabinet on air that the venue's settings do not list yet gets a tile of its own at the
 // end of the whole wall, and hands over to the listed cabinet once the settings have it.
 // The mock server never reports one, so the test plays the server's part.
@@ -831,6 +872,33 @@ test.describe('cabinets with nothing on air', () => {
     const strip = (await page.locator('.idle-strip').boundingBox())!;
     expect(Math.abs(strip.width - columnsWidth)).toBeLessThanOrEqual(1);
   });
+
+  // Until the first live answer nothing is known to be off air, so the wall must not start
+  // as a strip and turn into tiles a moment later (lib/idleCabinets.ts).
+  test('wait in tiles of their own, 불러오는 중, until the first live answer, with no strip', async ({ page }) => {
+    const stations = await stationsOf(page, 'taikolabs');
+    const onAir = stations.slice(0, 2);
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    await withOnAir(page, 'taikolabs', onAir.map((station) => station.id));
+    // Laid over withOnAir's route, so it runs first and holds the answer back.
+    await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+      await answered;
+      await route.fallback();
+    });
+    await page.goto('/?venue=taikolabs&view=all-grid');
+
+    const tiles = page.locator('.grid-view .tile');
+    await expect(tiles).toHaveCount(stations.length);
+    await expect(page.locator('.grid-view .placeholder--loading')).toHaveCount(stations.length);
+    await expect(page.locator('.grid-view .placeholder--loading').first()).toHaveText('불러오는 중');
+    await expect(page.locator('.idle-strip')).toHaveCount(0);
+
+    answer();
+    await expect(tiles).toHaveCount(onAir.length);
+    await expect(page.locator('.placeholder--loading')).toHaveCount(0);
+    await expect(page.locator('.idle-chip')).toHaveCount(stations.length - onAir.length);
+  });
 });
 
 // The viewer count stays on one line and whole: a narrow row broke "12,345명" before 명.
@@ -865,6 +933,89 @@ test.describe('the viewer count', () => {
     }
   });
 });
+
+// A player takes a few seconds to load, and its tile's sound button works meanwhile. The
+// sound asked for then has to reach the player once it is ready: onReady used to mute it
+// whatever the tile had been asked, and a loading player has none of its methods to call.
+// Desktop only - a phone builds its players the same way, once a tile holds a slot.
+test.describe('sound asked for while the player loads', () => {
+  test.skip(({ isMobile }) => isMobile, 'same path on every device');
+
+  test('reaches the player once it is ready, and only that one', async ({ page }) => {
+    await installFakeYouTube(page);
+    await withOnAir(page, 'taikolabs', null, { embeddable: true });
+    await page.goto('/?venue=taikolabs');
+
+    const tile = page.locator('.grid-view .tile').filter({ has: page.locator('[data-fake-player]') }).first();
+    await expect(tile).toBeVisible();
+    const players = await page.locator('[data-fake-player]').count();
+    expect(players).toBeGreaterThan(1);
+    const index = Number(await tile.locator('[data-fake-player]').getAttribute('data-fake-player'));
+
+    await tile.getByRole('button', { name: /소리 듣기/ }).click();
+    await expect(tile.getByRole('button', { name: /소리 끄기/ })).toBeVisible();
+    await page.evaluate(() => (window as unknown as { fakeYouTube: FakeYouTube }).fakeYouTube.readyAll());
+
+    const sound = await page.evaluate(() => (window as unknown as { fakeYouTube: FakeYouTube }).fakeYouTube.sound());
+    expect(sound).toHaveLength(players);
+    expect(sound[index]).toBe('on');
+    expect(sound.filter((state) => state === 'on')).toHaveLength(1);
+  });
+});
+
+/** The page's stand-in for the IFrame API: lets a test say when the players are ready. */
+interface FakeYouTube {
+  readyAll: () => void;
+  /** Each player's sound as its last mute or unMute left it, in the order they were built. */
+  sound: () => ('on' | 'off' | 'untouched')[];
+}
+
+/**
+ * Puts a fake `window.YT` in place before the page's first script, so loadYouTubeApi uses
+ * it rather than fetching YouTube's. As with the real one, a player has none of its methods
+ * until it is ready - which here is when the test calls `readyAll()`.
+ */
+async function installFakeYouTube(page: Page) {
+  await page.addInitScript(() => {
+    type Options = { videoId: string; events?: { onReady?: (event: { target: unknown }) => void } };
+    const built: { options: Options; target: Record<string, unknown>; sound: 'on' | 'off' | 'untouched' }[] = [];
+    class Player {
+      constructor(element: HTMLElement, options: Options) {
+        const entry = { options, target: this as unknown as Record<string, unknown>, sound: 'untouched' as const };
+        element.setAttribute('data-fake-player', String(built.length));
+        built.push(entry as (typeof built)[number]);
+      }
+    }
+    const methods = (entry: (typeof built)[number]) => ({
+      mute: () => {
+        entry.sound = 'off';
+      },
+      unMute: () => {
+        entry.sound = 'on';
+      },
+      setVolume: () => {},
+      playVideo: () => {},
+      pauseVideo: () => {},
+      destroy: () => {},
+      getPlayerState: () => 1,
+      getCurrentTime: () => 0,
+      getVideoUrl: () => `https://www.youtube.com/watch?v=${entry.options.videoId}`,
+      loadVideoById: () => {},
+      cueVideoById: () => {},
+      seekTo: () => {},
+    });
+    const fakeYouTube = {
+      readyAll: () => {
+        for (const entry of built) {
+          Object.assign(entry.target, methods(entry));
+          entry.options.events?.onReady?.({ target: entry.target });
+        }
+      },
+      sound: () => built.map((entry) => entry.sound),
+    };
+    Object.assign(window, { YT: { Player }, fakeYouTube });
+  });
+}
 
 type UnlistedPhase = 'unlisted' | 'over' | 'registered';
 

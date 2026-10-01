@@ -138,7 +138,7 @@ if (hasFrontend)
 {
     app.UseDefaultFiles();
     // The build leaves a .br/.gz twin beside each asset; this hands one out when the client
-    // takes it, so the page's 355 kB stylesheet does not cross a phone's link uncompressed.
+    // takes it, so the stylesheet and the script do not cross a phone's link uncompressed.
     // Nothing is compressed here at request time - see PreCompressedStaticFiles for why.
     app.UsePreCompressedAssets();
     app.UseStaticFiles(new StaticFileOptions
@@ -296,12 +296,13 @@ static void SetCacheHeaders(HttpContext context)
 // shows thumbnails and logos from wherever a venue keeps them. connect-src is left open
 // on purpose: the desktop shell can load this page and point it at an API elsewhere.
 // Swagger UI and /status run inline script of their own, so they go without a CSP.
+// Fonts come only from /assets: the build keeps every font a file (vite.config.ts).
 const string ContentSecurityPolicy =
     "script-src 'self' https://www.youtube.com https://s.ytimg.com; " +
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com; " +
     "img-src 'self' data: https:; " +
     "style-src 'self' 'unsafe-inline'; " +
-    "font-src 'self' data:; " +
+    "font-src 'self'; " +
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 static void SetSecurityHeaders(HttpContext context, IWebHostEnvironment env)
@@ -353,8 +354,6 @@ static VenueInfo DescribeVenue(Venue venue, IReadOnlyDictionary<string, string> 
     Stations = venue.Definition.Stations
         .Select(station => new StationInfo(station.Id, station.Label, station.ZoneId))
         .ToList(),
-    // Null for venues with no published map; the client then offers the grid only.
-    Layout = venue.Definition.Layout,
 };
 
 static VenueLive Project(Venue venue, LiveSnapshot snapshot, VenueStatus status) => new()

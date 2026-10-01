@@ -21,7 +21,6 @@ export function sampleSettings(): Record<string, unknown> {
             { id: 'a1', label: 'A1', zoneId: 'sector-a', aliases: ['SECTOR A 1'] },
             { id: 'base', label: 'THE BASE' },
           ],
-          layout: { canvas: { width: 1000, height: 1200 }, units: [{ stationId: 'a1', x: 1, y: 2 }] },
           hours: { Monday: '10:00-24:00', Friday: '10:00-29:00', Sunday: '' },
           closedDates: ['2026-10-03'],
           // A key this editor has never heard of.

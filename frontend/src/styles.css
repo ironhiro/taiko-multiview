@@ -1,5 +1,4 @@
-/* Hallmark · genre: playful · macrostructure: Catalogue (wall of streams) · tone: arcade · anchor hue: 270 (cabinet night) · theme: custom "오락실 감성" · enrichment: none · nav: N7 brutal slab → marquee · footer: Ft2 inline line → credit strip · design-system: design.md · designed-as-app */
-/* Hallmark · pre-emit critique: P5 H4 E4 S5 R4 V5 */
+/* Multiview styles. The system is design.md at the repository root; tokens in tokens.css. */
 
 *,
 *::before,
@@ -640,8 +639,9 @@ input {
   border: 0;
 }
 
-/* In the floor plan, whose tiles must stay exactly 16:9, the header and controls float
-   over the video. The wall's grid puts them in a row under it instead (further down). */
+/* Base layer, left from the retired floor plan: the header and controls float over the
+   video. Every tile now lives in the wall's grid, which puts them in a row under the
+   picture instead (.grid-view, further down); folding the two layers is still to do. */
 .tile__header {
   position: absolute;
   top: 0;
@@ -713,13 +713,6 @@ input {
   color: var(--color-ink-2);
 }
 
-/* The floor plan's tiles; the wall's rows decide this for themselves (lib/rowFit.ts). */
-@container (max-width: 240px) {
-  .tile--compact .tile__viewers {
-    display: none;
-  }
-}
-
 .tile__controls {
   position: absolute;
   right: var(--space-2xs);
@@ -761,18 +754,6 @@ input {
   flex: none;
 }
 
-/* A small floor-plan tile keeps the icons; the words go. The wall's rows decide this for
-   themselves (data-fit, below). */
-@container (max-width: 220px) {
-  .tile--compact .tile__control .arcade-button__text {
-    display: none;
-  }
-
-  .tile--compact .tile__control {
-    padding: 0 var(--space-3xs);
-  }
-}
-
 /* --------------------------------------------------- the row under the picture */
 
 /* The label and buttons sit in a row beneath the picture, on every device (design.md,
@@ -780,8 +761,8 @@ input {
    share, fullscreen, the channel link under the label - so a click or a tap meant for one
    landed on the other, and hovering a desktop tile laid our buttons over the thumbnail. */
 .grid-view .tile {
-  /* The row's type follows the tile's own width, not the window's height (tokens.css sizes
-     it by vh for the floor plan). What fits in a row then depends on the tile's width
+  /* The row's type follows the tile's own width, not the window's height (tokens.css keeps
+     vh-based defaults). What fits in a row then depends on the tile's width
      alone, so the widths below at which the buttons drop their words hold in any window:
      sized by vh, a taller window set larger type in a tile of the same width, and the
      longest row spilled under the buttons at 1920x1080. */
@@ -1061,8 +1042,8 @@ input {
   align-items: center;
   justify-content: center;
   gap: var(--space-3xs);
-  /* Top padding clears the floating header, which would otherwise sit on top of
-     this text once a tile gets small. */
+  /* Base layer: the top padding cleared the floating header. The wall's grid overrides
+     it now that the header sits under the picture. */
   padding: var(--space-lg) var(--space-2xs) var(--space-2xs);
   color: var(--color-ink-2);
   text-align: center;
@@ -1071,18 +1052,6 @@ input {
 .placeholder__text {
   font-size: var(--text-tile-body);
   font-weight: 700;
-}
-
-.placeholder__detail {
-  font-size: var(--text-tile-meta);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink-3);
-}
-
-@container (max-width: 260px) {
-  .placeholder__detail {
-    display: none;
-  }
 }
 
 .placeholder--warn .placeholder__text {

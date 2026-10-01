@@ -1,38 +1,11 @@
 import type { CSSProperties } from 'react';
 import type { VenueStatus } from './types';
 
-export interface IdleMessage {
-  title: string;
-  detail?: string;
-  /** Nothing has been heard from the API yet. */
-  loading?: boolean;
-}
-
-export const LOADING_MESSAGE: IdleMessage = { title: '불러오는 중', loading: true };
-
 /**
- * What an empty cabinet should say. A closed venue is a different thing from a
- * cabinet that simply has no stream yet, and saying "준비중" at 3am reads as if
- * something is about to start.
+ * A one-line summary for the credit line, or null while the venue is open. A closed venue
+ * is a different thing from a cabinet that simply has no stream yet, and its cabinets sit
+ * in the 방송 없음 strip either way, so this is where the closure is said.
  */
-export function idleMessageFor(venue: VenueStatus | undefined): IdleMessage {
-  if (!venue) {
-    return { title: '준비중…' };
-  }
-
-  const opens = formatOpening(venue);
-
-  switch (venue.state) {
-    case 'ClosedForHoliday':
-      return { title: '오늘 휴무', detail: opens };
-    case 'OutsideHours':
-      return { title: '영업 종료', detail: opens };
-    default:
-      return { title: '준비중…' };
-  }
-}
-
-/** A one-line summary for the header, or null while the venue is open. */
 export function venueSummary(venue: VenueStatus | undefined): string | null {
   if (!venue || venue.state === 'Open') {
     return null;

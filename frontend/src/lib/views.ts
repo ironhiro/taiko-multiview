@@ -15,8 +15,8 @@ export function viewOptionsFor(venue: Venue | undefined): ViewOption[] {
 
   const options: ViewOption[] = [];
 
-  // The floor-plan view is retired from the picker: the plain wall served better. Venue
-  // layouts stay in the config and FloorPlanView stays in the code, unused, for now.
+  // The wall is the only view of a whole venue: the floor plan it once had beside it was
+  // retired, the plain wall served better.
   options.push({ value: 'all-grid', label: '통합' });
 
   // A single zone adds nothing over 통합.

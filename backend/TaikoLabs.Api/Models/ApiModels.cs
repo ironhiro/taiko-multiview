@@ -1,8 +1,5 @@
 namespace TaikoLabs.Api.Models;
 
-/// <summary>A single cabinet/station inside the venue.</summary>
-public sealed record Station(string Id, string Label, string ZoneId, string ZoneName);
-
 /// <summary>A live (or most recent) stream resolved to a station.</summary>
 public sealed record LiveStream
 {

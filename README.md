@@ -67,7 +67,7 @@ cd desktop/shell && npm install && npm run dev
 - 제목 규칙: 최근 방송 제목 15건의 기체 연결 결과를 표로 표시. 연결 안 되는 제목은 `aliases` 로 보완. 제목에서 기체 이름을 드래그하면 정규식 생성
 - 검증: API 시작 시 검사를 미리 실행. API가 매장을 건너뛸 문제가 있으면 저장 차단
 
-기존 매장의 배치도 좌표는 편집하지 않고 그대로 보존. 예전 Avalonia 등록기(`tools/TaikoLabs.VenueEditor`)도 같은 파일 사용.
+모르는 키는 그대로 보존. 예전 파일에 남은 배치도 좌표(`layout`)만 저장할 때 지움.
 
 ### 항목
 
@@ -100,9 +100,8 @@ cd desktop/shell && npm install && npm run dev
 | `hours` | 요일별 영업시간. 자정을 넘기면 24 이상으로 표기 (`07:00-29:00` = 다음 날 05:00) |
 | `closedDates` | 휴무일 |
 | `naverPlaceId` | 있으면 네이버 플레이스 임시휴무를 하루 1회 조회 |
-| `layout` | 배치도 좌표. 현재 화면에서는 미사용 |
 
-설정이 잘못된 매장은 불러올 때 제외하고 에러 로그만 남김. 나머지 매장은 정상 동작.
+설정이 잘못된 매장은 불러올 때 제외하고 에러 로그만 남김. 나머지 매장은 정상 동작. 모르는 키(예전 배치도 `layout` 등)는 무시.
 
 ## 동작
 
@@ -332,7 +331,7 @@ macOS 전체화면은 기본 View 메뉴 사용 (`F11` 은 Mission Control 몫).
 
 ```bash
 # 백엔드: 기체별 방송 선택, 폴링 간격, 설정 반영, 영업시간
-dotnet test TaikoLabsMultiview.slnx
+dotnet test backend/TaikoLabs.Api.Tests
 
 # 프론트엔드 로직: 등록기 저장·검증·제목 규칙, 라이브 지연, 배치 열 수, 로컬 판별
 cd frontend && npm test

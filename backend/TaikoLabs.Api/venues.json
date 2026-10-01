@@ -108,91 +108,6 @@
             ]
           }
         ],
-        "layout": {
-          "canvas": {
-            "width": 1000,
-            "height": 1200
-          },
-          "unitSize": 130,
-          "tileWidth": 230,
-          "zones": [
-            {
-              "id": "sector-a",
-              "outline": {
-                "x": 50,
-                "y": 50,
-                "width": 250,
-                "height": 1040
-              }
-            },
-            {
-              "id": "the-base",
-              "outline": {
-                "x": 375,
-                "y": 50,
-                "width": 250,
-                "height": 280
-              }
-            },
-            {
-              "id": "sector-b",
-              "outline": {
-                "x": 700,
-                "y": 50,
-                "width": 250,
-                "height": 570
-              }
-            }
-          ],
-          "units": [
-            {
-              "stationId": "a5",
-              "x": 110,
-              "y": 155
-            },
-            {
-              "stationId": "a4",
-              "x": 110,
-              "y": 350
-            },
-            {
-              "stationId": "a3",
-              "x": 110,
-              "y": 545
-            },
-            {
-              "stationId": "a2",
-              "x": 110,
-              "y": 740
-            },
-            {
-              "stationId": "a1",
-              "x": 110,
-              "y": 935
-            },
-            {
-              "stationId": "base",
-              "x": 435,
-              "y": 155
-            },
-            {
-              "stationId": "b1",
-              "x": 760,
-              "y": 155
-            },
-            {
-              "stationId": "b2",
-              "x": 760,
-              "y": 315
-            },
-            {
-              "stationId": "b3",
-              "x": 760,
-              "y": 475
-            }
-          ],
-          "decorations": []
-        },
         "hours": {
           "Monday": "10:00-24:00",
           "Tuesday": "10:00-24:00",
@@ -221,7 +136,6 @@
             "label": "태고-2"
           }
         ],
-        "layout": null,
         "hours": {
           "Monday": "10:30-29:00",
           "Tuesday": "10:30-29:00",
@@ -249,7 +163,6 @@
             ]
           }
         ],
-        "layout": null,
         "hours": {
           "Monday": "09:00-24:00",
           "Tuesday": "09:00-24:00",
@@ -277,7 +190,6 @@
             ]
           }
         ],
-        "layout": null,
         "hours": {
           "Monday": "09:00-25:00",
           "Tuesday": "09:00-25:00",

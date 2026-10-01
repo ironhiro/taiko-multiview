@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { IdleMessage } from '../lib/venue';
 import type { LiveStream } from '../lib/types';
 import { describePlayerError, report } from '../lib/diagnostics';
 import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
@@ -25,8 +24,6 @@ interface PlayerTileProps {
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
   onRequestAudio: () => void;
-  /** Rendered small inside the floor plan, larger in the plain grid. */
-  compact?: boolean;
   /**
    * Play only while the tile holds one of the few playing slots (lib/playbackSlots.ts),
    * and build a player only once it has; a thumbnail otherwise. Used on phones and
@@ -51,8 +48,6 @@ interface PlayerTileProps {
    * already signed in.
    */
   opensChatInTab?: boolean;
-  /** What to show when this cabinet has no stream - depends on whether the venue is open. */
-  idle: IdleMessage;
 }
 
 export function PlayerTile({
@@ -61,12 +56,10 @@ export function PlayerTile({
   stream,
   isAudioActive,
   onRequestAudio,
-  compact,
   lazy,
   pausesWhenAway,
   shielded,
   opensChatInTab,
-  idle,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -103,6 +96,10 @@ export function PlayerTile({
   // Read by the player's own callbacks, which outlive any one render.
   const shouldPlayRef = useRef(shouldPlay);
   shouldPlayRef.current = shouldPlay;
+  // The same for sound: the button works while the player loads, and onReady applies
+  // whatever was asked for by then.
+  const isAudioActiveRef = useRef(isAudioActive);
+  isAudioActiveRef.current = isAudioActive;
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
@@ -264,9 +261,10 @@ export function PlayerTile({
               if (disposed) {
                 return;
               }
-              // Autoplay only survives while muted; audio is granted separately. The slot
-              // may have gone while the player loaded.
-              event.target.mute();
+              // Autoplay only survives while muted, so the player starts muted and is
+              // unmuted here if the tile was given the sound while it loaded. The slot may
+              // have gone meanwhile too.
+              applySound(event.target, isAudioActiveRef.current);
               if (shouldPlayRef.current) {
                 event.target.playVideo();
               } else {
@@ -335,12 +333,11 @@ export function PlayerTile({
     if (!player) {
       return;
     }
-
-    if (isAudioActive) {
-      player.unMute();
-      player.setVolume(100);
-    } else {
-      player.mute();
+    try {
+      applySound(player, isAudioActive);
+    } catch {
+      // Not ready yet: a loading player has none of its methods. onReady applies the
+      // sound as it stands by then, and a throw here would take the whole page down.
     }
   }, [isAudioActive, mountedId]);
 
@@ -352,7 +349,6 @@ export function PlayerTile({
 
   const className = [
     'tile',
-    compact ? 'tile--compact' : '',
     isAudioActive ? 'tile--audio' : '',
     stream ? '' : 'tile--idle',
   ]
@@ -369,7 +365,9 @@ export function PlayerTile({
             and keep taking taps. */}
         <div className={showsPlayer ? 'tile__player' : 'tile__player tile__player--hidden'} ref={hostRef} />
 
-        {!stream && <IdlePlaceholder message={idle} />}
+        {/* A cabinet off air has no tile (lib/idleCabinets.ts): a tile without a stream is
+            one the first live answer has not reached yet. */}
+        {!stream && <LoadingPlaceholder />}
 
         {stream && !stream.embeddable && (
           <UnavailablePlaceholder
@@ -415,11 +413,19 @@ export function PlayerTile({
   );
 }
 
-function IdlePlaceholder({ message }: { message: IdleMessage }) {
+function applySound(player: YTPlayer, isAudioActive: boolean) {
+  if (isAudioActive) {
+    player.unMute();
+    player.setVolume(100);
+  } else {
+    player.mute();
+  }
+}
+
+function LoadingPlaceholder() {
   return (
-    <div className={message.loading ? 'placeholder placeholder--loading' : 'placeholder'}>
-      <span className="placeholder__text">{message.title}</span>
-      {message.detail && <span className="placeholder__detail">{message.detail}</span>}
+    <div className="placeholder placeholder--loading">
+      <span className="placeholder__text">불러오는 중</span>
     </div>
   );
 }
@@ -647,7 +653,7 @@ const RESYNC_BEHIND_S = 30;
  *
  * WebKit - the engine behind the macOS desktop shell - pauses media that scrolls off
  * screen or sits in a hidden window, and resumes from the same spot when it returns, so
- * a zoomed floor plan kept showing minutes-old footage after scrolling back. Only the
+ * a tile kept showing minutes-old footage after scrolling back. Only the
  * return from hiding triggers this: a viewer scrubbing a visible tile keeps their spot.
  */
 function resyncWhenShownAgain(
@@ -721,7 +727,7 @@ function videoIdFromUrl(url: string | undefined): string | null {
   }
 }
 
-/** Tiles get very small in the floor plan, so the copy has a short form too. */
+/** A small tile has no room for the full sentence, so the copy has a short form too. */
 function UnavailablePlaceholder({
   message,
   shortMessage,

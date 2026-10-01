@@ -21,5 +21,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // Fonts stay files, however small. Inlined, every small subset and every WOFF fallback
+    // went into the stylesheet as base64 - most of a render-blocking 355 kB that a browser
+    // reading WOFF2 never needed, and that does not compress again. As files, a browser
+    // fetches only the faces the page uses, in the one format it picks.
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
   },
 })

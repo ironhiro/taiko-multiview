@@ -39,6 +39,16 @@ describe('settings round trip', () => {
     expect(saved.Venues.Items[0].name).toBe('renamed');
   });
 
+  it('drops the floor plan an older file still has, from the venue and from its copies', () => {
+    // The backend no longer reads it, so nothing would ever take it out again.
+    const root = sampleSettings() as { Venues: { Items: Record<string, unknown>[] } };
+    root.Venues.Items[0].layout = { canvas: { width: 1000, height: 1200 }, units: [{ stationId: 'a1', x: 1, y: 2 }] };
+    const [venue] = venuesOf(root);
+    const saved = withVenues(root, [venue, duplicateVenue(venue)]) as { Venues: { Items: Record<string, unknown>[] } };
+    expect(saved.Venues.Items.map((item) => 'layout' in item)).toEqual([false, false]);
+    expect(saved.Venues.Items[0].futureSetting).toEqual({ enabled: true });
+  });
+
   it('keeps everything outside Venues:Items', () => {
     const root = sampleSettings();
     const saved = withVenues(root, []) as Record<string, unknown>;
@@ -76,11 +86,10 @@ describe('editing helpers', () => {
     expect(saved.Venues.Items[0].stations[0].aliases).toEqual(['A-1', 'SECTOR A 1']);
   });
 
-  it('duplicates without the floor plan, with fresh keys', () => {
+  it('duplicates with fresh keys', () => {
     const [venue] = venuesOf(sampleSettings());
     const copy = duplicateVenue(venue);
     expect(copy.id).toBe('taikolabs-copy');
-    expect(copy.layout).toBeNull();
     expect(copy.key).not.toBe(venue.key);
     expect(copy.stations[0].key).not.toBe(venue.stations[0].key);
   });
