@@ -866,6 +866,89 @@ test.describe('the viewer count', () => {
   });
 });
 
+// A player takes a few seconds to load, and its tile's sound button works meanwhile. The
+// sound asked for then has to reach the player once it is ready: onReady used to mute it
+// whatever the tile had been asked, and a loading player has none of its methods to call.
+// Desktop only - a phone builds its players the same way, once a tile holds a slot.
+test.describe('sound asked for while the player loads', () => {
+  test.skip(({ isMobile }) => isMobile, 'same path on every device');
+
+  test('reaches the player once it is ready, and only that one', async ({ page }) => {
+    await installFakeYouTube(page);
+    await withOnAir(page, 'taikolabs', null, { embeddable: true });
+    await page.goto('/?venue=taikolabs');
+
+    const tile = page.locator('.grid-view .tile').filter({ has: page.locator('[data-fake-player]') }).first();
+    await expect(tile).toBeVisible();
+    const players = await page.locator('[data-fake-player]').count();
+    expect(players).toBeGreaterThan(1);
+    const index = Number(await tile.locator('[data-fake-player]').getAttribute('data-fake-player'));
+
+    await tile.getByRole('button', { name: /소리 듣기/ }).click();
+    await expect(tile.getByRole('button', { name: /소리 끄기/ })).toBeVisible();
+    await page.evaluate(() => (window as unknown as { fakeYouTube: FakeYouTube }).fakeYouTube.readyAll());
+
+    const sound = await page.evaluate(() => (window as unknown as { fakeYouTube: FakeYouTube }).fakeYouTube.sound());
+    expect(sound).toHaveLength(players);
+    expect(sound[index]).toBe('on');
+    expect(sound.filter((state) => state === 'on')).toHaveLength(1);
+  });
+});
+
+/** The page's stand-in for the IFrame API: lets a test say when the players are ready. */
+interface FakeYouTube {
+  readyAll: () => void;
+  /** Each player's sound as its last mute or unMute left it, in the order they were built. */
+  sound: () => ('on' | 'off' | 'untouched')[];
+}
+
+/**
+ * Puts a fake `window.YT` in place before the page's first script, so loadYouTubeApi uses
+ * it rather than fetching YouTube's. As with the real one, a player has none of its methods
+ * until it is ready - which here is when the test calls `readyAll()`.
+ */
+async function installFakeYouTube(page: Page) {
+  await page.addInitScript(() => {
+    type Options = { videoId: string; events?: { onReady?: (event: { target: unknown }) => void } };
+    const built: { options: Options; target: Record<string, unknown>; sound: 'on' | 'off' | 'untouched' }[] = [];
+    class Player {
+      constructor(element: HTMLElement, options: Options) {
+        const entry = { options, target: this as unknown as Record<string, unknown>, sound: 'untouched' as const };
+        element.setAttribute('data-fake-player', String(built.length));
+        built.push(entry as (typeof built)[number]);
+      }
+    }
+    const methods = (entry: (typeof built)[number]) => ({
+      mute: () => {
+        entry.sound = 'off';
+      },
+      unMute: () => {
+        entry.sound = 'on';
+      },
+      setVolume: () => {},
+      playVideo: () => {},
+      pauseVideo: () => {},
+      destroy: () => {},
+      getPlayerState: () => 1,
+      getCurrentTime: () => 0,
+      getVideoUrl: () => `https://www.youtube.com/watch?v=${entry.options.videoId}`,
+      loadVideoById: () => {},
+      cueVideoById: () => {},
+      seekTo: () => {},
+    });
+    const fakeYouTube = {
+      readyAll: () => {
+        for (const entry of built) {
+          Object.assign(entry.target, methods(entry));
+          entry.options.events?.onReady?.({ target: entry.target });
+        }
+      },
+      sound: () => built.map((entry) => entry.sound),
+    };
+    Object.assign(window, { YT: { Player }, fakeYouTube });
+  });
+}
+
 type UnlistedPhase = 'unlisted' | 'over' | 'registered';
 
 function columnsOf(page: Page): Promise<number> {

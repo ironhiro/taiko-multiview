@@ -103,6 +103,10 @@ export function PlayerTile({
   // Read by the player's own callbacks, which outlive any one render.
   const shouldPlayRef = useRef(shouldPlay);
   shouldPlayRef.current = shouldPlay;
+  // The same for sound: the button works while the player loads, and onReady applies
+  // whatever was asked for by then.
+  const isAudioActiveRef = useRef(isAudioActive);
+  isAudioActiveRef.current = isAudioActive;
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
@@ -264,9 +268,10 @@ export function PlayerTile({
               if (disposed) {
                 return;
               }
-              // Autoplay only survives while muted; audio is granted separately. The slot
-              // may have gone while the player loaded.
-              event.target.mute();
+              // Autoplay only survives while muted, so the player starts muted and is
+              // unmuted here if the tile was given the sound while it loaded. The slot may
+              // have gone meanwhile too.
+              applySound(event.target, isAudioActiveRef.current);
               if (shouldPlayRef.current) {
                 event.target.playVideo();
               } else {
@@ -335,12 +340,11 @@ export function PlayerTile({
     if (!player) {
       return;
     }
-
-    if (isAudioActive) {
-      player.unMute();
-      player.setVolume(100);
-    } else {
-      player.mute();
+    try {
+      applySound(player, isAudioActive);
+    } catch {
+      // Not ready yet: a loading player has none of its methods. onReady applies the
+      // sound as it stands by then, and a throw here would take the whole page down.
     }
   }, [isAudioActive, mountedId]);
 
@@ -413,6 +417,15 @@ export function PlayerTile({
       />
     </div>
   );
+}
+
+function applySound(player: YTPlayer, isAudioActive: boolean) {
+  if (isAudioActive) {
+    player.unMute();
+    player.setVolume(100);
+  } else {
+    player.mute();
+  }
 }
 
 function IdlePlaceholder({ message }: { message: IdleMessage }) {
