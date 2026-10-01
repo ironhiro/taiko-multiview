@@ -11,6 +11,8 @@ description: "태고 멀티뷰의 성능(플레이어 생성 수, 동시 플레�
 
 1. multiview-local-env로 `mock` 스택을 띄운다(5173/5180).
 2. **기준선은 변경 전 코드로 잰다.** 변경 후에 재면 비교가 안 된다. 이미 바뀌었으면 `git stash`로 되돌리지 말고, 마지막 커밋을 별도 worktree에 체크아웃해 거기서 Vite를 띄워 잰다. 사용자의 작업 트리를 건드리지 않기 위해서다.
+   - worktree의 `frontend/node_modules`를 원본에 링크했으면, **정리할 때 링크부터 끊는다**(`rm <worktree>/frontend/node_modules`, 슬래시·`-r` 없이). 그다음 `ls`로 링크가 사라진 것을 보고 나서 `git worktree remove --force`나 `rm -rf`를 한다. Windows에서는 링크를 남긴 채 지우면 링크를 따라가 **원본 `node_modules`의 일부를 지운다**(`.bin`, `@babel/*`가 사라져 tsc·Vite가 죽었다).
+   - 정리한 뒤 원본에서 `npm ls --depth=0`이 깨끗한지 확인한다. 깨졌으면 `npm install --no-audit --no-fund`로 복구하고, `package.json`·`package-lock.json`이 바뀌지 않았는지 본다.
 3. 측정:
    ```bash
    cd frontend && npm run perf                         # 전체, 시나리오당 20초
