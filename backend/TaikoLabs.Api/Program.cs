@@ -296,12 +296,13 @@ static void SetCacheHeaders(HttpContext context)
 // shows thumbnails and logos from wherever a venue keeps them. connect-src is left open
 // on purpose: the desktop shell can load this page and point it at an API elsewhere.
 // Swagger UI and /status run inline script of their own, so they go without a CSP.
+// Fonts come only from /assets: the build keeps every font a file (vite.config.ts).
 const string ContentSecurityPolicy =
     "script-src 'self' https://www.youtube.com https://s.ytimg.com; " +
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com; " +
     "img-src 'self' data: https:; " +
     "style-src 'self' 'unsafe-inline'; " +
-    "font-src 'self' data:; " +
+    "font-src 'self'; " +
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 static void SetSecurityHeaders(HttpContext context, IWebHostEnvironment env)
