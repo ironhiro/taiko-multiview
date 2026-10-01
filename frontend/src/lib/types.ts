@@ -103,7 +103,8 @@ export interface Venue {
 
 export interface VenueLive {
   venueId: string;
-  updatedAt: string;
+  /** Absent until the server's first poll returns; a restored snapshot keeps its own poll time. */
+  updatedAt?: string;
   streams: LiveStream[];
   unmatched: LiveStream[];
   source: LiveSourceMode;

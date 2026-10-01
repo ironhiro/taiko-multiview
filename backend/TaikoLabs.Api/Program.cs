@@ -76,6 +76,7 @@ builder.Services.AddSingleton<VenueRegistry>();
 builder.Services.AddSingleton<EndedBroadcastCache>();
 builder.Services.AddSingleton<VenueClosureStore>();
 builder.Services.AddSingleton<VenueScheduleProvider>();
+builder.Services.AddSingleton<LiveSnapshotCache>();
 builder.Services.AddSingleton<LiveStreamStore>();
 builder.Services.AddSingleton<ChannelAvatarCache>();
 
@@ -136,7 +137,15 @@ app.UseRateLimiter();
 if (hasFrontend)
 {
     app.UseDefaultFiles();
-    app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = context => SetCacheHeaders(context.Context) });
+    // The build leaves a .br/.gz twin beside each asset; this hands one out when the client
+    // takes it, so the page's 355 kB stylesheet does not cross a phone's link uncompressed.
+    // Nothing is compressed here at request time - see PreCompressedStaticFiles for why.
+    app.UsePreCompressedAssets();
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        ContentTypeProvider = PreCompressedStaticFiles.ContentTypeProvider,
+        OnPrepareResponse = context => SetCacheHeaders(context.Context),
+    });
 }
 
 if (apiDocs)

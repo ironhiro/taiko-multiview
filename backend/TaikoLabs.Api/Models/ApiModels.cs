@@ -52,7 +52,12 @@ public enum LiveSourceMode
 
 public sealed record LiveSnapshot
 {
-    public DateTimeOffset UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
+    /// <summary>
+    /// When this reading was taken. Null only for <see cref="NeverPolled"/>: a snapshot is
+    /// built at the moment its poll returns, so the default is the truth for every one that
+    /// a poll produced - including a poll that came back with nothing.
+    /// </summary>
+    public DateTimeOffset? UpdatedAt { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>Streams that resolved to a known station, at most one per station.</summary>
     public IReadOnlyList<LiveStream> Streams { get; init; } = [];
@@ -69,6 +74,17 @@ public sealed record LiveSnapshot
 
     public static LiveSnapshot Empty(LiveSourceMode source, string? error = null) =>
         new() { Source = source, Error = error };
+
+    /// <summary>
+    /// A venue the server has not polled yet - on the very first start, before the first
+    /// round comes back. It carries no time on purpose: dated "now", it made the page say
+    /// "as of 8:02:26" about a reading nobody had taken.
+    /// </summary>
+    public static readonly LiveSnapshot NeverPolled = new()
+    {
+        UpdatedAt = null,
+        Source = LiveSourceMode.Auto,
+    };
 }
 
 /// <summary>Whether the venue is open, and why not when it is closed.</summary>
