@@ -371,6 +371,47 @@ test.describe('a venue list that does not arrive the first time', () => {
   });
 });
 
+// The server notes a venue it failed to poll in the live data. That is news only on that
+// venue's wall: the notice used to show whichever venue had failed, whatever was on screen.
+test.describe('a venue the server failed to poll', () => {
+  test.skip(({ isMobile }) => isMobile, 'same path on every device');
+
+  test('shows its error on its own wall only, and the refresh button keeps to that', async ({ page }) => {
+    const names = await venueNames(page);
+    const ids = ((await (await page.request.get('/api/venues')).json()) as { venues: { id: string }[] }).venues.map(
+      (venue) => venue.id,
+    );
+    const failing = ids.find((id) => id !== 'taikolabs')!;
+    let served = 0;
+    await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+      const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
+      const body = (await response.json()) as { venues: { venueId: string; error?: string }[] };
+      body.venues.find((venue) => venue.venueId === failing)!.error = '채널 조회 실패 (테스트)';
+      served += 1;
+      await route.fulfill({ response, json: body });
+    });
+
+    await page.goto('/?venue=taikolabs');
+    await expect(page.locator('.grid-view .tile').first()).toBeVisible();
+    await expect.poll(() => served).toBeGreaterThan(0);
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+
+    // The manual refresh answers through the same path.
+    const before = served;
+    await page.getByRole('button', { name: '새로고침' }).click();
+    await expect.poll(() => served).toBeGreaterThan(before);
+    await expect(page.getByRole('button', { name: '새로고침' })).toBeEnabled();
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+
+    await page.locator('.venue-tab').nth(ids.indexOf(failing)).click();
+    await expect(page.locator('.marquee__venue-name')).toHaveText(names[ids.indexOf(failing)]);
+    await expect(page.locator('.stage__error')).toHaveText('채널 조회 실패 (테스트)');
+
+    await page.locator('.venue-tab').nth(ids.indexOf('taikolabs')).click();
+    await expect(page.locator('.stage__error')).toHaveCount(0);
+  });
+});
+
 // A cabinet on air that the venue's settings do not list yet gets a tile of its own at the
 // end of the whole wall, and hands over to the listed cabinet once the settings have it.
 // The mock server never reports one, so the test plays the server's part.

@@ -24,7 +24,9 @@ export default function App() {
   const [activeVenueId, setActiveVenueId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode | null>(null);
   const [gridSize, setGridSize] = useState<GridSize>(readStoredGridSize);
-  const [error, setError] = useState<string | null>(null);
+  // Why the live data could not be fetched. A venue the server failed to poll says so in
+  // the live data itself, and is shown only while that venue is on screen (below).
+  const [liveFetchError, setLiveFetchError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Only one tile may hold the audio at a time.
@@ -120,24 +122,28 @@ export default function App() {
 
   // --- live data ------------------------------------------------------------
 
+  // The poll and the refresh button land the same way.
+  const applyLive = useCallback((next: LiveResponse) => {
+    setLive(next);
+    setLiveFetchError(null);
+  }, []);
+
   const load = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      const next = await fetchLive(controller.signal);
-      setLive(next);
+      applyLive(await fetchLive(controller.signal));
       // The API answers, so the venue list may too: try it now rather than after the wait.
       venuesRetry.current?.now();
-      setError(next.venues.find((venue) => venue.error)?.error ?? null);
     } catch (cause) {
       if (!controller.signal.aborted) {
-        setError(cause instanceof Error ? cause.message : '알 수 없는 오류');
+        setLiveFetchError(cause instanceof Error ? cause.message : '알 수 없는 오류');
         report('live-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
       }
     }
-  }, []);
+  }, [applyLive]);
 
   useEffect(() => {
     loadRef.current = load;
@@ -244,6 +250,8 @@ export default function App() {
   }, [live]);
 
   const activeLive = activeVenueId ? liveByVenue.get(activeVenueId) : undefined;
+  // Only the venue on screen: another venue's polling trouble says nothing about this wall.
+  const error = liveFetchError ?? activeLive?.error ?? null;
 
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
   const tiles = useMemo(
@@ -278,15 +286,13 @@ export default function App() {
     }
     setIsRefreshing(true);
     try {
-      const next = await requestRefresh();
-      setLive(next);
-      setError(next.venues.find((venue) => venue.error)?.error ?? null);
+      applyLive(await requestRefresh());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '새로고침 실패');
+      setLiveFetchError(cause instanceof Error ? cause.message : '새로고침 실패');
     } finally {
       setIsRefreshing(false);
     }
-  }, [venuesVersion, loadVenues]);
+  }, [venuesVersion, loadVenues, applyLive]);
 
   // --- render ---------------------------------------------------------------
 
