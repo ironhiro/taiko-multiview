@@ -8,11 +8,19 @@ import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib
 import { compactPlayerBudget } from '../lib/playerBudget';
 import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
 import { joinsPlaybackSlots, nextPlayerAction } from '../lib/tilePlayer';
+import { isDesktopShell } from '../lib/shell';
 import { useCoveredTop } from '../lib/stickyCover';
-import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
+import { ArcadeLink } from './ArcadeButton';
+import { ChatIcon, TileLabelRow } from './TileLabelRow';
+import { chatSignInUrl, loadYouTubeApi, openChatWindow, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
   label: string;
+  /**
+   * A cabinet on air that the venue's settings do not list yet (lib/wallTiles.ts). It
+   * behaves like any other tile and only says so beside its label.
+   */
+  unregistered?: boolean;
   stream: LiveStream | undefined;
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
@@ -36,12 +44,20 @@ interface PlayerTileProps {
    * button covers sound.
    */
   shielded?: boolean;
+  /**
+   * Open the chat as the broadcast's own YouTube page in a new tab rather than a popup
+   * window. Phones and tablets: a popup is a tab there anyway, and a plain link to the
+   * watch page is what iOS and Android hand to the YouTube app, where the viewer is
+   * already signed in.
+   */
+  opensChatInTab?: boolean;
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
   idle: IdleMessage;
 }
 
 export function PlayerTile({
   label,
+  unregistered,
   stream,
   isAudioActive,
   onRequestAudio,
@@ -49,6 +65,7 @@ export function PlayerTile({
   lazy,
   pausesWhenAway,
   shielded,
+  opensChatInTab,
   idle,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
@@ -344,14 +361,6 @@ export function PlayerTile({
 
   return (
     <div className={className} ref={tileRef}>
-      <div className="tile__header">
-        <span className="tile__label">{label}</span>
-        {stream && <span className="tile__badge">LIVE</span>}
-        {typeof stream?.concurrentViewers === 'number' && (
-          <span className="tile__viewers">{stream.concurrentViewers.toLocaleString('ko-KR')}명</span>
-        )}
-      </div>
-
       <div className="tile__body">
         {/* The player's host is part of the tile, not of the player: React removing it
             would detach the iframe before the effect above could destroy it, and every
@@ -390,19 +399,18 @@ export function PlayerTile({
         )}
       </div>
 
-      <div className="tile__controls">
-        <button
-          type="button"
-          className="tile__control"
-          onClick={onRequestAudio}
-          disabled={!mountedId}
-          aria-pressed={isAudioActive}
-          aria-label={isAudioActive ? `${label} 소리 끄기` : `${label} 소리 듣기`}
-        >
-          <SpeakerIcon on={isAudioActive} />
-          <span className="tile__control-text">{isAudioActive ? '소리 켜짐' : '음소거'}</span>
-        </button>
-      </div>
+      <TileLabelRow
+        cabinet={label}
+        tag={unregistered}
+        live={Boolean(stream)}
+        viewers={stream?.concurrentViewers}
+        sound={isAudioActive ? 'on' : 'off'}
+        soundDisabled={!mountedId}
+        onToggleSound={onRequestAudio}
+        // The chat has nothing to do with the embed, so a tile that cannot play still
+        // offers it; only a cabinet with no broadcast has no chat.
+        chat={stream && <ChatLink label={label} stream={stream} inTab={Boolean(opensChatInTab)} />}
+      />
     </div>
   );
 }
@@ -765,22 +773,38 @@ function ThumbnailPoster({
   );
 }
 
-/** Drawn rather than an emoji so it takes the tile's colour and stays one size everywhere. */
-function SpeakerIcon({ on }: { on: boolean }) {
+/**
+ * The broadcast's YouTube chat, in a youtube.com window of its own: that is where the
+ * viewer's YouTube sign-in reaches, so the chat can be written to (the chat framed in the
+ * wall could only be read, and was removed).
+ *
+ * A link rather than a button, so that whatever stops the popup still leaves a way there:
+ * its own new tab. On a computer the click opens a popup instead and keeps the link from
+ * following; a blocked popup lets the link go ahead. The desktop shell hands both kinds of
+ * new window to the default browser and reports each as blocked, so there the link goes on
+ * its own - opening a popup first would open the chat twice.
+ */
+function ChatLink({ label, stream, inTab }: { label: string; stream: LiveStream; inTab: boolean }) {
+  const openPopup = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    // A modified or middle click asked for a tab or a window of the browser's own kind.
+    if (isDesktopShell || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    if (openChatWindow(stream.videoId)) {
+      event.preventDefault();
+    }
+  };
+
   return (
-    <svg className="tile__control-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M2 6h2.6L8 3.2v9.6L4.6 10H2z" fill="currentColor" />
-      {on ? (
-        <path
-          d="M10.4 5.6a3.4 3.4 0 0 1 0 4.8M12.3 3.8a6 6 0 0 1 0 8.4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-      ) : (
-        <path d="M10.5 6l3.5 4M14 6l-3.5 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      )}
-    </svg>
+    <ArcadeLink
+      className="tile__control tile__control--chat"
+      label="채팅"
+      icon={<ChatIcon />}
+      href={inTab ? stream.watchUrl : chatSignInUrl(stream.videoId)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={inTab ? undefined : openPopup}
+      aria-label={`${label} 유튜브 채팅 열기`}
+    />
   );
 }

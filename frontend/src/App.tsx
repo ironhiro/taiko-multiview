@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
-import type { LiveResponse, LiveStream, Venue, VenueLive } from './lib/types';
+import type { LiveResponse, Venue, VenueLive } from './lib/types';
 import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
 import { retryUntilDone, type RetryHandle } from './lib/retry';
 import { onVenuesSaved } from './lib/settingsChannel';
 import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './lib/venue';
-import { defaultViewFor, isValidView, stationsForView, viewOptionsFor, type ViewMode } from './lib/views';
+import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
+import { liveCountOf } from './lib/venueRow';
+import { wallTilesFor } from './lib/wallTiles';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
@@ -26,7 +28,7 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Only one tile may hold the audio at a time.
-  const [audioStationId, setAudioStationId] = useState<string | null>(null);
+  const [audioTileId, setAudioTileId] = useState<string | null>(null);
 
   const isCompactDevice = useCompactDevice();
   const abortRef = useRef<AbortController | null>(null);
@@ -243,27 +245,20 @@ export default function App() {
 
   const activeLive = activeVenueId ? liveByVenue.get(activeVenueId) : undefined;
 
-  const streamsByStation = useMemo(() => {
-    const map = new Map<string, LiveStream>();
-    for (const stream of activeLive?.streams ?? []) {
-      if (stream.stationId) {
-        map.set(stream.stationId, stream);
-      }
-    }
-    return map;
-  }, [activeLive]);
-
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
-  const stations = useMemo(() => stationsForView(activeVenue, view ?? 'all-grid'), [activeVenue, view]);
+  const tiles = useMemo(
+    () => wallTilesFor(activeVenue, view ?? 'all-grid', activeLive),
+    [activeVenue, view, activeLive],
+  );
   const idle = useMemo(() => (live ? idleMessageFor(activeLive?.venue) : LOADING_MESSAGE), [live, activeLive]);
 
   const closedSummary = venueSummary(activeLive?.venue);
-  const liveCount = activeLive?.streams.filter((stream) => stream.isLive).length ?? 0;
+  const liveCount = liveCountOf(activeVenue, activeLive);
 
   const selectVenue = useCallback((venueId: string) => {
     hasChosenView.current = true;
     setActiveVenueId(venueId);
-    setAudioStationId(null);
+    setAudioTileId(null);
   }, []);
 
   const selectView = useCallback((next: ViewMode) => {
@@ -271,8 +266,8 @@ export default function App() {
     setView(next);
   }, []);
 
-  const handleRequestAudio = useCallback((stationId: string) => {
-    setAudioStationId((current) => (current === stationId ? null : stationId));
+  const handleRequestAudio = useCallback((tileId: string) => {
+    setAudioTileId((current) => (current === tileId ? null : tileId));
   }, []);
 
   const handleManualRefresh = useCallback(async () => {
@@ -337,9 +332,8 @@ export default function App() {
 
         <main className="stage__main">
           <GridView
-            stations={stations}
-            streamsByStation={streamsByStation}
-            audioStationId={audioStationId}
+            tiles={tiles}
+            audioTileId={audioTileId}
             onRequestAudio={handleRequestAudio}
             gridSize={gridSize}
             lazy={isCompactDevice}

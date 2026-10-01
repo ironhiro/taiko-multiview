@@ -44,13 +44,18 @@ mock 스택의 API가 `backend/TaikoLabs.Api/bin`을 잠그고 있어서, 스택
 # 테스트
 dotnet test backend/TaikoLabs.Api.Tests -p:BaseOutputPath=/tmp/taiko-test-bin/
 
-# e2e: 5190을 먼저 직접 띄우면 playwright가 reuseExistingServer로 재사용한다
-(cd backend/TaikoLabs.Api && ASPNETCORE_ENVIRONMENT=Mock nohup dotnet run --no-launch-profile \
+# e2e: 5190을 먼저 직접 띄우면 playwright가 reuseExistingServer로 재사용한다.
+# 환경 변수는 playwright.config.ts의 webServer와 똑같이 맞춘다.
+(cd backend/TaikoLabs.Api && ASPNETCORE_ENVIRONMENT=Development YouTube__Mode=Mock YouTube__ApiKey= \
+   Venues__ClosureCachePath=/tmp/taiko-e2e-closures.json Venues__LiveCachePath=/tmp/taiko-e2e-live.json \
+   nohup dotnet run --no-launch-profile \
    --urls http://localhost:5190 -p:BaseOutputPath=/tmp/taiko-e2e-bin/ >/tmp/taiko-5190.log 2>&1 &)
 cd frontend && npx playwright test
 ```
 
 e2e가 끝나면 5190만 종료한다(5180·5173은 살려 둔다).
+
+**`ASPNETCORE_ENVIRONMENT=Mock`으로 띄우지 않는다.** Mock 환경은 `venues.mock.json`(mock-1~6)을 읽는데 e2e는 실제 `venues.json`의 taikolabs를 전제로 한다. 그렇게 띄우면 코드와 무관하게 e2e 10개가 실패한다(24 passed / 10 failed). 결과가 이상하면 먼저 `curl localhost:5190/api/venues`로 taikolabs가 오는지 본다.
 
 ## 이 저장소에서 걸리는 것들
 

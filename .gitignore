@@ -29,6 +29,11 @@ live.cache.json.tmp
 # Local design-tool notes (Hallmark)
 .hallmark/
 
+# Hallmark skill, installed per machine with `npx skills add nutlope/hallmark`
+.agents/
+.claude/skills/hallmark
+skills-lock.json
+
 # Soak-test output
 logs/
 

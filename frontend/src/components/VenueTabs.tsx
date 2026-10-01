@@ -66,7 +66,7 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
         aria-labelledby="venue-tabs-label"
       >
         {shown.map((venue) => {
-          const count = liveCountOf(liveByVenue.get(venue.id));
+          const count = liveCountOf(venue, liveByVenue.get(venue.id));
           const isActive = venue.id === activeVenueId;
 
           return (
@@ -102,7 +102,7 @@ export function VenueTabs({ venues, liveByVenue, activeVenueId, onSelect }: Venu
           <div className="venue-tabs venue-tabs--probe" ref={probeRef}>
             {venues.map((venue) => (
               <span key={venue.id} className="venue-tab" style={accentStyle(venue.accent)}>
-                <TabFace venue={venue} count={liveCountOf(liveByVenue.get(venue.id))} />
+                <TabFace venue={venue} count={liveCountOf(venue, liveByVenue.get(venue.id))} />
               </span>
             ))}
           </div>
@@ -249,7 +249,7 @@ function VenueList({ venues, liveByVenue, activeVenueId, onSelect }: VenueTabsPr
         onKeyDown={onListKeyDown}
       >
         {venues.map((venue) => {
-          const count = liveCountOf(liveByVenue.get(venue.id));
+          const count = liveCountOf(venue, liveByVenue.get(venue.id));
           const isActive = venue.id === activeVenueId;
           return (
             <li

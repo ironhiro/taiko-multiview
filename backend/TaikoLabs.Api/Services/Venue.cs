@@ -114,8 +114,12 @@ public sealed class Venue
         return index;
     }
 
-    /// <summary>Uppercases and strips everything that is not a letter or digit.</summary>
-    private static string Normalize(string value)
+    /// <summary>
+    /// Uppercases and strips everything that is not a letter or digit. Also how broadcasts
+    /// for cabinets the venue does not list are told apart, so "THE BASE 2" and
+    /// "the-base 2" are one cabinet there as they would be here.
+    /// </summary>
+    internal static string Normalize(string value)
     {
         Span<char> buffer = stackalloc char[value.Length];
         var length = 0;

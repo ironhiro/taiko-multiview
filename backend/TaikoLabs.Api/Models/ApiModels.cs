@@ -62,7 +62,10 @@ public sealed record LiveSnapshot
     /// <summary>Streams that resolved to a known station, at most one per station.</summary>
     public IReadOnlyList<LiveStream> Streams { get; init; } = [];
 
-    /// <summary>Titles that matched the pattern but whose name is not a known station.</summary>
+    /// <summary>
+    /// Titles that matched the pattern but whose name is not a known station, at most one
+    /// per name (compared the way station aliases are), sorted by it.
+    /// </summary>
     public IReadOnlyList<LiveStream> Unmatched { get; init; } = [];
 
     public LiveSourceMode Source { get; init; }

@@ -6,6 +6,8 @@
 
 **트리거:** 멀티뷰 코드 변경 요청(모바일 UI, 타일, 레이아웃, 플레이어, 버그 수정, 성능 개선)과 그 후속(재검증, QA·성능만 다시, 실패 항목 재수정)은 `multiview-harness` 스킬을 사용하라. 단순 질문은 직접 답하고, 배포만 하는 요청은 `deploy-dev` 스킬을 쓴다.
 
+**디자인 우선순위:** 멀티뷰와 매장 등록기 화면은 `design.md`가 잠근 디자인 시스템을 따른다. 로컬에 설치된 `hallmark` 스킬은 이 두 화면의 리디자인·감사에 쓰지 않는다(테마를 새로 골라 색 역할을 바꾼다). 새로 만드는 별도 페이지에만 쓴다.
+
 ## 하네스: 종합 코드 리뷰
 
 **목표:** 아키텍처·보안·성능·코드 스타일을 병렬로 감사하고, 중복을 묶고 심각한 지적을 반박 검증해 하나의 리포트(`_review/REPORT.md`)로 만든다.
@@ -24,3 +26,6 @@
 | 2026-09-28 | 재생 실패 타일 검증 절차 추가(`?breakEmbed=`, `--break-embed`): 드릴 사용법, "정지 화면의 재생 0개는 정상" 오판 주의, 타이머 수 == iframe 수 기준, 헤드리스 WebKit에서 재생 판정 불가(원인은 `MediaSource` 부재), Windows에서 RSS peak 측정 불가 | skills/mobile-verification, skills/perf-check | R-1 수정 시 임베드 실패를 재현할 수단이 없어(e2e는 오프라인, RTL 없음) 드릴을 새로 만들었고, QA가 정지 화면의 0개를 FAIL로 오판할 뻔했다 |
 | 2026-09-28 | "재생이 되고 있는지 확인하는 법" 3단(canPlayType은 주장일 뿐 → MSE 존재 → 프레임 안 `<video>`의 `currentTime`) 추가, 헤드리스 WebKit 무재생의 원인을 H.264 부재 → `MediaSource` 부재로 정정 | skills/mobile-verification, skills/multiview-local-env, skills/perf-check | 직접 재 보니 `canPlayType`이 H.264를 `probably`로 답해 코덱 설명이 틀렸다. `video.error`가 `null`인데 소스가 붙은 적 없는 상태를 코덱 문제로 오진하고 있었다 |
 | 2026-09-28 | 측정 규율 추가: 편차 큰 지표는 회수를 늘리고 안 되면 "판정 불가", 결과 디렉터리에 섞인 다른 실행 구분, 러너 계측을 넣었으면 계측 뺀 사본으로 분리 검증, 기준선에 없던 구성은 전후 비교가 아님 | skills/perf-check | long task가 실행 구간에 따라 3~16개로 흔들려 판정이 갈렸고, 계측 추가분이 메모리 수치에 섞였는지 분리해야 했다 |
+| 2026-09-30 | 디자인 우선순위 추가: 멀티뷰·매장 등록기는 `design.md`가 우선, 로컬 `hallmark` 스킬은 새 별도 페이지에만. hallmark 설치물(`.agents/`, `.claude/skills/hallmark`, `skills-lock.json`)은 git 제외 | CLAUDE.md, .gitignore | 사용자가 hallmark를 프로젝트에 설치. redesign·audit 요청에 자동으로 붙어 잠긴 색 역할을 바꿀 수 있음 |
+| 2026-10-01 | e2e용 5190 수동 기동 명령을 playwright.config.ts webServer와 같은 환경 변수(Development + `YouTube__Mode=Mock` + 빈 키 + 캐시 경로)로 정정, `ASPNETCORE_ENVIRONMENT=Mock` 금지와 확인법 추가 | skills/multiview-local-env | 미등록 기체 QA에서 문서대로 띄운 5190이 venues.mock.json을 읽어 e2e 10개가 환경 때문에 실패(같은 코드를 올바른 환경으로 돌리면 34/0) |
+| 2026-10-01 | 기준선 worktree 정리 순서 추가: node_modules 링크를 먼저 끊고 확인한 뒤 worktree 삭제, 정리 후 `npm ls` 확인과 복구법 | skills/perf-check | 기준선 worktree를 링크 확인 없이 지우는 과정(성능 에이전트의 `cmd rmdir` 직후 삭제, 이어진 리더의 `git worktree remove --force`)에서 Windows가 링크를 따라가 원본 frontend/node_modules 일부(.bin, @babel/*)를 지웠다. 개발 에이전트가 npm install로 복구(package 파일 변화 없음) |
