@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LiveStream, Venue, VenueLive } from './types';
-import { liveCountOf, liveElsewhere, venueRowMode } from './venueRow';
+import { venueRowMode } from './venueRow';
 
 describe('venueRowMode', () => {
   it('shows every tab while the row fits on one line', () => {
@@ -30,71 +29,5 @@ describe('venueRowMode', () => {
   it('shows the tabs before the row has been laid out', () => {
     expect(venueRowMode({ phone: true, needed: 560, available: 0 })).toBe('tabs');
     expect(venueRowMode({ phone: true, needed: 0, available: 369 })).toBe('tabs');
-  });
-});
-
-describe('live counts', () => {
-  // Four cabinets, S0..S3; the n-th stream belongs to the n-th cabinet.
-  const venue = (id: string): Venue => ({
-    id,
-    name: id,
-    channelId: id,
-    zones: [],
-    stations: [0, 1, 2, 3].map((index) => ({ id: `s${index}`, label: `S${index}` })),
-  });
-  const stream = (isLive: boolean, index: number): LiveStream => ({
-    stationId: `s${index}`,
-    videoId: `v${index}`,
-    title: '',
-    name: `S${index}`,
-    isLive,
-    embeddable: true,
-    watchUrl: '',
-  });
-  const unlisted = (name: string, isLive = true): LiveStream => ({ ...stream(isLive, 0), stationId: undefined, name });
-  const live = (venueId: string, ...streams: boolean[]): VenueLive => ({
-    venueId,
-    updatedAt: '',
-    streams: streams.map(stream),
-    unmatched: [],
-    source: 'Api',
-    isFallbackSource: false,
-    venue: { state: 'Open', localTime: '' },
-  });
-
-  it('counts only the streams on air', () => {
-    expect(liveCountOf(venue('a'), live('a', true, false, true))).toBe(2);
-    expect(liveCountOf(venue('a'), undefined)).toBe(0);
-    expect(liveCountOf(undefined, live('a', true))).toBe(0);
-  });
-
-  it('counts a cabinet on air that the venue does not list yet', () => {
-    expect(liveCountOf(venue('a'), { ...live('a', true), unmatched: [unlisted('NEW'), unlisted('OLD', false)] })).toBe(2);
-  });
-
-  it('counts one for a name that came twice, as the wall shows one tile', () => {
-    const twice = { ...live('a', true), unmatched: [unlisted('THE BASE 2'), unlisted('the-base 2')] };
-    expect(liveCountOf(venue('a'), twice)).toBe(2);
-  });
-
-  it('does not count an unlisted broadcast apart from the listed cabinet it folds into', () => {
-    // The venue list already has S1, the live data still calls it unmatched: one tile.
-    const folded = { ...live('a', true), unmatched: [unlisted('S1')] };
-    expect(liveCountOf(venue('a'), folded)).toBe(2);
-    // Unless the cabinet has a stream of its own already, which is the one on the wall.
-    const both = { ...live('a', true, true), unmatched: [unlisted('S1')] };
-    expect(liveCountOf(venue('a'), both)).toBe(2);
-  });
-
-  it('adds up every venue but the open one', () => {
-    const venues = ['a', 'b', 'c'].map(venue);
-    const byVenue = new Map([
-      ['a', live('a', true, true)],
-      ['b', live('b', true, false)],
-      // "c" has not been heard from yet.
-    ]);
-    expect(liveElsewhere(venues, byVenue, 'a')).toBe(1);
-    expect(liveElsewhere(venues, byVenue, 'b')).toBe(2);
-    expect(liveElsewhere(venues, byVenue, 'c')).toBe(3);
   });
 });

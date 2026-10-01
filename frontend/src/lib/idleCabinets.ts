@@ -1,4 +1,4 @@
-import type { WallTile } from './wallTiles';
+import { isOnAir, type WallTile } from './wallTiles';
 
 /** How the wall splits: tiles for the cabinets on air, a strip for the rest. */
 export interface WallSplit {
@@ -22,7 +22,7 @@ export function splitWall(tiles: WallTile[], loading: boolean): WallSplit {
     return { tiles, idle: [] };
   }
   return {
-    tiles: tiles.filter((tile) => tile.stream),
-    idle: tiles.filter((tile) => !tile.stream),
+    tiles: tiles.filter(isOnAir),
+    idle: tiles.filter((tile) => !isOnAir(tile)),
   };
 }

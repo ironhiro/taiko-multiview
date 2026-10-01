@@ -290,7 +290,7 @@ test.describe('phone', () => {
   });
 
   test('LIVE, the 미등록 tag and the count are 10px on every phone, and the tag stays', async ({ page }) => {
-    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345 });
+    await playUnregisteredCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345 });
     for (const size of PHONE_SIZES) {
       await page.setViewportSize(size);
       await page.goto('/?venue=taikolabs&view=all-grid');
@@ -418,12 +418,12 @@ test.describe('a cabinet on air that the settings do not list', () => {
   test('gets a marked tile after the listed ones, loses it when the broadcast ends, and becomes the listed one', async ({
     page,
   }) => {
-    const server = await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2');
+    const server = await playUnregisteredCabinet(page, 'taikolabs', 'base2', 'THE BASE 2');
     const tiles = page.locator('.grid-view .tile');
     const base2 = tiles.filter({ has: page.locator('.tile__label', { hasText: /^THE BASE 2$/ }) });
     const refresh = () => page.locator('.credit__refresh').click();
 
-    server.phase = 'unlisted';
+    server.phase = 'unregistered';
     await page.goto('/?venue=taikolabs&view=all-grid');
     await expect(tiles).toHaveCount(server.liveListed + 1);
     await expect(tiles.last().locator('.tile__label')).toHaveText('THE BASE 2');
@@ -445,7 +445,7 @@ test.describe('a cabinet on air that the settings do not list', () => {
     await expect(base2).toHaveCount(0);
     await expect(tiles).toHaveCount(server.liveListed);
 
-    server.phase = 'unlisted';
+    server.phase = 'unregistered';
     await refresh();
     await expect(base2).toHaveCount(1);
 
@@ -497,7 +497,7 @@ test.describe('the row under the picture', () => {
   test('on a 1440×900 3×3 wall, short rows keep their words and the longest drops them, tile by tile', async ({
     page,
   }) => {
-    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345, everyListedOnAir: true });
+    await playUnregisteredCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345, everyListedOnAir: true });
     await page.goto('/?venue=taikolabs&view=all-grid');
     await page.getByRole('button', { name: '3×3' }).click();
     await expect.poll(() => columnsOf(page)).toBe(3);
@@ -552,7 +552,7 @@ test.describe('the row under the picture', () => {
         for (const _record of records) log.fitWrites.push(at);
       }).observe(document, { subtree: true, attributeFilter: ['data-fit'] });
     });
-    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345 });
+    await playUnregisteredCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345 });
     await page.goto('/?venue=taikolabs&view=all-grid');
     const tag = page.locator('.grid-view .tile__tag');
     await expect(tag).toHaveText('미등록');
@@ -966,15 +966,15 @@ async function withLongLabels(page: Page, venueId: string, label: string) {
   });
 }
 
-type UnlistedPhase = 'unlisted' | 'over' | 'registered';
+type UnregisteredPhase = 'unregistered' | 'over' | 'registered';
 
 /**
  * Serves the venue list and the live data as if `stationId` were a new cabinet: missing
- * from the settings and on air under `name` ('unlisted'), off air ('over'), or added to the
+ * from the settings and on air under `name` ('unregistered'), off air ('over'), or added to the
  * settings and found by the poll as that cabinet ('registered'). Each settings change moves
  * the version, as a saved file does, so the page fetches the venue list again.
  */
-async function playUnlistedCabinet(
+async function playUnregisteredCabinet(
   page: Page,
   venueId: string,
   stationId: string,
@@ -986,7 +986,7 @@ async function playUnlistedCabinet(
     : [];
   // Counted up front from the real server, so the test's expectations never wait on the page.
   const server = {
-    phase: 'unlisted' as UnlistedPhase,
+    phase: 'unregistered' as UnregisteredPhase,
     // What the wall's tiles are without the new cabinet: the listed cabinets on air.
     liveListed: (await liveStreams(page, venueId)).filter((stream) => stream.stationId !== stationId && stream.isLive)
       .length,
@@ -1024,7 +1024,7 @@ async function playUnlistedCabinet(
       ...(viewers === undefined ? {} : { concurrentViewers: viewers }),
     };
     // Named by no cabinet, so - as the server leaves out what is null - with no stationId.
-    venue.unmatched = server.phase === 'unlisted' ? [broadcast] : [];
+    venue.unmatched = server.phase === 'unregistered' ? [broadcast] : [];
     if (server.phase === 'registered') {
       venue.streams.push({ ...broadcast, stationId });
     }

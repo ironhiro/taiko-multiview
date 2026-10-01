@@ -8,8 +8,7 @@ import { GRID_DEFAULT, GRID_SIZES, type GridSize } from './lib/gridLayout';
 import { accentStyle, venueSummary } from './lib/venue';
 import { useCompactDevice } from './lib/media';
 import { isValidView, viewOptionsFor, WALL_VIEW, type ViewMode } from './lib/views';
-import { liveCountOf } from './lib/venueRow';
-import { wallTilesFor } from './lib/wallTiles';
+import { liveCountOf, wallTilesFor, type WallTile } from './lib/wallTiles';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
@@ -247,14 +246,32 @@ export default function App() {
   // Only the venue on screen: another venue's polling trouble says nothing about this wall.
   const error = liveFetchError ?? activeLive?.error ?? null;
 
+  // Every venue's whole wall, built once per answer: the tabs, the venue list and the
+  // credit line all count from these, and the open venue's wall is what the grid shows.
+  const walls = useMemo(() => {
+    const map = new Map<string, WallTile[]>();
+    for (const venue of venues) {
+      map.set(venue.id, wallTilesFor(venue, WALL_VIEW, liveByVenue.get(venue.id)));
+    }
+    return map;
+  }, [venues, liveByVenue]);
+  const liveCounts = useMemo(
+    () => new Map([...walls].map(([venueId, wall]) => [venueId, liveCountOf(wall)])),
+    [walls],
+  );
+
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
+  // A zone is built on its own: it leaves out the cabinets the venue does not list.
   const tiles = useMemo(
-    () => wallTilesFor(activeVenue, view ?? WALL_VIEW, activeLive),
-    [activeVenue, view, activeLive],
+    () =>
+      view !== null && view !== WALL_VIEW
+        ? wallTilesFor(activeVenue, view, activeLive)
+        : (activeVenueId && walls.get(activeVenueId)) || [],
+    [activeVenue, activeVenueId, view, activeLive, walls],
   );
 
   const closedSummary = venueSummary(activeLive?.venue);
-  const liveCount = liveCountOf(activeVenue, activeLive);
+  const liveCount = (activeVenueId && liveCounts.get(activeVenueId)) || 0;
 
   const selectVenue = useCallback((venueId: string) => {
     hasChosenView.current = true;
@@ -305,7 +322,7 @@ export default function App() {
 
         <VenueTabs
           venues={venues}
-          liveByVenue={liveByVenue}
+          liveCounts={liveCounts}
           activeVenueId={activeVenueId ?? ''}
           onSelect={selectVenue}
         />

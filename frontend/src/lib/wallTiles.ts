@@ -6,7 +6,7 @@ import { stationsForView, WALL_VIEW, type ViewMode } from './views';
 export interface WallTile {
   /**
    * The tile's React key and what the sound follows. A listed cabinet's own id; for any
-   * other, `unmatched:` and its name as the server compares names - kept clear of every
+   * other, `unregistered:` and its name as the server compares names - kept clear of every
    * listed id, since the settings do not forbid a colon in one.
    */
   id: string;
@@ -16,7 +16,7 @@ export interface WallTile {
   unregistered: boolean;
 }
 
-export const UNMATCHED_TILE_PREFIX = 'unmatched:';
+export const UNREGISTERED_TILE_PREFIX = 'unregistered:';
 
 /**
  * The tiles a view shows: the venue's own cabinets in their order, then - on the whole
@@ -26,10 +26,10 @@ export const UNMATCHED_TILE_PREFIX = 'unmatched:';
  *
  * The venue list and the live data arrive separately, so for a moment after a cabinet
  * is added to the settings the two can disagree. Either way round it stays one tile:
- * - live data still calls it unmatched, but the venue list already has it: the stream
+ * - live data still has it among the unmatched (the API's name for them), but the venue list already has it: the stream
  *   goes to the listed cabinet's tile rather than to a second one beside it;
  * - live data already names its station, but the venue list does not have it yet: it
- *   stays up as an unlisted tile until the list catches up, rather than dropping out.
+ *   stays up as an unregistered tile until the list catches up, rather than dropping out.
  */
 export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: VenueLive | undefined): WallTile[] {
   if (!venue) {
@@ -54,13 +54,13 @@ export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: Ven
     }
   }
 
-  // Unlisted broadcasts, one per name, the first of each kept - the server already sends
+  // Unregistered broadcasts, one per name, the first of each kept - the server already sends
   // the newest one alone and in name order.
-  const unlisted = new Map<string, LiveStream>();
+  const unregistered = new Map<string, LiveStream>();
   const orphans = (live?.streams ?? []).filter((stream) => stream.stationId && !listedIds.has(stream.stationId));
   for (const stream of [...(live?.unmatched ?? []), ...orphans]) {
     const key = normalizeCabinetName(stream.name);
-    if (!key || unlisted.has(key)) {
+    if (!key || unregistered.has(key)) {
       continue;
     }
     const listedAs = stationByName.get(key);
@@ -70,7 +70,7 @@ export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: Ven
       }
       continue;
     }
-    unlisted.set(key, stream);
+    unregistered.set(key, stream);
   }
 
   const tiles: WallTile[] = stationsForView(venue, view).map((station) => ({
@@ -84,10 +84,10 @@ export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: Ven
     return tiles;
   }
 
-  const extra = [...unlisted.entries()]
+  const extra = [...unregistered.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, stream]) => {
-      let id = `${UNMATCHED_TILE_PREFIX}${key}`;
+      let id = `${UNREGISTERED_TILE_PREFIX}${key}`;
       while (listedIds.has(id)) {
         id += '~';
       }
@@ -95,4 +95,38 @@ export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: Ven
     });
 
   return [...tiles, ...extra];
+}
+
+/**
+ * Whether a tile is on air: its broadcast is live. The one answer for the wall's split into
+ * tiles and the 방송 없음 strip (lib/idleCabinets.ts) and for every count of what is on
+ * air, so the two cannot disagree - a broadcast the server reported but not live (an
+ * upcoming one, were it ever sent) is neither a tile nor counted.
+ */
+export function isOnAir(tile: WallTile): boolean {
+  return tile.stream?.isLive === true;
+}
+
+/**
+ * How many of a wall's cabinets are on air, counted from the wall itself. Counting the
+ * snapshot's lists directly disagreed with the wall - two unmatched entries under one
+ * name are one tile, and an unmatched name the venue list already has plays in that
+ * cabinet's tile - and the count has to say what the viewer can see.
+ */
+export function liveCountOf(wall: WallTile[]): number {
+  return wall.filter(isOnAir).length;
+}
+
+/**
+ * On air in every venue but the open one: what the "전체 매장" button carries, since the
+ * open venue's count is already on its own tab beside it.
+ */
+export function liveElsewhere(liveCounts: Map<string, number>, activeVenueId: string): number {
+  let total = 0;
+  for (const [venueId, count] of liveCounts) {
+    if (venueId !== activeVenueId) {
+      total += count;
+    }
+  }
+  return total;
 }
