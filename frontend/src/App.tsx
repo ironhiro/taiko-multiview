@@ -5,7 +5,7 @@ import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
 import { retryUntilDone, type RetryHandle } from './lib/retry';
 import { onVenuesSaved } from './lib/settingsChannel';
-import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './lib/venue';
+import { accentStyle, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
 import { liveCountOf } from './lib/venueRow';
 import { wallTilesFor } from './lib/wallTiles';
@@ -257,7 +257,6 @@ export default function App() {
     () => wallTilesFor(activeVenue, view ?? 'all-grid', activeLive),
     [activeVenue, view, activeLive],
   );
-  const idle = useMemo(() => (live ? idleMessageFor(activeLive?.venue) : LOADING_MESSAGE), [live, activeLive]);
 
   const closedSummary = venueSummary(activeLive?.venue);
   const liveCount = liveCountOf(activeVenue, activeLive);
@@ -342,7 +341,7 @@ export default function App() {
             onRequestAudio={handleRequestAudio}
             gridSize={gridSize}
             lazy={isCompactDevice}
-            idle={idle}
+            loading={live === null}
           />
         </main>
       </div>

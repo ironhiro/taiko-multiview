@@ -1,5 +1,4 @@
 import { useLayoutEffect, useRef } from 'react';
-import type { IdleMessage } from '../lib/venue';
 import { splitWall } from '../lib/idleCabinets';
 import type { WallTile } from '../lib/wallTiles';
 import { IdleStrip } from './IdleStrip';
@@ -15,9 +14,9 @@ interface GridViewProps {
   /** The chosen N×N layout; fewer columns are used when fewer cabinets are on air. */
   gridSize: number;
   lazy?: boolean;
-  idle: IdleMessage;
+  /** Nothing has been heard from the API yet, so no cabinet is known to be off air. */
+  loading: boolean;
 }
-
 
 /**
  * The multiview: the cabinets on air as equal tiles, N to a row and N rows to a screen,
@@ -31,9 +30,9 @@ export function GridView({
   onRequestAudio,
   gridSize,
   lazy,
-  idle,
+  loading,
 }: GridViewProps) {
-  const wall = splitWall(tiles, Boolean(idle.loading));
+  const wall = splitWall(tiles, loading);
   const hasStrip = wall.idle.length > 0;
   // The tiles decide the columns. When the strip is the whole wall it takes the chosen
   // layout's width rather than one tile's; with nothing at all (no venues yet) it stays one.
@@ -58,7 +57,6 @@ export function GridView({
           shielded={lazy}
           pausesWhenAway={lazy}
           opensChatInTab={lazy}
-          idle={idle}
         />
       ))}
       <IdleStrip cabinets={wall.idle.map((tile) => tile.label)} />

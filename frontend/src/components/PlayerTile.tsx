@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import type { IdleMessage } from '../lib/venue';
 import type { LiveStream } from '../lib/types';
 import { describePlayerError, report } from '../lib/diagnostics';
 import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
@@ -49,8 +48,6 @@ interface PlayerTileProps {
    * already signed in.
    */
   opensChatInTab?: boolean;
-  /** What to show when this cabinet has no stream - depends on whether the venue is open. */
-  idle: IdleMessage;
 }
 
 export function PlayerTile({
@@ -63,7 +60,6 @@ export function PlayerTile({
   pausesWhenAway,
   shielded,
   opensChatInTab,
-  idle,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -369,7 +365,9 @@ export function PlayerTile({
             and keep taking taps. */}
         <div className={showsPlayer ? 'tile__player' : 'tile__player tile__player--hidden'} ref={hostRef} />
 
-        {!stream && <IdlePlaceholder message={idle} />}
+        {/* A cabinet off air has no tile (lib/idleCabinets.ts): a tile without a stream is
+            one the first live answer has not reached yet. */}
+        {!stream && <LoadingPlaceholder />}
 
         {stream && !stream.embeddable && (
           <UnavailablePlaceholder
@@ -424,11 +422,10 @@ function applySound(player: YTPlayer, isAudioActive: boolean) {
   }
 }
 
-function IdlePlaceholder({ message }: { message: IdleMessage }) {
+function LoadingPlaceholder() {
   return (
-    <div className={message.loading ? 'placeholder placeholder--loading' : 'placeholder'}>
-      <span className="placeholder__text">{message.title}</span>
-      {message.detail && <span className="placeholder__detail">{message.detail}</span>}
+    <div className="placeholder placeholder--loading">
+      <span className="placeholder__text">불러오는 중</span>
     </div>
   );
 }

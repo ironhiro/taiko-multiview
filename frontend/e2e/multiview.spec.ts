@@ -872,6 +872,33 @@ test.describe('cabinets with nothing on air', () => {
     const strip = (await page.locator('.idle-strip').boundingBox())!;
     expect(Math.abs(strip.width - columnsWidth)).toBeLessThanOrEqual(1);
   });
+
+  // Until the first live answer nothing is known to be off air, so the wall must not start
+  // as a strip and turn into tiles a moment later (lib/idleCabinets.ts).
+  test('wait in tiles of their own, 불러오는 중, until the first live answer, with no strip', async ({ page }) => {
+    const stations = await stationsOf(page, 'taikolabs');
+    const onAir = stations.slice(0, 2);
+    let answer = () => {};
+    const answered = new Promise<void>((resolve) => (answer = resolve));
+    await withOnAir(page, 'taikolabs', onAir.map((station) => station.id));
+    // Laid over withOnAir's route, so it runs first and holds the answer back.
+    await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+      await answered;
+      await route.fallback();
+    });
+    await page.goto('/?venue=taikolabs&view=all-grid');
+
+    const tiles = page.locator('.grid-view .tile');
+    await expect(tiles).toHaveCount(stations.length);
+    await expect(page.locator('.grid-view .placeholder--loading')).toHaveCount(stations.length);
+    await expect(page.locator('.grid-view .placeholder--loading').first()).toHaveText('불러오는 중');
+    await expect(page.locator('.idle-strip')).toHaveCount(0);
+
+    answer();
+    await expect(tiles).toHaveCount(onAir.length);
+    await expect(page.locator('.placeholder--loading')).toHaveCount(0);
+    await expect(page.locator('.idle-chip')).toHaveCount(stations.length - onAir.length);
+  });
 });
 
 // The viewer count stays on one line and whole: a narrow row broke "12,345명" before 명.

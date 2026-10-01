@@ -1053,18 +1053,6 @@ input {
   font-weight: 700;
 }
 
-.placeholder__detail {
-  font-size: var(--text-tile-meta);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink-3);
-}
-
-@container (max-width: 260px) {
-  .placeholder__detail {
-    display: none;
-  }
-}
-
 .placeholder--warn .placeholder__text {
   color: var(--color-warn);
 }
