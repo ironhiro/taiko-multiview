@@ -37,8 +37,6 @@ public sealed class Venue
 
     public IReadOnlyList<StationDefinition> Stations => Definition.Stations;
 
-    public bool HasLayout => Definition.Layout is not null;
-
     public static Venue Create(VenueDefinition definition)
     {
         var pattern = new Regex(definition.TitlePattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, MatchTimeout);

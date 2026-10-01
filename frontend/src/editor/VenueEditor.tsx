@@ -30,14 +30,13 @@ import { validateVenue, type Issue } from './validate';
 import { channelUrlFrom, fetchChannelFeed, resolveChannelId } from './youtube';
 import './editor.css';
 
-type Tab = 'basic' | 'pattern' | 'stations' | 'hours' | 'layout' | 'check';
+type Tab = 'basic' | 'pattern' | 'stations' | 'hours' | 'check';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'basic', label: '기본' },
   { id: 'pattern', label: '제목 규칙' },
   { id: 'stations', label: '기체 · 구역' },
   { id: 'hours', label: '영업시간' },
-  { id: 'layout', label: '배치도' },
   { id: 'check', label: '검증' },
 ];
 
@@ -288,18 +287,6 @@ export default function VenueEditor() {
               {tab === 'pattern' && <PatternTab venue={venue} update={update} setStatus={setStatus} />}
               {tab === 'stations' && <StationsTab venue={venue} update={update} />}
               {tab === 'hours' && <HoursTab venue={venue} update={update} />}
-              {tab === 'layout' && (
-                <LayoutTab
-                  venue={venue}
-                  onClear={() =>
-                    setConfirmation({
-                      message: '배치도 좌표를 지우면 되돌리려면 좌표를 다시 작성해야 합니다. 지울까요?',
-                      action: '지우기',
-                      run: () => update(venue.key, (item) => ({ ...item, layout: null })),
-                    })
-                  }
-                />
-              )}
               {tab === 'check' && <CheckTab issues={issues} />}
             </main>
           </>
@@ -686,7 +673,7 @@ function StationsTab({ venue, update }: TabProps) {
       <RowTable<ZoneDraft>
         columns={[
           { key: 'id', label: 'id', mono: true, width: '22%' },
-          { key: 'code', label: 'code (배치도 표기)', width: '28%' },
+          { key: 'code', label: 'code (짧은 표기)', width: '28%' },
           { key: 'label', label: 'label (보기 이름)' },
         ]}
         rows={venue.zones}
@@ -764,29 +751,6 @@ function HoursTab({ venue, update }: TabProps) {
           onChange={(event) => update(venue.key, (item) => ({ ...item, closedDates: event.target.value }))}
         />
       </Field>
-    </div>
-  );
-}
-
-function LayoutTab({ venue, onClear }: { venue: VenueDraft; onClear: () => void }) {
-  const units = (venue.layout as { units?: unknown[] } | null)?.units;
-
-  return (
-    <div className="form">
-      <p>
-        {Array.isArray(units)
-          ? `좌표 ${units.length}개 — 저장할 때 그대로 보존됩니다.`
-          : '없음 — 이 매장은 그리드 보기만 제공합니다.'}
-      </p>
-      <p className="field__hint">
-        이 등록기는 배치도 좌표를 편집하지 않습니다. 배치도를 넣으려면 venues.json 의 layout 항목을 직접
-        작성하세요. 지금 멀티뷰는 배치도 보기를 쓰지 않습니다.
-      </p>
-      {Array.isArray(units) && (
-        <button type="button" className="btn" onClick={onClear}>
-          이 매장의 배치도 지우기
-        </button>
-      )}
     </div>
   );
 }

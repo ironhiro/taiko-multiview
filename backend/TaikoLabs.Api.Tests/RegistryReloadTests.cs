@@ -1,3 +1,5 @@
+using System.Text;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaikoLabs.Api.Models;
 using TaikoLabs.Api.Services;
@@ -24,6 +26,37 @@ public class RegistryReloadTests
         Assert.Equal(2, registry.All.Count);
         Assert.Equal("A1-바뀜", registry.Find("taikolabs")!.Stations[0].Label);
         Assert.NotNull(registry.Find("p2zone"));
+    }
+
+    [Fact]
+    public void A_file_that_still_has_a_floor_plan_loads_as_before()
+    {
+        // The floor plan left the settings, but a file written before then still has its
+        // "layout" block. Read the way Program.cs reads venues.json, the key is ignored.
+        const string json = """
+            {
+              "Venues": {
+                "Items": [
+                  {
+                    "id": "taikolabs",
+                    "name": "TAIKO LABS",
+                    "channelId": "UC0tzRzxBMM1-riQVHHYoADw",
+                    "titlePattern": "^(?<name>.+)$",
+                    "stations": [ { "id": "a1", "label": "A1" } ],
+                    "layout": { "canvas": { "width": 1000, "height": 1200 }, "units": [ { "stationId": "a1", "x": 1, "y": 2 } ] }
+                  }
+                ]
+              }
+            }
+            """;
+        var configuration = new ConfigurationBuilder()
+            .AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            .Build();
+        var options = configuration.GetSection(VenuesOptions.SectionName).Get<VenuesOptions>()!;
+
+        using var registry = TestVenues.Registry(options);
+
+        Assert.Equal(["a1"], registry.Find("taikolabs")!.Stations.Select(station => station.Id));
     }
 
     [Fact]

@@ -59,7 +59,7 @@ public sealed class VenueRegistry : IDisposable
 
         foreach (var definition in options.Items)
         {
-            if (!Validate(definition, _logger, out var reason))
+            if (!Validate(definition, out var reason))
             {
                 _logger.LogError("Venue '{Id}' was skipped: {Reason}", definition.Id, reason);
                 continue;
@@ -70,11 +70,10 @@ public sealed class VenueRegistry : IDisposable
             venues.Add(venue);
 
             _logger.LogInformation(
-                "Venue '{Id}' ({Name}): {Stations} cabinet(s), layout {Layout}",
+                "Venue '{Id}' ({Name}): {Stations} cabinet(s)",
                 venue.Id,
                 venue.Name,
-                venue.Stations.Count,
-                venue.HasLayout ? "yes" : "no");
+                venue.Stations.Count);
         }
 
         if (venues.Count == 0)
@@ -95,7 +94,7 @@ public sealed class VenueRegistry : IDisposable
             version);
     }
 
-    private static bool Validate(VenueDefinition definition, ILogger logger, out string reason)
+    private static bool Validate(VenueDefinition definition, out string reason)
     {
         if (string.IsNullOrWhiteSpace(definition.Id))
         {
@@ -134,21 +133,6 @@ public sealed class VenueRegistry : IDisposable
         {
             reason = $"titlePattern is not a valid regex: {ex.Message}";
             return false;
-        }
-
-        // A layout that references unknown cabinets would silently render empty slots.
-        if (definition.Layout is { } layout)
-        {
-            var known = definition.Stations.Select(station => station.Id).ToHashSet(StringComparer.Ordinal);
-            var orphans = layout.Units.Where(unit => !known.Contains(unit.StationId)).ToList();
-
-            if (orphans.Count > 0)
-            {
-                logger.LogWarning(
-                    "Venue '{Id}' layout references unknown cabinet(s): {Ids}",
-                    definition.Id,
-                    string.Join(", ", orphans.Select(unit => unit.StationId)));
-            }
         }
 
         reason = string.Empty;

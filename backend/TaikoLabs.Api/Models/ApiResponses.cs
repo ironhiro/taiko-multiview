@@ -57,9 +57,6 @@ public sealed record VenueInfo
     public string? ChannelUrl { get; init; }
     public required IReadOnlyList<ZoneDefinition> Zones { get; init; }
     public required IReadOnlyList<StationInfo> Stations { get; init; }
-
-    /// <summary>The floor plan; null for venues without one.</summary>
-    public LayoutDefinition? Layout { get; init; }
 }
 
 public sealed record StationInfo(string Id, string Label, string? ZoneId);

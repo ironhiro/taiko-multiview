@@ -34,7 +34,7 @@ export interface VenueStatus {
 
 export interface Zone {
   id: string;
-  /** Printed on the floor plan, e.g. "SECTOR A". */
+  /** The zone's short name, e.g. "SECTOR A"; the view picker falls back to it. */
   code: string;
   /** Shown in the view picker, e.g. "A 사이트". */
   label: string;
@@ -44,45 +44,6 @@ export interface Station {
   id: string;
   label: string;
   zoneId?: string;
-}
-
-export interface Size {
-  width: number;
-  height: number;
-}
-
-export interface Rect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface LayoutZone {
-  id: string;
-  outline: Rect;
-}
-
-export interface LayoutUnit {
-  stationId: string;
-  /** Top-left of the cabinet square on the source map. */
-  x: number;
-  y: number;
-}
-
-export interface LayoutDecoration {
-  label: string;
-  note?: string;
-  outline: Rect;
-}
-
-export interface Layout {
-  canvas: Size;
-  unitSize: number;
-  tileWidth: number;
-  zones: LayoutZone[];
-  units: LayoutUnit[];
-  decorations: LayoutDecoration[];
 }
 
 export interface Venue {
@@ -95,8 +56,6 @@ export interface Venue {
   channelUrl?: string;
   zones: Zone[];
   stations: Station[];
-  /** Null for venues that publish no map - those get the plain grid only. */
-  layout?: Layout | null;
 }
 
 // ----------------------------------------------------------- live snapshots

@@ -354,8 +354,6 @@ static VenueInfo DescribeVenue(Venue venue, IReadOnlyDictionary<string, string> 
     Stations = venue.Definition.Stations
         .Select(station => new StationInfo(station.Id, station.Label, station.ZoneId))
         .ToList(),
-    // Null for venues with no published map; the client then offers the grid only.
-    Layout = venue.Definition.Layout,
 };
 
 static VenueLive Project(Venue venue, LiveSnapshot snapshot, VenueStatus status) => new()

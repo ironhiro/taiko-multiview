@@ -35,12 +35,6 @@ public sealed class VenueDefinition
 
     public List<StationDefinition> Stations { get; set; } = [];
 
-    /// <summary>
-    /// Floor plan geometry. Null for venues that do not publish a map — those get the
-    /// plain grid only, and the 배치도 entry never appears in their view picker.
-    /// </summary>
-    public LayoutDefinition? Layout { get; set; }
-
     /// <summary>Opening hours per weekday, e.g. <c>"07:00-29:00"</c> for a 05:00 close next morning.</summary>
     public Dictionary<string, string> Hours { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
@@ -54,7 +48,7 @@ public sealed class ZoneDefinition
 {
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>Printed on the floor plan, e.g. "SECTOR A".</summary>
+    /// <summary>The zone's short name, e.g. "SECTOR A"; the view picker falls back to it.</summary>
     public string Code { get; set; } = string.Empty;
 
     /// <summary>Shown in the view picker, e.g. "A 사이트".</summary>
@@ -71,68 +65,6 @@ public sealed class StationDefinition
 
     /// <summary>Extra spellings that should resolve to this cabinet, beyond the label itself.</summary>
     public List<string> Aliases { get; set; } = [];
-}
-
-public sealed class LayoutDefinition
-{
-    public SizeDefinition Canvas { get; set; } = new();
-
-    /// <summary>Side of the square a cabinet occupies on the source map.</summary>
-    public double UnitSize { get; set; } = 130;
-
-    /// <summary>Width of the 16:9 video tile drawn over that square.</summary>
-    public double TileWidth { get; set; } = 230;
-
-    public List<LayoutZone> Zones { get; set; } = [];
-
-    public List<LayoutUnit> Units { get; set; } = [];
-
-    /// <summary>Rooms drawn for orientation but never streamed, such as a lounge.</summary>
-    public List<LayoutDecoration> Decorations { get; set; } = [];
-}
-
-public sealed class SizeDefinition
-{
-    public double Width { get; set; }
-
-    public double Height { get; set; }
-}
-
-public sealed class RectDefinition
-{
-    public double X { get; set; }
-
-    public double Y { get; set; }
-
-    public double Width { get; set; }
-
-    public double Height { get; set; }
-}
-
-public sealed class LayoutZone
-{
-    public string Id { get; set; } = string.Empty;
-
-    public RectDefinition Outline { get; set; } = new();
-}
-
-public sealed class LayoutUnit
-{
-    public string StationId { get; set; } = string.Empty;
-
-    /// <summary>Top-left of the cabinet square on the source map.</summary>
-    public double X { get; set; }
-
-    public double Y { get; set; }
-}
-
-public sealed class LayoutDecoration
-{
-    public string Label { get; set; } = string.Empty;
-
-    public string? Note { get; set; }
-
-    public RectDefinition Outline { get; set; } = new();
 }
 
 /// <summary>Global settings shared by every venue.</summary>

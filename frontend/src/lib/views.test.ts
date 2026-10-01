@@ -12,11 +12,10 @@ const venue = (zones: number): Venue => ({
     { id: 'a', label: 'A', zoneId: 'z0' },
     { id: 'b', label: 'B', zoneId: 'z1' },
   ],
-  layout: { canvas: { width: 1, height: 1 }, unitSize: 1, tileWidth: 1, zones: [], units: [], decorations: [] },
 });
 
 describe('views', () => {
-  it('no longer offers the floor plan, even to a venue with a layout', () => {
+  it('no longer offers the floor plan', () => {
     const values = viewOptionsFor(venue(2)).map((option) => option.value);
     expect(values).not.toContain('all');
     expect(values[0]).toBe('all-grid');
