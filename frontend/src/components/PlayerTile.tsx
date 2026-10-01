@@ -25,8 +25,6 @@ interface PlayerTileProps {
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
   onRequestAudio: () => void;
-  /** Rendered small inside the floor plan, larger in the plain grid. */
-  compact?: boolean;
   /**
    * Play only while the tile holds one of the few playing slots (lib/playbackSlots.ts),
    * and build a player only once it has; a thumbnail otherwise. Used on phones and
@@ -61,7 +59,6 @@ export function PlayerTile({
   stream,
   isAudioActive,
   onRequestAudio,
-  compact,
   lazy,
   pausesWhenAway,
   shielded,
@@ -356,7 +353,6 @@ export function PlayerTile({
 
   const className = [
     'tile',
-    compact ? 'tile--compact' : '',
     isAudioActive ? 'tile--audio' : '',
     stream ? '' : 'tile--idle',
   ]
@@ -660,7 +656,7 @@ const RESYNC_BEHIND_S = 30;
  *
  * WebKit - the engine behind the macOS desktop shell - pauses media that scrolls off
  * screen or sits in a hidden window, and resumes from the same spot when it returns, so
- * a zoomed floor plan kept showing minutes-old footage after scrolling back. Only the
+ * a tile kept showing minutes-old footage after scrolling back. Only the
  * return from hiding triggers this: a viewer scrubbing a visible tile keeps their spot.
  */
 function resyncWhenShownAgain(
@@ -734,7 +730,7 @@ function videoIdFromUrl(url: string | undefined): string | null {
   }
 }
 
-/** Tiles get very small in the floor plan, so the copy has a short form too. */
+/** A small tile has no room for the full sentence, so the copy has a short form too. */
 function UnavailablePlaceholder({
   message,
   shortMessage,

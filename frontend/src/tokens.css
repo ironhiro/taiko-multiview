@@ -1,7 +1,4 @@
-/* Hallmark tokens · genre: playful · theme: custom "오락실 감성 — cabinet night, 돈·카, buttons you press"
- * paper: oklch(13% 0.03 270) · 돈 oklch(64% 0.21 27) · 카 oklch(74% 0.14 230)
- * display: Black Han Sans · body: Pretendard · data: JetBrains Mono
- * axes: dark / display-heavy (Black Han Sans) / warm+cool roles (돈·카)
+/* Multiview tokens: cabinet night, 돈·카, buttons you press.
  * The system is written down in design.md at the repository root; read it before changing these.
  * Roles never swap: 돈 = on air, 카 = what the viewer chose, --venue-accent = a venue's identity only.
  */
@@ -71,7 +68,8 @@
   --text-lg: 1.625rem;
   --text-tally: 2.25rem;
 
-  /* Tile type follows the viewport height, since tiles do. */
+  /* Defaults. On the wall, tile label and meta type follow the tile's own width instead
+     (styles.css, .grid-view .tile); only --text-tile-body is used as it stands. */
   --text-tile-label: clamp(0.6875rem, 1.35vh, 0.9375rem);
   --text-tile-meta: clamp(0.5625rem, 1.05vh, 0.6875rem);
   --text-tile-body: clamp(0.6875rem, 1.5vh, 0.9375rem);

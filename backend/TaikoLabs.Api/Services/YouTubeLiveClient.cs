@@ -305,7 +305,7 @@ public sealed class YouTubeLiveClient(
 
     /// <summary>
     /// Fully offline data for exercising the UI: a few stations "streaming" but flagged
-    /// as non-embeddable, the rest empty so the 준비중 placeholder renders too. Given
+    /// as non-embeddable, the rest empty so the 방송 없음 strip renders too. Given
     /// real video ids instead, every station streams one of them, embeddable - players
     /// and all, for measuring load (the player then does reach YouTube).
     /// </summary>
@@ -314,7 +314,7 @@ public sealed class YouTubeLiveClient(
         var today = DateOnly.FromDateTime(DateTime.Now).ToString("yy.MM.dd");
         var playable = videoIds.Count > 0;
 
-        // Every other cabinet, so both the live tile and the 준비중 placeholder render.
+        // Every other cabinet, so both live tiles and the 방송 없음 strip render.
         var streams = venue.Stations
             .Where((_, index) => playable || index % 2 == 0)
             .Select((s, index) => new LiveStream

@@ -8,7 +8,7 @@ interface ViewPickerProps {
 
 /**
  * Every view laid out at once rather than behind a select: there are only a handful,
- * and seeing "배치도" next to the sector names says what the venue offers.
+ * and seeing every zone at once says what the venue offers.
  */
 export function ViewPicker({ options, value, onChange }: ViewPickerProps) {
   return (

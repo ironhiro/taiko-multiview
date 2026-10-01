@@ -15,7 +15,6 @@ import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
 import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
 
-// v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
 const GRID_STORAGE_KEY = 'taiko-multiview:grid';
 
 export default function App() {

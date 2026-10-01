@@ -58,7 +58,8 @@ export function createPageAway(source: VisibilitySource, releaseAfterMs = RELEAS
   return {
     current: () => state,
     // Listens to the page only while someone listens here, so a store nobody uses (the
-    // desktop, the unit tests) holds no handler and no timer.
+    // unit tests) holds no handler and no timer. Every tile listens, a desktop's too, though
+    // only a phone's tile acts on what it hears (PlayerTile, pausesWhenAway).
     subscribe(listener) {
       if (listeners.size === 0) {
         state = source.visibilityState === 'hidden' ? 'away' : 'here';
