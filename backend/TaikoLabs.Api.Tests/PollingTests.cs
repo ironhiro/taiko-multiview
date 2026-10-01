@@ -88,4 +88,25 @@ public class PollingTests
         rig.Clock.Now += TimeSpan.FromSeconds(60);
         Assert.True(rig.Poller.IsDue(rig.Venue));
     }
+
+    [Fact]
+    public void An_unregistered_cabinet_is_announced_once_per_appearance()
+    {
+        var rig = Build("2026-09-24T15:00:00");
+        LiveSnapshot OnAir(params string[] names) => new()
+        {
+            Unmatched = [.. names.Select(name => new LiveStream { VideoId = name, Title = name, Name = name, IsLive = true })],
+        };
+
+        Assert.Equal(["THE BASE 2"], rig.Poller.NoteUnregisteredOnAir(rig.Venue.Id, OnAir("THE BASE 2")));
+        // Still on air, however the title spells it: nothing new to say.
+        Assert.Empty(rig.Poller.NoteUnregisteredOnAir(rig.Venue.Id, OnAir("the-base 2")));
+        // A failed poll knows nothing about what is on air, and must not reset the memory.
+        Assert.Empty(rig.Poller.NoteUnregisteredOnAir(rig.Venue.Id, LiveSnapshot.Empty(LiveSourceMode.Api, "boom")));
+        Assert.Equal(["Z9"], rig.Poller.NoteUnregisteredOnAir(rig.Venue.Id, OnAir("THE BASE 2", "Z9")));
+
+        // Off air, then back: that is a new appearance.
+        Assert.Empty(rig.Poller.NoteUnregisteredOnAir(rig.Venue.Id, OnAir()));
+        Assert.Equal(["THE BASE 2"], rig.Poller.NoteUnregisteredOnAir(rig.Venue.Id, OnAir("THE BASE 2")));
+    }
 }

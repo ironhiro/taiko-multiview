@@ -255,6 +255,29 @@ test.describe('phone', () => {
     expect(await openCalls()).toEqual([]);
   });
 
+  test('a tile 380px wide or less keeps only its buttons\' icons, and the label its full name', async ({ page }) => {
+    // The sound button stays disabled here, and hidden with it, since nothing can play
+    // offline; the chat, a link, shows for every broadcast and stands in for both.
+    for (const size of PHONE_SIZES) {
+      await page.setViewportSize(size);
+      await page.goto('/?venue=taikolabs');
+      const tile = page.locator('.tile').filter({ has: page.locator('.tile__badge') }).first();
+      await expect(tile).toBeVisible();
+
+      const narrow = (await tile.boundingBox())!.width <= 380;
+      const chat = tile.getByRole('link', { name: /유튜브 채팅 열기/ });
+      await expect(chat.locator('.tile__control-text')).toBeVisible({ visible: !narrow });
+      const box = (await chat.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(36);
+      if (narrow) {
+        expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1);
+      }
+
+      const label = tile.locator('.tile__label');
+      await expect(label).toHaveAttribute('title', (await label.textContent())!);
+    }
+  });
+
   test('a phone held sideways, wider than 820px, still gets the phone layout', async ({ page }) => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto('/?venue=taikolabs');
@@ -324,6 +347,118 @@ test.describe('a venue list that does not arrive the first time', () => {
     expect(hung).toBeGreaterThan(0);
   });
 });
+
+// A cabinet on air that the venue's settings do not list yet gets a tile of its own at the
+// end of the whole wall, and hands over to the listed cabinet once the settings have it.
+// The mock server never reports one, so the test plays the server's part.
+test.describe('a cabinet on air that the settings do not list', () => {
+  test('gets a marked tile after the listed ones, loses it when the broadcast ends, and becomes the listed one', async ({
+    page,
+  }) => {
+    const server = await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2');
+    const tiles = page.locator('.grid-view .tile');
+    const base2 = tiles.filter({ has: page.locator('.tile__label', { hasText: /^THE BASE 2$/ }) });
+    const refresh = () => page.locator('.credit__refresh').click();
+
+    server.phase = 'unlisted';
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    await expect(tiles).toHaveCount(server.listedWithout + 1);
+    await expect(tiles.last().locator('.tile__label')).toHaveText('THE BASE 2');
+    await expect(tiles.last().locator('.tile__tag')).toHaveText('미등록');
+    await expect(page.locator('.tile__tag')).toHaveCount(1);
+    // On air is on air, listed or not.
+    await expect(page.locator('.tally__count')).toHaveText(String(server.liveListed + 1));
+
+    // A zone does not know where the cabinet stands, so it is not there.
+    await page.goto('/?venue=taikolabs&view=the-base');
+    await expect(tiles.first()).toBeVisible();
+    await expect(base2).toHaveCount(0);
+
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    await expect(base2).toHaveCount(1);
+
+    server.phase = 'over';
+    await refresh();
+    await expect(base2).toHaveCount(0);
+    await expect(tiles).toHaveCount(server.listedWithout);
+
+    server.phase = 'unlisted';
+    await refresh();
+    await expect(base2).toHaveCount(1);
+
+    // The settings now list it, and the poll finds it as that cabinet: one tile, unmarked.
+    server.phase = 'registered';
+    await refresh();
+    await expect(page.locator('.tile__tag')).toHaveCount(0);
+    await expect(base2).toHaveCount(1);
+    await expect(tiles).toHaveCount(server.listedWithout + 1);
+    await expect(base2.locator('.tile__badge')).toHaveText('LIVE');
+  });
+});
+
+type UnlistedPhase = 'unlisted' | 'over' | 'registered';
+
+/**
+ * Serves the venue list and the live data as if `stationId` were a new cabinet: missing
+ * from the settings and on air under `name` ('unlisted'), off air ('over'), or added to the
+ * settings and found by the poll as that cabinet ('registered'). Each settings change moves
+ * the version, as a saved file does, so the page fetches the venue list again.
+ */
+async function playUnlistedCabinet(page: Page, venueId: string, stationId: string, name: string) {
+  type Station = { id: string };
+  type Stream = { stationId: string | null; name: string; isLive: boolean };
+  // Counted up front from the real server, so the test's expectations never wait on the page.
+  const venues = (await (await page.request.get('/api/venues')).json()) as { venues: { id: string; stations: Station[] }[] };
+  const live = (await (await page.request.get('/api/live')).json()) as { venues: { venueId: string; streams: Stream[] }[] };
+  const server = {
+    phase: 'unlisted' as UnlistedPhase,
+    listedWithout: venues.venues
+      .find((venue) => venue.id === venueId)!
+      .stations.filter((station) => station.id !== stationId).length,
+    liveListed: live.venues
+      .find((venue) => venue.venueId === venueId)!
+      .streams.filter((stream) => stream.stationId !== stationId && stream.isLive).length,
+  };
+  const version = () => (server.phase === 'registered' ? 900_002 : 900_001);
+
+  await page.route('**/api/venues', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { version: number; venues: { id: string; stations: Station[] }[] };
+    const venue = body.venues.find((candidate) => candidate.id === venueId)!;
+    if (server.phase !== 'registered') {
+      venue.stations = venue.stations.filter((station) => station.id !== stationId);
+    }
+    await route.fulfill({ response, json: { ...body, version: version() } });
+  });
+
+  // The refresh button's POST is answered from the same data as a plain read.
+  await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+    const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
+    const body = (await response.json()) as {
+      venuesVersion: number;
+      venues: { venueId: string; streams: Stream[]; unmatched: Stream[] }[];
+    };
+    const venue = body.venues.find((candidate) => candidate.venueId === venueId)!;
+    venue.streams = venue.streams.filter((stream) => stream.stationId !== stationId);
+
+    const broadcast = {
+      videoId: `mock-${venueId}-${stationId}`,
+      title: `${name} Live Streaming - 1부`,
+      name,
+      part: 1,
+      isLive: true,
+      embeddable: false,
+      watchUrl: `https://www.youtube.com/watch?v=mock-${venueId}-${stationId}`,
+    };
+    venue.unmatched = server.phase === 'unlisted' ? [{ ...broadcast, stationId: null }] : [];
+    if (server.phase === 'registered') {
+      venue.streams.push({ ...broadcast, stationId });
+    }
+    await route.fulfill({ response, json: { ...body, venuesVersion: version() } });
+  });
+
+  return server;
+}
 
 /** The phones the chat is checked on: SE, 15 Pro, Pixel 7, and an iPhone held sideways. */
 const PHONE_SIZES = [

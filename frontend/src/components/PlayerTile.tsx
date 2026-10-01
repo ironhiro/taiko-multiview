@@ -14,6 +14,11 @@ import { chatSignInUrl, loadYouTubeApi, openChatWindow, playerOrigin, PlayerStat
 
 interface PlayerTileProps {
   label: string;
+  /**
+   * A cabinet on air that the venue's settings do not list yet (lib/wallTiles.ts). It
+   * behaves like any other tile and only says so beside its label.
+   */
+  unregistered?: boolean;
   stream: LiveStream | undefined;
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
@@ -50,6 +55,7 @@ interface PlayerTileProps {
 
 export function PlayerTile({
   label,
+  unregistered,
   stream,
   isAudioActive,
   onRequestAudio,
@@ -354,7 +360,15 @@ export function PlayerTile({
   return (
     <div className={className} ref={tileRef}>
       <div className="tile__header">
-        <span className="tile__label">{label}</span>
+        {/* The full name on hover and long press, since a narrow bar cuts it short. */}
+        <span className="tile__label" title={label}>
+          {label}
+        </span>
+        {unregistered && (
+          <span className="tile__tag" title="매장 설정에 아직 없는 기체입니다">
+            미등록
+          </span>
+        )}
         {stream && <span className="tile__badge">LIVE</span>}
         {typeof stream?.concurrentViewers === 'number' && (
           <span className="tile__viewers">{stream.concurrentViewers.toLocaleString('ko-KR')}명</span>
