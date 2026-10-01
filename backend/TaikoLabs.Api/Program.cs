@@ -138,7 +138,7 @@ if (hasFrontend)
 {
     app.UseDefaultFiles();
     // The build leaves a .br/.gz twin beside each asset; this hands one out when the client
-    // takes it, so the page's 355 kB stylesheet does not cross a phone's link uncompressed.
+    // takes it, so the stylesheet and the script do not cross a phone's link uncompressed.
     // Nothing is compressed here at request time - see PreCompressedStaticFiles for why.
     app.UsePreCompressedAssets();
     app.UseStaticFiles(new StaticFileOptions

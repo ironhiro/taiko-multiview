@@ -639,8 +639,9 @@ input {
   border: 0;
 }
 
-/* In the floor plan, whose tiles must stay exactly 16:9, the header and controls float
-   over the video. The wall's grid puts them in a row under it instead (further down). */
+/* Base layer, left from the retired floor plan: the header and controls float over the
+   video. Every tile now lives in the wall's grid, which puts them in a row under the
+   picture instead (.grid-view, further down); folding the two layers is still to do. */
 .tile__header {
   position: absolute;
   top: 0;
@@ -1041,8 +1042,8 @@ input {
   align-items: center;
   justify-content: center;
   gap: var(--space-3xs);
-  /* Top padding clears the floating header, which would otherwise sit on top of
-     this text once a tile gets small. */
+  /* Base layer: the top padding cleared the floating header. The wall's grid overrides
+     it now that the header sits under the picture. */
   padding: var(--space-lg) var(--space-2xs) var(--space-2xs);
   color: var(--color-ink-2);
   text-align: center;
