@@ -98,6 +98,14 @@
             "aliases": [
               "BASE"
             ]
+          },
+          {
+            "id": "base2",
+            "label": "THE BASE 2",
+            "zoneId": "the-base",
+            "aliases": [
+              "BASE 2"
+            ]
           }
         ],
         "layout": {
