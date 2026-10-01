@@ -63,11 +63,13 @@ test.describe('desktop', () => {
     await page.goto('/?venue=taikolabs');
     await page.getByRole('button', { name: '3×3' }).click();
 
-    // A chat on every tile with a broadcast, whether or not it can be embedded; none on
-    // an empty cabinet. The mock venue has both, so neither half passes by default.
+    // A chat on every tile with a broadcast, whether or not it can be embedded; none for an
+    // empty cabinet, which has no tile but a chip in the 방송 없음 strip. The mock venue has
+    // both, so neither half passes by default.
     const onAir = page.locator('.tile').filter({ has: page.locator('.tile__badge') });
     await expect(onAir.first()).toBeVisible();
-    expect(await page.locator('.tile--idle').count()).toBeGreaterThan(0);
+    expect(await page.locator('.idle-chip').count()).toBeGreaterThan(0);
+    await expect(page.locator('.idle-strip a, .idle-strip button')).toHaveCount(0);
     const chats = page.getByRole('link', { name: /유튜브 채팅 열기/ });
     await expect(chats).toHaveCount(await onAir.count());
     for (const tile of await onAir.all()) {
@@ -255,7 +257,9 @@ test.describe('phone', () => {
     expect(await openCalls()).toEqual([]);
   });
 
-  test('a tile 380px wide or less keeps only its buttons\' icons, and the label its full name', async ({ page }) => {
+  test("a phone held upright keeps only its buttons' icons, sideways their words, and the label its full name", async ({
+    page,
+  }) => {
     // The sound button stays disabled here, and hidden with it, since nothing can play
     // offline; the chat, a link, shows for every broadcast and stands in for both.
     for (const size of PHONE_SIZES) {
@@ -264,9 +268,12 @@ test.describe('phone', () => {
       const tile = page.locator('.tile').filter({ has: page.locator('.tile__badge') }).first();
       await expect(tile).toBeVisible();
 
-      const narrow = (await tile.boundingBox())!.width <= 380;
+      // The row inside the bezel, 390px or less: SE, 15 Pro and Pixel 7 upright, not sideways.
+      const row = await tile.locator('.tile__row').evaluate((element) => (element as HTMLElement).offsetWidth);
+      const narrow = row <= 390;
+      expect(narrow, `${size.width}×${size.height}: row ${row}px`).toBe(size.width < size.height);
       const chat = tile.getByRole('link', { name: /유튜브 채팅 열기/ });
-      await expect(chat.locator('.tile__control-text')).toBeVisible({ visible: !narrow });
+      await expect(chat.locator('.arcade-button__text')).toBeVisible({ visible: !narrow });
       const box = (await chat.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(36);
       if (narrow) {
@@ -275,6 +282,22 @@ test.describe('phone', () => {
 
       const label = tile.locator('.tile__label');
       await expect(label).toHaveAttribute('title', (await label.textContent())!);
+    }
+  });
+
+  test('LIVE, the 미등록 tag and the count are 10px on every phone, and the tag stays', async ({ page }) => {
+    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345 });
+    for (const size of PHONE_SIZES) {
+      await page.setViewportSize(size);
+      await page.goto('/?venue=taikolabs&view=all-grid');
+      const tile = page.locator('.grid-view .tile').filter({ has: page.locator('.tile__tag') });
+      await expect(tile).toHaveCount(1);
+      for (const part of ['.tile__badge', '.tile__tag', '.tile__viewers']) {
+        await expect(tile.locator(part), `${size.width}×${size.height} ${part}`).toHaveCSS('font-size', '10px');
+        await expect(tile.locator(part)).toBeVisible();
+      }
+      await expect(tile.locator('.tile__label')).toHaveAttribute('title', 'THE BASE 2');
+      expect(await rowFits(page)).toEqual([]);
     }
   });
 
@@ -362,7 +385,7 @@ test.describe('a cabinet on air that the settings do not list', () => {
 
     server.phase = 'unlisted';
     await page.goto('/?venue=taikolabs&view=all-grid');
-    await expect(tiles).toHaveCount(server.listedWithout + 1);
+    await expect(tiles).toHaveCount(server.liveListed + 1);
     await expect(tiles.last().locator('.tile__label')).toHaveText('THE BASE 2');
     await expect(tiles.last().locator('.tile__tag')).toHaveText('미등록');
     await expect(page.locator('.tile__tag')).toHaveCount(1);
@@ -380,7 +403,7 @@ test.describe('a cabinet on air that the settings do not list', () => {
     server.phase = 'over';
     await refresh();
     await expect(base2).toHaveCount(0);
-    await expect(tiles).toHaveCount(server.listedWithout);
+    await expect(tiles).toHaveCount(server.liveListed);
 
     server.phase = 'unlisted';
     await refresh();
@@ -391,12 +414,548 @@ test.describe('a cabinet on air that the settings do not list', () => {
     await refresh();
     await expect(page.locator('.tile__tag')).toHaveCount(0);
     await expect(base2).toHaveCount(1);
-    await expect(tiles).toHaveCount(server.listedWithout + 1);
+    await expect(tiles).toHaveCount(server.liveListed + 1);
     await expect(base2.locator('.tile__badge')).toHaveText('LIVE');
   });
 });
 
+// design.md, "Tile labels": the label and buttons sit in a row under the picture on every
+// device, so nothing of ours covers YouTube's own controls - hovered or not.
+test.describe('the row under the picture', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop layout; the phone has its own checks above');
+
+  for (const size of [2, 3, 4]) {
+    test(`on a ${size}×${size} desktop wall, nothing of ours lies over any picture, hovered or not`, async ({ page }) => {
+      await page.goto('/?venue=taikolabs');
+      await page.getByRole('button', { name: `${size}×${size}` }).click();
+      const tiles = page.locator('.grid-view .tile');
+      await expect(tiles.first()).toBeVisible();
+      await expect.poll(() => columnsOf(page)).toBe(Math.min(size, await tiles.count()));
+
+      expect(await overlapsOverPictures(page)).toEqual([]);
+      for (const tile of await tiles.all()) {
+        await tile.hover();
+        expect(await overlapsOverPictures(page)).toEqual([]);
+        // The buttons are there without a hover too: they no longer wait for one to show.
+        await expect(tile.locator('.tile__controls')).toHaveCSS('opacity', '1');
+      }
+
+      // Each picture stays 16:9 with its row under it, and N rows of tiles fit the wall.
+      const body = (await tiles.first().locator('.tile__body').boundingBox())!;
+      expect(Math.abs(body.width / body.height - 16 / 9)).toBeLessThan(0.02);
+      const wall = (await page.locator('.stage__main').boundingBox())!;
+      const lastOfFirstScreen = tiles.nth(Math.min(size * size, await tiles.count()) - 1);
+      const box = (await lastOfFirstScreen.boundingBox())!;
+      expect(box.y + box.height).toBeLessThanOrEqual(wall.y + wall.height + 1);
+
+      expect(await rowFits(page)).toEqual([]);
+    });
+  }
+
+  // design.md, "Tile labels": each row gives way by what it holds. On one 1440×900 3×3 wall
+  // the short rows keep their words while the tagged "THE BASE 2 · 12,345명" drops them.
+  test('on a 1440×900 3×3 wall, short rows keep their words and the longest drops them, tile by tile', async ({
+    page,
+  }) => {
+    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345, everyListedOnAir: true });
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    await page.getByRole('button', { name: '3×3' }).click();
+    await expect.poll(() => columnsOf(page)).toBe(3);
+    await expect(page.locator('.idle-strip')).toHaveCount(0);
+    // The sound button shows, as on a wall that plays: offline it is disabled and hidden.
+    await page.addStyleTag({ content: '.tile__control:disabled { display: inline-flex !important; }' });
+    await remeasureRows(page);
+
+    const long = page.locator('.grid-view .tile').filter({ has: page.locator('.tile__tag') });
+    await expect(long).toHaveCount(1);
+    await expect(long.locator('.tile__label')).toHaveText('THE BASE 2');
+    await expect(long.locator('.tile__viewers')).toHaveText('12,345명');
+    const width = await long.evaluate((tile) => (tile as HTMLElement).offsetWidth);
+    expect(width).toBe(319);
+
+    // The long row: icons only, its tag still there.
+    await expect(long.locator('.tile__row')).not.toHaveAttribute('data-fit', 'words');
+    await expect(long.locator('.arcade-button__text').first()).toBeHidden();
+    await expect(long.locator('.tile__tag')).toBeVisible();
+    // Every short row: its words.
+    const short = page.locator('.grid-view .tile').filter({ hasNot: page.locator('.tile__tag') });
+    expect(await short.count()).toBeGreaterThan(5);
+    for (const tile of await short.all()) {
+      await expect(tile.locator('.tile__row')).toHaveAttribute('data-fit', 'words');
+      await expect(tile.getByRole('link', { name: /유튜브 채팅 열기/ }).locator('.arcade-button__text')).toBeVisible();
+      await expect(tile.locator('button.tile__control .arcade-button__text')).toHaveText('음소거');
+      await expect(tile.locator('button.tile__control .arcade-button__text')).toBeVisible();
+    }
+    expect(await rowFits(page)).toEqual([]);
+  });
+
+  // A row is measured again when a font face it uses arrives late, with nothing resized and
+  // no word from the font set: headless WebKit never fired `loadingdone`, and `ready` had
+  // long resolved when a later Pretendard subset came in (lib/rowFit.ts, watchFontLoads).
+  test('a row measures again when a late font face arrives, with nothing resized', async ({ page }) => {
+    test.setTimeout(45_000);
+    await page.addInitScript(() => {
+      const log = { rowResizes: [] as number[], fitWrites: [] as number[] };
+      Object.assign(window, { fontLog: log });
+      const Real = window.ResizeObserver;
+      window.ResizeObserver = class extends Real {
+        constructor(callback: ResizeObserverCallback) {
+          super((entries, observer) => {
+            if (entries.some((entry) => entry.target.classList.contains('tile__row'))) log.rowResizes.push(performance.now());
+            callback(entries, observer);
+          });
+        }
+      };
+      // One entry per write: each is a row trying a fit.
+      new MutationObserver((records) => {
+        const at = performance.now();
+        for (const _record of records) log.fitWrites.push(at);
+      }).observe(document, { subtree: true, attributeFilter: ['data-fit'] });
+    });
+    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2', { viewers: 12345 });
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    const tag = page.locator('.grid-view .tile__tag');
+    await expect(tag).toHaveText('미등록');
+    // Tiles of a fixed width, so nothing a font does can resize a row; then past the last
+    // look the rows take a few seconds after load, so only a face can set them off.
+    await page.addStyleTag({ content: '.grid-view { grid-template-columns: repeat(3, 300px) !important; }' });
+    await page.waitForFunction(() => document.readyState === 'complete');
+    await page.waitForTimeout(3_500);
+    await settled(page);
+
+    // Hangul no text on the page has used yet, so its Pretendard subset - listed in the
+    // stylesheet, never loaded - starts loading now, long after `ready`.
+    const loadedBefore = await page.evaluate(
+      () => [...document.fonts].filter((face) => face.family.includes('Pretendard') && face.status === 'loaded').length,
+    );
+    const writtenAt = await tag.evaluate((element) => {
+      element.textContent = '뷁똠쀍';
+      return performance.now();
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => [...document.fonts].filter((face) => face.family.includes('Pretendard') && face.status === 'loaded').length,
+        ),
+      )
+      .toBeGreaterThan(loadedBefore);
+    await page.waitForTimeout(300);
+
+    type FontLog = { rowResizes: number[]; fitWrites: number[] };
+    const { rowResizes, fitWrites } = await page.evaluate(() => (window as unknown as { fontLog: FontLog }).fontLog);
+    // Nothing resized a row, and nothing else measured them, yet every row measured again.
+    expect(rowResizes.filter((at) => at > writtenAt)).toEqual([]);
+    const rows = await page.locator('.grid-view .tile__row').count();
+    expect(fitWrites.filter((at) => at > writtenAt).length).toBeGreaterThanOrEqual(rows);
+  });
+
+  // design.md, "Controls": the chosen state is 카, and a pointer over it does not take that
+  // away - the sound-on button used to turn back to plain grey under the mouse.
+  test('a chosen button keeps its 카 edge and colour under the pointer', async ({ page }) => {
+    await page.goto('/?venue=taikolabs');
+    const tile = page.locator('.grid-view .tile').first();
+    await expect(tile).toBeVisible();
+    // Nothing plays offline, so the sound button is disabled and hidden: stand it up as a
+    // chosen one, which is how it looks once its tile has the sound.
+    const sound = tile.locator('button.tile__control');
+    await sound.evaluate((button) => {
+      button.removeAttribute('disabled');
+      button.setAttribute('aria-pressed', 'true');
+    });
+    const ka = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--color-ka)';
+      document.body.appendChild(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    });
+    const look = () => sound.evaluate((button) => [getComputedStyle(button).borderTopColor, getComputedStyle(button).color]);
+
+    expect(await look()).toEqual([ka, ka]);
+    await sound.hover();
+    expect(await look()).toEqual([ka, ka]);
+    // And pressed, it still sinks into its base like every arcade button.
+    await page.mouse.down();
+    await expect(sound).toHaveCSS('box-shadow', /0px 0px 0px/);
+    await page.mouse.up();
+  });
+});
+
+/**
+ * Every tile whose row does not fit: wrapped onto a second line, spilling out of its own
+ * box or its label part, buttons past the tile's edge, a hidden tag, or a label cut to less
+ * than three letters and its ellipsis ("THE…", design.md "Tile labels") on a tile at least
+ * `leastFrom` wide. Heights are layout sizes and
+ * the rest are compared within one tile, since a tile gliding to a new layout is scaled
+ * for a moment.
+ */
+function rowFits(page: Page, { leastFrom = 0 }: { leastFrom?: number } = {}): Promise<string[]> {
+  return page.evaluate((leastFrom) => {
+    const found: string[] = [];
+    const bar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tile-bar')) * 16;
+    for (const tile of document.querySelectorAll<HTMLElement>('.grid-view .tile')) {
+      const row = tile.querySelector<HTMLElement>('.tile__row')!;
+      const header = tile.querySelector<HTMLElement>('.tile__header')!;
+      const label = tile.querySelector<HTMLElement>('.tile__label')!;
+      const name = label.textContent;
+      if (row.offsetHeight > bar + 1) found.push(`${name}: wrapped`);
+      if (row.scrollWidth > row.clientWidth) found.push(`${name}: row overflows`);
+      if (header.scrollWidth > header.clientWidth) found.push(`${name}: label part overflows`);
+      const scale = tile.getBoundingClientRect().width / tile.offsetWidth;
+      const edge = tile.getBoundingClientRect().right - tile.clientLeft * scale;
+      if (tile.querySelector('.tile__controls')!.getBoundingClientRect().right > edge + 0.5) {
+        found.push(`${name}: buttons past the edge`);
+      }
+      // The least a label may keep, in its own type: "THE…", or the whole name if shorter.
+      const probe = document.createElement('span');
+      probe.className = 'tile__label';
+      probe.textContent = 'THE…';
+      probe.style.cssText = 'position: absolute; visibility: hidden; min-width: 0; overflow: visible;';
+      header.appendChild(probe);
+      const least = Math.min(probe.offsetWidth, label.scrollWidth);
+      probe.remove();
+      if (tile.offsetWidth >= leastFrom && label.offsetWidth + 0.5 < least) {
+        found.push(`${name}: label ${label.offsetWidth}px, less than ${least}px`);
+      }
+      // The tag never goes (design.md, "Tile labels").
+      const tag = tile.querySelector<HTMLElement>('.tile__tag');
+      if (tag && getComputedStyle(tag).display === 'none') found.push(`${name}: tag hidden`);
+    }
+    return found;
+  }, leastFrom);
+}
+
+/**
+ * The longest row we list, on every tile: a tagged "THE BASE 2", LIVE, a five-digit count,
+ * and a sound button with its longer words - shown though offline nothing can play.
+ */
+async function withLongestRow(page: Page) {
+  await page.addStyleTag({ content: '.tile__control:disabled { display: inline-flex !important; }' });
+  await page.evaluate(() => {
+    for (const tile of document.querySelectorAll('.grid-view .tile')) {
+      tile.querySelector('.tile__label')!.textContent = 'THE BASE 2';
+      if (!tile.querySelector('.tile__tag')) {
+        const tag = document.createElement('span');
+        tag.className = 'tile__tag';
+        tag.textContent = '미등록';
+        tile.querySelector('.tile__label')!.after(tag);
+      }
+      const viewers = tile.querySelector('.tile__viewers');
+      if (viewers) viewers.textContent = '12,345명';
+      const sound = tile.querySelector('.tile__control .arcade-button__text');
+      if (sound) sound.textContent = '소리 켜짐';
+    }
+  });
+  await remeasureRows(page);
+}
+
+/**
+ * Written behind React's back, so the rows are made to measure again: each is narrowed by a
+ * pixel and given it back, which their resize observer reports (lib/rowFit.ts). A row at
+ * the very edge of a step may stay a step tighter (the slack before loosening), never
+ * looser. Telling them that fonts loaded was not heard every time in WebKit.
+ */
+async function remeasureRows(page: Page) {
+  const nudge = await page.addStyleTag({ content: '.grid-view .tile__row { padding-right: 1px; }' });
+  await settled(page);
+  await nudge.evaluate((element) => (element as Element).remove());
+  await settled(page);
+}
+
+/** Two frames: the rows' resize observer reports after layout, before the next paint. */
+async function settled(page: Page) {
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+}
+
+// The type in a row follows the tile's width, so where the row gives way holds in any
+// window; a window's height used to move it (QA F-1: 1920×1080 4×4 spilled 17px).
+/** The narrowest phone tile on which the longest row keeps "THE…" (measured: 198px). */
+const PHONE_LEAST_LABEL_FROM = 198;
+
+test.describe('the row under the picture, measured', () => {
+  test.skip(
+    ({ browserName, isMobile }) => browserName === 'webkit' && !isMobile,
+    'a width sweep: the desktop on Chromium, the phone on WebKit',
+  );
+
+  for (const height of [420, 900, 1080, 1500]) {
+    test(`the longest row never spills, keeps its tag and "THE…", tiles 184-600px, a window ${height}px tall`, async ({
+      page,
+      isMobile,
+    }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize({ width: isMobile ? 400 : 1920, height });
+      await page.goto('/?venue=taikolabs');
+      await expect(page.locator('.grid-view .tile').first()).toBeVisible();
+      await withLongestRow(page);
+      const sweep = await page.addStyleTag({ content: '/* sweep */' });
+      for (let width = 184; width <= 600; width += 4) {
+        if (isMobile) {
+          // One tile to a row on a phone: the tile is the page less its padding.
+          await page.setViewportSize({ width: width + 24, height });
+        } else {
+          await sweep.evaluate((element, width) => {
+            element.textContent = `.grid-view { grid-template-columns: repeat(3, ${width}px) !important; }`;
+          }, width);
+        }
+        await settled(page);
+        // A phone's 14px label keeps "THE…" beside the longest row from a 198px tile; below
+        // that - no phone is that narrow - it is cut further rather than the tag hidden.
+        expect(await rowFits(page, { leastFrom: isMobile ? PHONE_LEAST_LABEL_FROM : 0 }), `tile ${width}px, window height ${height}px`).toEqual([]);
+      }
+    });
+  }
+});
+
+test.describe('the row under the picture, on real walls', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop layout');
+
+  for (const [width, height, size] of [
+    [1440, 900, 3],
+    [1440, 900, 4],
+    [1920, 1080, 3],
+    [1920, 1080, 4],
+    [1440, 1500, 3],
+    [1440, 1500, 4],
+  ] as const) {
+    test(`${width}×${height} ${size}×${size}: the longest row fits and keeps "THE…"`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await withOnAir(page, 'taikolabs', (await stationsOf(page, 'taikolabs')).map((station) => station.id));
+      await page.goto('/?venue=taikolabs');
+      await page.getByRole('button', { name: `${size}×${size}` }).click();
+      await expect.poll(() => columnsOf(page)).toBe(size);
+      await withLongestRow(page);
+      expect(await rowFits(page)).toEqual([]);
+      if (width === 1920 && size === 3) {
+        await expect(page.locator('.grid-view .arcade-button__text').first()).toBeVisible();
+      }
+    });
+  }
+});
+
+// design.md, "Cabinets with no broadcast": a cabinet with nothing on air has no tile, only a
+// chip in one thin "방송 없음" strip at the end of the wall. The test decides which cabinets
+// are on air by rewriting /api/live, which is also how to see the strip on a mock server.
+test.describe('cabinets with nothing on air', () => {
+  test('leave the grid for one 방송 없음 strip at its end, in neutral colours, and the layout counts only tiles', async ({
+    page,
+    isMobile,
+  }) => {
+    const stations = await stationsOf(page, 'taikolabs');
+    const idle = [stations[1], stations[5], stations[7]];
+    const onAir = stations.filter((station) => !idle.includes(station));
+    await withOnAir(page, 'taikolabs', onAir.map((station) => station.id));
+    await page.goto('/?venue=taikolabs&view=all-grid');
+
+    const tiles = page.locator('.grid-view .tile');
+    await expect(tiles).toHaveCount(onAir.length);
+    await expect(page.locator('.tile--idle')).toHaveCount(0);
+    await expect(tiles.locator('.tile__label')).toHaveText(onAir.map((station) => station.label));
+
+    const strip = page.locator('.idle-strip');
+    await expect(strip).toHaveCount(1);
+    await expect(strip.locator('.idle-strip__title')).toHaveText('방송 없음');
+    await expect(strip.locator('.idle-chip')).toHaveText(idle.map((station) => station.label));
+    // At the end of the wall: after the last tile, and nothing after it.
+    await expect(page.locator('.grid-view > :last-child')).toHaveClass(/idle-strip/);
+    const lastTile = (await tiles.last().boundingBox())!;
+    const stripBox = (await strip.boundingBox())!;
+    expect(stripBox.y).toBeGreaterThanOrEqual(lastTile.y + lastTile.height - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    if (!isMobile) {
+      expect(stripBox.height).toBeLessThanOrEqual(48);
+    }
+
+    // Neutral only: the strip and its chips take none of 돈, 카 or the venue's colour.
+    const colours = await strip.evaluate((element) => {
+      const probe = document.createElement('span');
+      element.appendChild(probe);
+      const resolve = (token: string) => {
+        probe.style.color = `var(${token})`;
+        return getComputedStyle(probe).color;
+      };
+      const tokens = Object.fromEntries(
+        ['--color-paper-2', '--color-rule-strong', '--color-ink-2', '--color-ink-3', '--color-don', '--color-don-deep', '--color-ka', '--color-live', '--venue-accent'].map(
+          (token) => [token, resolve(token)],
+        ),
+      );
+      probe.remove();
+      const chip = getComputedStyle(element.querySelector('.idle-chip')!);
+      const title = getComputedStyle(element.querySelector('.idle-strip__title')!);
+      const self = getComputedStyle(element);
+      return {
+        tokens,
+        used: [self.backgroundColor, self.borderTopColor, title.color, chip.color, chip.boxShadow, chip.backgroundColor],
+      };
+    });
+    expect(colours.used[0]).toBe(colours.tokens['--color-paper-2']);
+    expect(colours.used[1]).toBe(colours.tokens['--color-rule-strong']);
+    expect(colours.used[2]).toBe(colours.tokens['--color-ink-3']);
+    expect(colours.used[3]).toBe(colours.tokens['--color-ink-2']);
+    for (const token of ['--color-don', '--color-don-deep', '--color-ka', '--color-live', '--venue-accent']) {
+      for (const used of colours.used) {
+        expect(used).not.toContain(colours.tokens[token]);
+      }
+    }
+
+    if (!isMobile) {
+      // The layout picker and the column shrink count tiles: two on air is two columns,
+      // however many cabinets the venue lists.
+      await withOnAir(page, 'taikolabs', onAir.slice(0, 2).map((station) => station.id));
+      await page.reload();
+      await page.getByRole('button', { name: '3×3' }).click();
+      await expect(tiles).toHaveCount(2);
+      await expect.poll(() => columnsOf(page)).toBe(2);
+      await expect(page.locator('.idle-chip')).toHaveCount(stations.length - 2);
+    }
+  });
+
+  test('with nothing on air at all, the wall is the strip alone, as wide as the layout', async ({ page, isMobile }) => {
+    const stations = await stationsOf(page, 'taikolabs');
+    await withOnAir(page, 'taikolabs', []);
+    await page.goto('/?venue=taikolabs&view=all-grid');
+
+    await expect(page.locator('.idle-chip')).toHaveCount(stations.length);
+    await expect(page.locator('.grid-view .tile')).toHaveCount(0);
+    if (!isMobile) {
+      await page.getByRole('button', { name: '3×3' }).click();
+      await expect.poll(() => columnsOf(page)).toBe(3);
+    }
+    // Across every column the layout would give its tiles.
+    const columnsWidth = await page.locator('.grid-view').evaluate((el) => {
+      const style = getComputedStyle(el);
+      const tracks = style.gridTemplateColumns.split(' ').map(parseFloat);
+      return tracks.reduce((sum, track) => sum + track, 0) + (tracks.length - 1) * parseFloat(style.columnGap);
+    });
+    const strip = (await page.locator('.idle-strip').boundingBox())!;
+    expect(Math.abs(strip.width - columnsWidth)).toBeLessThanOrEqual(1);
+  });
+});
+
+// The viewer count stays on one line and whole: a narrow row broke "12,345명" before 명.
+// Pressed by a long cabinet name, which is what gives way instead.
+test.describe('the viewer count', () => {
+  test.skip(({ isMobile }) => !isMobile, 'the narrowest rows are on phones');
+
+  test('stays one line on every phone, however long the cabinet name', async ({ page }) => {
+    await withLongLabels(page, 'taikolabs', 'THE BASE 2 LONG CABINET NAME');
+    await withOnAir(page, 'taikolabs', null, { concurrentViewers: 12345 });
+
+    for (const size of PHONE_SIZES) {
+      await page.setViewportSize(size);
+      await page.goto('/?venue=taikolabs&view=all-grid');
+      const counts = page.locator('.grid-view .tile__viewers');
+      await expect(counts.first()).toHaveText('12,345명');
+
+      for (const count of await counts.all()) {
+        // One line box for the text, and all of it inside the count's own box.
+        const lines = await count.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const rects = [...range.getClientRects()].filter((rect) => rect.width > 0);
+          const tops = new Set(rects.map((rect) => Math.round(rect.top)));
+          return { lines: tops.size, scroll: element.scrollWidth - element.clientWidth };
+        });
+        expect(lines, `${size.width}×${size.height}`).toEqual({ lines: 1, scroll: 0 });
+      }
+      // The label gave way instead, and kept its full name for a long press.
+      const label = page.locator('.grid-view .tile__label').first();
+      await expect(label).toHaveAttribute('title', 'THE BASE 2 LONG CABINET NAME');
+    }
+  });
+});
+
 type UnlistedPhase = 'unlisted' | 'over' | 'registered';
+
+function columnsOf(page: Page): Promise<number> {
+  return page.locator('.grid-view').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+}
+
+/**
+ * Every element of ours drawn over a tile's picture: whatever in the tile lies outside its
+ * body yet overlaps the body's box. Reported as "tile label: class" so a failure names it.
+ */
+function overlapsOverPictures(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const found: string[] = [];
+    for (const tile of document.querySelectorAll<HTMLElement>('.grid-view .tile')) {
+      const body = tile.querySelector('.tile__body')!.getBoundingClientRect();
+      for (const element of tile.querySelectorAll<HTMLElement>('.tile__row, .tile__row *')) {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.opacity === '0') {
+          continue;
+        }
+        const overlaps =
+          box.left < body.right - 0.5 &&
+          box.right > body.left + 0.5 &&
+          box.top < body.bottom - 0.5 &&
+          box.bottom > body.top + 0.5;
+        if (overlaps) {
+          found.push(`${tile.querySelector('.tile__label')?.textContent}: ${element.className}`);
+        }
+      }
+    }
+    return found;
+  });
+}
+
+async function stationsOf(page: Page, venueId: string): Promise<{ id: string; label: string }[]> {
+  const body = (await (await page.request.get('/api/venues')).json()) as {
+    venues: { id: string; stations: { id: string; label: string }[] }[];
+  };
+  return body.venues.find((venue) => venue.id === venueId)!.stations;
+}
+
+/**
+ * Serves `/api/live` (and the refresh button's POST) with only `stationIds` of the venue on
+ * air - each given a copy of the venue's first broadcast if the mock server had none for
+ * it - or, with `stationIds` null, as the server has it. `patch` is laid over every stream.
+ * A later call replaces an earlier one.
+ */
+async function withOnAir(
+  page: Page,
+  venueId: string,
+  stationIds: string[] | null,
+  patch: Record<string, unknown> = {},
+) {
+  type Stream = { stationId: string | null; videoId: string; watchUrl: string; name: string };
+  await page.unroute(/\/api\/live(\/refresh)?$/);
+  await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+    const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
+    const body = (await response.json()) as { venues: { venueId: string; streams: Stream[]; unmatched: Stream[] }[] };
+    const venue = body.venues.find((candidate) => candidate.venueId === venueId)!;
+    if (stationIds) {
+      const template = venue.streams[0];
+      venue.streams = stationIds.map(
+        (stationId) =>
+          venue.streams.find((stream) => stream.stationId === stationId) ?? {
+            ...template,
+            stationId,
+            name: stationId.toUpperCase(),
+            videoId: `mock-${venueId}-${stationId}`,
+            watchUrl: `https://www.youtube.com/watch?v=mock-${venueId}-${stationId}`,
+          },
+      );
+      venue.unmatched = [];
+    }
+    venue.streams = venue.streams.map((stream) => ({ ...stream, ...patch }));
+    await route.fulfill({ response, json: body });
+  });
+}
+
+/** Serves `/api/venues` with every cabinet of the venue under `label`. */
+async function withLongLabels(page: Page, venueId: string, label: string) {
+  await page.route('**/api/venues', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { venues: { id: string; stations: { label: string }[] }[] };
+    for (const station of body.venues.find((venue) => venue.id === venueId)!.stations) {
+      station.label = label;
+    }
+    await route.fulfill({ response, json: body });
+  });
+}
 
 /**
  * Serves the venue list and the live data as if `stationId` were a new cabinet: missing
@@ -404,17 +963,26 @@ type UnlistedPhase = 'unlisted' | 'over' | 'registered';
  * settings and found by the poll as that cabinet ('registered'). Each settings change moves
  * the version, as a saved file does, so the page fetches the venue list again.
  */
-async function playUnlistedCabinet(page: Page, venueId: string, stationId: string, name: string) {
+async function playUnlistedCabinet(
+  page: Page,
+  venueId: string,
+  stationId: string,
+  name: string,
+  { viewers, everyListedOnAir = false }: { viewers?: number; everyListedOnAir?: boolean } = {},
+) {
   type Station = { id: string };
-  type Stream = { stationId: string | null; name: string; isLive: boolean };
+  type Stream = { stationId: string | null; name: string; isLive: boolean; videoId?: string; watchUrl?: string };
+  const listed = everyListedOnAir
+    ? ((await (await page.request.get('/api/venues')).json()) as { venues: { id: string; stations: Station[] }[] }).venues
+        .find((venue) => venue.id === venueId)!
+        .stations.map((station) => station.id)
+        .filter((id) => id !== stationId)
+    : [];
   // Counted up front from the real server, so the test's expectations never wait on the page.
-  const venues = (await (await page.request.get('/api/venues')).json()) as { venues: { id: string; stations: Station[] }[] };
   const live = (await (await page.request.get('/api/live')).json()) as { venues: { venueId: string; streams: Stream[] }[] };
   const server = {
     phase: 'unlisted' as UnlistedPhase,
-    listedWithout: venues.venues
-      .find((venue) => venue.id === venueId)!
-      .stations.filter((station) => station.id !== stationId).length,
+    // What the wall's tiles are without the new cabinet: the listed cabinets on air.
     liveListed: live.venues
       .find((venue) => venue.venueId === venueId)!
       .streams.filter((stream) => stream.stationId !== stationId && stream.isLive).length,
@@ -440,6 +1008,14 @@ async function playUnlistedCabinet(page: Page, venueId: string, stationId: strin
     };
     const venue = body.venues.find((candidate) => candidate.venueId === venueId)!;
     venue.streams = venue.streams.filter((stream) => stream.stationId !== stationId);
+    // Every listed cabinet on air, each with a copy of the venue's first broadcast if the
+    // mock server had none for it: a wall without the 방송 없음 strip.
+    const template = venue.streams[0];
+    for (const id of listed) {
+      if (!venue.streams.some((stream) => stream.stationId === id)) {
+        venue.streams.push({ ...template, stationId: id, name: id.toUpperCase(), videoId: `mock-${venueId}-${id}` });
+      }
+    }
 
     const broadcast = {
       videoId: `mock-${venueId}-${stationId}`,
@@ -449,6 +1025,7 @@ async function playUnlistedCabinet(page: Page, venueId: string, stationId: strin
       isLive: true,
       embeddable: false,
       watchUrl: `https://www.youtube.com/watch?v=mock-${venueId}-${stationId}`,
+      ...(viewers === undefined ? {} : { concurrentViewers: viewers }),
     };
     venue.unmatched = server.phase === 'unlisted' ? [{ ...broadcast, stationId: null }] : [];
     if (server.phase === 'registered') {

@@ -10,6 +10,8 @@ import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
 import { joinsPlaybackSlots, nextPlayerAction } from '../lib/tilePlayer';
 import { isDesktopShell } from '../lib/shell';
 import { useCoveredTop } from '../lib/stickyCover';
+import { ArcadeLink } from './ArcadeButton';
+import { ChatIcon, TileLabelRow } from './TileLabelRow';
 import { chatSignInUrl, loadYouTubeApi, openChatWindow, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
@@ -359,22 +361,6 @@ export function PlayerTile({
 
   return (
     <div className={className} ref={tileRef}>
-      <div className="tile__header">
-        {/* The full name on hover and long press, since a narrow bar cuts it short. */}
-        <span className="tile__label" title={label}>
-          {label}
-        </span>
-        {unregistered && (
-          <span className="tile__tag" title="매장 설정에 아직 없는 기체입니다">
-            미등록
-          </span>
-        )}
-        {stream && <span className="tile__badge">LIVE</span>}
-        {typeof stream?.concurrentViewers === 'number' && (
-          <span className="tile__viewers">{stream.concurrentViewers.toLocaleString('ko-KR')}명</span>
-        )}
-      </div>
-
       <div className="tile__body">
         {/* The player's host is part of the tile, not of the player: React removing it
             would detach the iframe before the effect above could destroy it, and every
@@ -413,22 +399,18 @@ export function PlayerTile({
         )}
       </div>
 
-      <div className="tile__controls">
-        <button
-          type="button"
-          className="tile__control"
-          onClick={onRequestAudio}
-          disabled={!mountedId}
-          aria-pressed={isAudioActive}
-          aria-label={isAudioActive ? `${label} 소리 끄기` : `${label} 소리 듣기`}
-        >
-          <SpeakerIcon on={isAudioActive} />
-          <span className="tile__control-text">{isAudioActive ? '소리 켜짐' : '음소거'}</span>
-        </button>
-        {/* The chat has nothing to do with the embed, so a tile that cannot play still
-            offers it; only a cabinet with no broadcast has no chat. */}
-        {stream && <ChatLink label={label} stream={stream} inTab={Boolean(opensChatInTab)} />}
-      </div>
+      <TileLabelRow
+        cabinet={label}
+        tag={unregistered}
+        live={Boolean(stream)}
+        viewers={stream?.concurrentViewers}
+        sound={isAudioActive ? 'on' : 'off'}
+        soundDisabled={!mountedId}
+        onToggleSound={onRequestAudio}
+        // The chat has nothing to do with the embed, so a tile that cannot play still
+        // offers it; only a cabinet with no broadcast has no chat.
+        chat={stream && <ChatLink label={label} stream={stream} inTab={Boolean(opensChatInTab)} />}
+      />
     </div>
   );
 }
@@ -814,50 +796,15 @@ function ChatLink({ label, stream, inTab }: { label: string; stream: LiveStream;
   };
 
   return (
-    <a
+    <ArcadeLink
       className="tile__control tile__control--chat"
+      label="채팅"
+      icon={<ChatIcon />}
       href={inTab ? stream.watchUrl : chatSignInUrl(stream.videoId)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={inTab ? undefined : openPopup}
       aria-label={`${label} 유튜브 채팅 열기`}
-    >
-      <ChatIcon />
-      <span className="tile__control-text">채팅</span>
-    </a>
-  );
-}
-
-function ChatIcon() {
-  return (
-    <svg className="tile__control-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path
-        d="M3 3h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L4.5 13.5V11H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** Drawn rather than an emoji so it takes the tile's colour and stays one size everywhere. */
-function SpeakerIcon({ on }: { on: boolean }) {
-  return (
-    <svg className="tile__control-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-      <path d="M2 6h2.6L8 3.2v9.6L4.6 10H2z" fill="currentColor" />
-      {on ? (
-        <path
-          d="M10.4 5.6a3.4 3.4 0 0 1 0 4.8M12.3 3.8a6 6 0 0 1 0 8.4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-      ) : (
-        <path d="M10.5 6l3.5 4M14 6l-3.5 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      )}
-    </svg>
+    />
   );
 }

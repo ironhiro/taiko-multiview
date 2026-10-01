@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { IdleMessage } from '../lib/venue';
+import { splitWall } from '../lib/idleCabinets';
 import type { WallTile } from '../lib/wallTiles';
+import { IdleStrip } from './IdleStrip';
 import { gridColumns } from './LayoutPicker';
 import { PlayerTile } from './PlayerTile';
 
@@ -10,7 +12,7 @@ interface GridViewProps {
   /** The id of the tile holding the sound. */
   audioTileId: string | null;
   onRequestAudio: (tileId: string) => void;
-  /** The chosen N×N layout; fewer columns are used when there are fewer cabinets. */
+  /** The chosen N×N layout; fewer columns are used when fewer cabinets are on air. */
   gridSize: number;
   lazy?: boolean;
   idle: IdleMessage;
@@ -18,8 +20,10 @@ interface GridViewProps {
 
 
 /**
- * The multiview: the cabinets as equal tiles, N to a row and N rows to a screen, each
- * as large as the screen allows at 16:9. More cabinets than N×N scroll.
+ * The multiview: the cabinets on air as equal tiles, N to a row and N rows to a screen,
+ * each as large as the screen allows at 16:9 with its label row beneath. More than N×N
+ * scroll. The cabinets with nothing on air follow as one "방송 없음" strip, the grid's
+ * last row, spanning every column (lib/idleCabinets.ts).
  */
 export function GridView({
   tiles,
@@ -29,12 +33,20 @@ export function GridView({
   lazy,
   idle,
 }: GridViewProps) {
-  const columns = gridColumns(gridSize, tiles.length);
+  const wall = splitWall(tiles, Boolean(idle.loading));
+  const hasStrip = wall.idle.length > 0;
+  // The tiles decide the columns. When the strip is the whole wall it takes the chosen
+  // layout's width rather than one tile's; with nothing at all (no venues yet) it stays one.
+  const columns = wall.tiles.length === 0 && hasStrip ? gridSize : gridColumns(gridSize, wall.tiles.length);
   const gridRef = useGlideOnRelayout(columns);
 
   return (
-    <div ref={gridRef} className="grid-view" style={{ '--grid-columns': columns } as React.CSSProperties}>
-      {tiles.map((tile) => (
+    <div
+      ref={gridRef}
+      className={hasStrip ? 'grid-view grid-view--idle-strip' : 'grid-view'}
+      style={{ '--grid-columns': columns } as React.CSSProperties}
+    >
+      {wall.tiles.map((tile) => (
         <PlayerTile
           key={tile.id}
           label={tile.label}
@@ -49,6 +61,7 @@ export function GridView({
           idle={idle}
         />
       ))}
+      <IdleStrip cabinets={wall.idle.map((tile) => tile.label)} />
     </div>
   );
 }
@@ -73,7 +86,7 @@ function useGlideOnRelayout(columns: number) {
       return;
     }
 
-    const tiles = [...grid.children] as HTMLElement[];
+    const tiles = tilesOf(grid);
     const boxes = tiles.map((tile) => tile.getBoundingClientRect());
     const relaid = lastColumns.current !== columns;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -117,7 +130,7 @@ function useGlideOnRelayout(columns: number) {
     }
 
     const remember = () => {
-      lastBoxes.current = [...grid.children].map((tile) => tile.getBoundingClientRect());
+      lastBoxes.current = tilesOf(grid).map((tile) => tile.getBoundingClientRect());
     };
     // The wall scrolls on a desktop; on a phone the whole page does.
     const scroller = grid.parentElement;
@@ -133,4 +146,9 @@ function useGlideOnRelayout(columns: number) {
   }, []);
 
   return gridRef;
+}
+
+/** The grid's tiles, without the "방송 없음" strip in its last row: only tiles glide. */
+function tilesOf(grid: HTMLElement): HTMLElement[] {
+  return [...grid.children].filter((child): child is HTMLElement => child.classList.contains('tile'));
 }
