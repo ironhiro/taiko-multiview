@@ -21,8 +21,10 @@ export function splitWall(tiles: WallTile[], loading: boolean): WallSplit {
   if (loading) {
     return { tiles, idle: [] };
   }
+  // The strip names cabinets the settings list. An unregistered broadcast that is not live
+  // has no cabinet to name: it is simply not on the wall.
   return {
     tiles: tiles.filter(isOnAir),
-    idle: tiles.filter((tile) => !isOnAir(tile)),
+    idle: tiles.filter((tile) => !tile.unregistered && !isOnAir(tile)),
   };
 }

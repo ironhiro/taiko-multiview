@@ -76,7 +76,7 @@ export function validateVenue(venue: VenueDraft, all: VenueDraft[]): Issue[] {
   // taken for them.
   for (const zoneId of zoneIds) {
     if (zoneId === WALL_VIEW || zoneId === 'all') {
-      warn(`구역 id '${zoneId}'는 전체 보기 주소와 겹칩니다. 다른 id를 쓰세요.`);
+      warn(`전체 보기 주소와 겹치는 구역 id입니다: '${zoneId}'. 다른 id를 쓰세요.`);
     }
   }
   for (const station of stations) {

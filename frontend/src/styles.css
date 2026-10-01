@@ -834,6 +834,8 @@ input {
   display: none;
 }
 
+/* Same declarations as the phone rule under @container (max-width: 390px) below - a rule
+   cannot be both inside and outside a container query. Change one, change the other. */
 .grid-view .tile__row:is([data-fit='icons'], [data-fit='no-count']) .tile__control {
   justify-content: center;
   min-width: var(--tile-control);
@@ -1289,7 +1291,8 @@ input {
       display: none;
     }
 
-    /* Square, as tall as before, so the thumb has as much to hit. */
+    /* Square, as tall as before, so the thumb has as much to hit. Same declarations as
+       the [data-fit='icons'] rule above; keep the two in step. */
     .grid-view .tile__control {
       justify-content: center;
       min-width: var(--tile-control);

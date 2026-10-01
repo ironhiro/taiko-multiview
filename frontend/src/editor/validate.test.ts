@@ -45,7 +45,7 @@ describe('validateVenue', () => {
       const venue = { ...good(), zones: [{ key: 'z', id, code: 'ALL', label: '전체' }] };
       const issues = validateVenue(venue, [venue]);
       expect(issues.filter((issue) => issue.error)).toEqual([]);
-      expect(issues.some((issue) => issue.message.includes(`구역 id '${id}'`))).toBe(true);
+      expect(issues.some((issue) => issue.message.includes(`구역 id입니다: '${id}'`))).toBe(true);
     }
     expect(validateVenue(good(), [good()]).some((issue) => issue.message.includes('전체 보기'))).toBe(false);
   });
