@@ -67,7 +67,7 @@ cd desktop/shell && npm install && npm run dev
 - 제목 규칙: 최근 방송 제목 15건의 기체 연결 결과를 표로 표시. 연결 안 되는 제목은 `aliases` 로 보완. 제목에서 기체 이름을 드래그하면 정규식 생성
 - 검증: API 시작 시 검사를 미리 실행. API가 매장을 건너뛸 문제가 있으면 저장 차단
 
-모르는 키는 그대로 보존. 예전 파일에 남은 배치도 좌표(`layout`)만 저장할 때 지움. 예전 Avalonia 등록기(`tools/TaikoLabs.VenueEditor`)도 같은 파일 사용.
+모르는 키는 그대로 보존. 예전 파일에 남은 배치도 좌표(`layout`)만 저장할 때 지움.
 
 ### 항목
 
@@ -331,7 +331,7 @@ macOS 전체화면은 기본 View 메뉴 사용 (`F11` 은 Mission Control 몫).
 
 ```bash
 # 백엔드: 기체별 방송 선택, 폴링 간격, 설정 반영, 영업시간
-dotnet test TaikoLabsMultiview.slnx
+dotnet test backend/TaikoLabs.Api.Tests
 
 # 프론트엔드 로직: 등록기 저장·검증·제목 규칙, 라이브 지연, 배치 열 수, 로컬 판별
 cd frontend && npm test
