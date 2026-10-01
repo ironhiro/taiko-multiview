@@ -692,6 +692,8 @@ input {
   color: var(--color-ink);
   font-size: var(--text-tile-meta);
   font-weight: 700;
+  /* The chat control is a link: it looks and presses like the buttons beside it. */
+  text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
   transition: transform var(--dur-micro) var(--ease-out);
@@ -1119,7 +1121,8 @@ input {
   .grid-view .tile__header {
     position: static;
     order: 1;
-    flex: 1 1 auto;
+    /* Grows into what the buttons leave, never pushes them to a row of their own. */
+    flex: 1 1 0;
     min-width: 0;
     min-height: var(--tile-bar);
     padding: 0 var(--space-xs);
@@ -1130,6 +1133,29 @@ input {
     position: static;
     order: 2;
     padding: 0 var(--space-xs) var(--press-depth) 0;
+  }
+
+  /* The bar stays one row, whatever the label and the viewer count. On a phone as narrow
+     as an iPhone SE the chat gives up its word first - a long cabinet label with a
+     four-digit count pushed the buttons onto a row of their own - and should that still
+     not be room enough, the label is cut short rather than the row folding. */
+  .grid-view .tile__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  @container (max-width: 359px) {
+    .grid-view .tile__control--chat .tile__control-text {
+      display: none;
+    }
+
+    /* Square, the height of the button beside it, so the thumb has as much to hit. */
+    .grid-view .tile__control--chat {
+      justify-content: center;
+      min-width: 2.25rem;
+      padding: 0;
+    }
   }
 
   /* No header over the picture to clear any more. */

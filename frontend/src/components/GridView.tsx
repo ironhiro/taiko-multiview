@@ -44,6 +44,7 @@ export function GridView({
           lazy={lazy}
           shielded={lazy}
           pausesWhenAway={lazy}
+          opensChatInTab={lazy}
           idle={idle}
         />
       ))}

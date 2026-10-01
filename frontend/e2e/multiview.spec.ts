@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { offline, venueNames } from './support';
 
 test.beforeEach(async ({ page }) => {
@@ -54,6 +54,68 @@ test.describe('desktop', () => {
     await page.goto('/?venue=taikolabs&view=all');
     await expect(page.getByRole('button', { name: /배치도/ })).toHaveCount(0);
     await expect(page.locator('.choice[aria-pressed="true"]')).toHaveText('통합');
+  });
+
+  test("a tile's chat opens YouTube's sign-in in a popup of its own, one per broadcast", async ({ page, context }) => {
+    const openCalls = await recordWindowOpen(page, 'window');
+    // A tab the link wrongly opened must not reach the network either.
+    await answerYouTube(context);
+    await page.goto('/?venue=taikolabs');
+    await page.getByRole('button', { name: '3×3' }).click();
+
+    // A chat on every tile with a broadcast, whether or not it can be embedded; none on
+    // an empty cabinet. The mock venue has both, so neither half passes by default.
+    const onAir = page.locator('.tile').filter({ has: page.locator('.tile__badge') });
+    await expect(onAir.first()).toBeVisible();
+    expect(await page.locator('.tile--idle').count()).toBeGreaterThan(0);
+    const chats = page.getByRole('link', { name: /유튜브 채팅 열기/ });
+    await expect(chats).toHaveCount(await onAir.count());
+    for (const tile of await onAir.all()) {
+      await expect(tile.getByRole('link', { name: /유튜브 채팅 열기/ })).toHaveCount(1);
+    }
+    await expect(page.locator('.tile--idle .tile__controls a')).toHaveCount(0);
+
+    const a1 = await liveVideoId(page, 'taikolabs', 'a1');
+    const a3 = await liveVideoId(page, 'taikolabs', 'a3');
+    await page.getByRole('link', { name: 'A1 유튜브 채팅 열기' }).click();
+    expect(await openCalls()).toEqual([[chatSignInUrl(a1), `taiko-chat-${a1}`, 'popup=yes,width=420,height=720']]);
+
+    // Cut off from the wall: YouTube's page cannot reach back through window.opener.
+    expect(await page.evaluate(() => fakeWindows().map((popup) => popup.opener))).toEqual([null]);
+
+    // The same tile's chat is brought back as it is, not loaded again; another broadcast
+    // gets a window of its own; a closed window is opened afresh.
+    await page.getByRole('link', { name: 'A1 유튜브 채팅 열기' }).click();
+    expect(await openCalls()).toHaveLength(1);
+    expect(await page.evaluate(() => fakeWindows()[0].focusCount)).toBe(2);
+    await page.getByRole('link', { name: 'A3 유튜브 채팅 열기' }).click();
+    expect((await openCalls()).map((call) => call[1])).toEqual([`taiko-chat-${a1}`, `taiko-chat-${a3}`]);
+    await page.evaluate(() => (fakeWindows()[0].closed = true));
+    await page.getByRole('link', { name: 'A1 유튜브 채팅 열기' }).click();
+    expect((await openCalls()).map((call) => call[1])).toEqual([`taiko-chat-${a1}`, `taiko-chat-${a3}`, `taiko-chat-${a1}`]);
+
+    // The popup took each click: the link did not open a tab as well. A tab would arrive
+    // a moment after the click, so the wall is given that moment before it is counted.
+    await page.waitForTimeout(1_000);
+    expect(context.pages()).toHaveLength(1);
+    // Nothing of the chat is framed in the wall.
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
+  });
+
+  test('a blocked chat popup falls back to a new tab at the same address', async ({ page, context }) => {
+    const openCalls = await recordWindowOpen(page, 'blocked');
+    await answerYouTube(context);
+    await page.goto('/?venue=taikolabs');
+    const a1 = await liveVideoId(page, 'taikolabs', 'a1');
+
+    const opened = context.waitForEvent('page');
+    await page.getByRole('link', { name: 'A1 유튜브 채팅 열기' }).click();
+    const tab = await opened;
+
+    expect(await openCalls()).toHaveLength(1);
+    await expect(tab).toHaveURL(chatSignInUrl(a1));
+    // The wall stays where it was.
+    await expect(page).toHaveURL(/\/\?venue=taikolabs$/);
   });
 });
 
@@ -154,6 +216,45 @@ test.describe('phone', () => {
     }
   });
 
+  test("a tile's chat is a link to the broadcast's YouTube page, in a new tab", async ({ page }) => {
+    const openCalls = await recordWindowOpen(page, 'window');
+    const watchUrls = (await liveStreams(page, 'taikolabs')).map((stream) => stream.watchUrl);
+
+    for (const size of PHONE_SIZES) {
+      await page.setViewportSize(size);
+      await page.goto('/?venue=taikolabs');
+      const onAir = page.locator('.tile').filter({ has: page.locator('.tile__badge') });
+      await expect(onAir.first()).toBeVisible();
+
+      const chats = page.getByRole('link', { name: /유튜브 채팅 열기/ });
+      await expect(chats).toHaveCount(await onAir.count());
+      await expect(page.locator('.tile--idle .tile__controls a')).toHaveCount(0);
+      const hrefs = await chats.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+      expect(new Set(hrefs).size).toBe(hrefs.length);
+      for (const href of hrefs) {
+        expect(watchUrls).toContain(href);
+      }
+      for (const chat of await chats.all()) {
+        await expect(chat).toHaveAttribute('target', '_blank');
+        await expect(chat).toHaveAttribute('rel', /\bnoopener\b/);
+      }
+
+      // The chat joins the bar under the picture without making it taller or wider.
+      const tile = onAir.first();
+      const bar = (await tile.locator('.tile__header').boundingBox())!;
+      const chat = (await tile.getByRole('link', { name: /유튜브 채팅 열기/ }).boundingBox())!;
+      const tileBox = (await tile.boundingBox())!;
+      expect(chat.y).toBeGreaterThanOrEqual(bar.y - 1);
+      expect(chat.y + chat.height).toBeLessThanOrEqual(bar.y + bar.height + 1);
+      expect(chat.x + chat.width).toBeLessThanOrEqual(tileBox.x + tileBox.width);
+      expect(chat.height).toBeGreaterThanOrEqual(36);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    }
+
+    // A link on a phone: nothing asks for a popup.
+    expect(await openCalls()).toEqual([]);
+  });
+
   test('a phone held sideways, wider than 820px, still gets the phone layout', async ({ page }) => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.goto('/?venue=taikolabs');
@@ -223,6 +324,85 @@ test.describe('a venue list that does not arrive the first time', () => {
     expect(hung).toBeGreaterThan(0);
   });
 });
+
+/** The phones the chat is checked on: SE, 15 Pro, Pixel 7, and an iPhone held sideways. */
+const PHONE_SIZES = [
+  { width: 375, height: 667 },
+  { width: 393, height: 852 },
+  { width: 412, height: 915 },
+  { width: 844, height: 390 },
+];
+
+/** Written out rather than taken from lib/youtube.ts, so a change there has to agree with this. */
+function chatSignInUrl(videoId: string): string {
+  return `https://www.youtube.com/signin?action_handle_signin=true&next=%2Flive_chat%3Fis_popout%3D1%26v%3D${videoId}`;
+}
+
+type WindowOpenCall = [url: string, target: string, features: string];
+
+/** What recordWindowOpen hands back for a window: enough of one for the page to use. */
+interface FakeWindow {
+  opener: unknown;
+  closed: boolean;
+  focusCount: number;
+}
+
+declare global {
+  /** The fake windows recordWindowOpen has handed out, read from inside the page. */
+  function fakeWindows(): FakeWindow[];
+}
+
+/**
+ * Stands in for window.open from the page's first script: each call is noted, and
+ * answered with a fake window or, as a popup blocker would, with null. Returns the calls so far.
+ */
+async function recordWindowOpen(page: Page, answer: 'window' | 'blocked'): Promise<() => Promise<WindowOpenCall[]>> {
+  await page.addInitScript((answer) => {
+    const calls: unknown[][] = [];
+    const opened: FakeWindow[] = [];
+    Object.assign(window, { openCalls: calls, fakeWindows: () => opened });
+    window.open = ((...args: unknown[]) => {
+      calls.push(args);
+      if (answer === 'blocked') {
+        return null;
+      }
+      // A real new window starts out with this page as its opener.
+      const popup = {
+        opener: window as unknown,
+        closed: false,
+        focusCount: 0,
+        focus() {
+          popup.focusCount += 1;
+        },
+      };
+      opened.push(popup);
+      return popup as unknown as Window;
+    }) as typeof window.open;
+  }, answer);
+  return () => page.evaluate(() => ((window as { openCalls?: WindowOpenCall[] }).openCalls ?? []) as WindowOpenCall[]);
+}
+
+
+/** A tab the page opens is outside offline(): answer youtube.com there without the network. */
+async function answerYouTube(context: BrowserContext) {
+  await context.route(/youtube\.com|google\.com/, (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>YouTube</title>' }),
+  );
+}
+
+async function liveStreams(page: Page, venueId: string) {
+  const response = await page.request.get('/api/live');
+  const body = (await response.json()) as {
+    venues: { venueId: string; streams: { stationId: string | null; videoId: string; watchUrl: string }[] }[];
+  };
+  return body.venues.find((venue) => venue.venueId === venueId)?.streams ?? [];
+}
+
+async function liveVideoId(page: Page, venueId: string, stationId: string): Promise<string> {
+  const stream = (await liveStreams(page, venueId)).find((candidate) => candidate.stationId === stationId);
+  expect(stream, `${venueId}/${stationId} on air`).toBeDefined();
+  return stream!.videoId;
+}
 
 /**
  * Serves `/api/venues` with the configured venues and copies of them up to `total`, so a
