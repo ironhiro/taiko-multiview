@@ -8,8 +8,9 @@ import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib
 import { compactPlayerBudget } from '../lib/playerBudget';
 import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
 import { joinsPlaybackSlots, nextPlayerAction } from '../lib/tilePlayer';
+import { isDesktopShell } from '../lib/shell';
 import { useCoveredTop } from '../lib/stickyCover';
-import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
+import { chatSignInUrl, loadYouTubeApi, openChatWindow, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
   label: string;
@@ -36,6 +37,13 @@ interface PlayerTileProps {
    * button covers sound.
    */
   shielded?: boolean;
+  /**
+   * Open the chat as the broadcast's own YouTube page in a new tab rather than a popup
+   * window. Phones and tablets: a popup is a tab there anyway, and a plain link to the
+   * watch page is what iOS and Android hand to the YouTube app, where the viewer is
+   * already signed in.
+   */
+  opensChatInTab?: boolean;
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
   idle: IdleMessage;
 }
@@ -49,6 +57,7 @@ export function PlayerTile({
   lazy,
   pausesWhenAway,
   shielded,
+  opensChatInTab,
   idle,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
@@ -402,6 +411,9 @@ export function PlayerTile({
           <SpeakerIcon on={isAudioActive} />
           <span className="tile__control-text">{isAudioActive ? '소리 켜짐' : '음소거'}</span>
         </button>
+        {/* The chat has nothing to do with the embed, so a tile that cannot play still
+            offers it; only a cabinet with no broadcast has no chat. */}
+        {stream && <ChatLink label={label} stream={stream} inTab={Boolean(opensChatInTab)} />}
       </div>
     </div>
   );
@@ -762,6 +774,57 @@ function ThumbnailPoster({
       </span>
       <span className="visually-hidden">재생</span>
     </button>
+  );
+}
+
+/**
+ * The broadcast's YouTube chat, in a youtube.com window of its own: that is where the
+ * viewer's YouTube sign-in reaches, so the chat can be written to (the chat framed in the
+ * wall could only be read, and was removed).
+ *
+ * A link rather than a button, so that whatever stops the popup still leaves a way there:
+ * its own new tab. On a computer the click opens a popup instead and keeps the link from
+ * following; a blocked popup lets the link go ahead. The desktop shell hands both kinds of
+ * new window to the default browser and reports each as blocked, so there the link goes on
+ * its own - opening a popup first would open the chat twice.
+ */
+function ChatLink({ label, stream, inTab }: { label: string; stream: LiveStream; inTab: boolean }) {
+  const openPopup = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    // A modified or middle click asked for a tab or a window of the browser's own kind.
+    if (isDesktopShell || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    if (openChatWindow(stream.videoId)) {
+      event.preventDefault();
+    }
+  };
+
+  return (
+    <a
+      className="tile__control tile__control--chat"
+      href={inTab ? stream.watchUrl : chatSignInUrl(stream.videoId)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={inTab ? undefined : openPopup}
+      aria-label={`${label} 유튜브 채팅 열기`}
+    >
+      <ChatIcon />
+      <span className="tile__control-text">채팅</span>
+    </a>
+  );
+}
+
+function ChatIcon() {
+  return (
+    <svg className="tile__control-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        d="M3 3h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7.5L4.5 13.5V11H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

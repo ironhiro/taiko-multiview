@@ -83,6 +83,7 @@ export function FloorPlanView({
               onRequestAudio={() => onRequestAudio(unit.stationId)}
               lazy={lazy}
               pausesWhenAway={lazy}
+              opensChatInTab={lazy}
               idle={idle}
             />
           </div>
