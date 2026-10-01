@@ -13,7 +13,7 @@ const venue = (...stations: [id: string, label: string, zoneId?: string][]): Ven
   stations: stations.map(([id, label, zoneId]) => ({ id, label, zoneId })),
 });
 
-const stream = (name: string, stationId: string | null = null): LiveStream => ({
+const stream = (name: string, stationId?: string): LiveStream => ({
   stationId,
   videoId: `video-${name}`,
   title: `TAIKO LABS ${name} Live Streaming 26.09.30 - 1부`,

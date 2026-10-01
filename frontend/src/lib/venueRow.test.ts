@@ -51,7 +51,7 @@ describe('live counts', () => {
     embeddable: true,
     watchUrl: '',
   });
-  const unlisted = (name: string, isLive = true): LiveStream => ({ ...stream(isLive, 0), stationId: null, name });
+  const unlisted = (name: string, isLive = true): LiveStream => ({ ...stream(isLive, 0), stationId: undefined, name });
   const live = (venueId: string, ...streams: boolean[]): VenueLive => ({
     venueId,
     updatedAt: '',

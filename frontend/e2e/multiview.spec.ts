@@ -1,5 +1,9 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import type { LiveStream } from '../src/lib/types';
+import { fakeStream, fetchVenues, LIVE_ROUTE, liveStreams, liveVideoId, patchLive, patchVenues, stationsOf } from './api';
+import { answerYouTube, chatLinks, chatSignInUrl, recordWindowOpen } from './chat';
 import { offline, venueNames } from './support';
+import { columnsOf, onAirTiles, overlapsOverPictures, remeasureRows, rowFits, settled, withLongestRow } from './tileRow';
 
 test.beforeEach(async ({ page }) => {
   await offline(page);
@@ -66,14 +70,14 @@ test.describe('desktop', () => {
     // A chat on every tile with a broadcast, whether or not it can be embedded; none for an
     // empty cabinet, which has no tile but a chip in the 방송 없음 strip. The mock venue has
     // both, so neither half passes by default.
-    const onAir = page.locator('.tile').filter({ has: page.locator('.tile__badge') });
+    const onAir = onAirTiles(page);
     await expect(onAir.first()).toBeVisible();
     expect(await page.locator('.idle-chip').count()).toBeGreaterThan(0);
     await expect(page.locator('.idle-strip a, .idle-strip button')).toHaveCount(0);
-    const chats = page.getByRole('link', { name: /유튜브 채팅 열기/ });
+    const chats = chatLinks(page);
     await expect(chats).toHaveCount(await onAir.count());
     for (const tile of await onAir.all()) {
-      await expect(tile.getByRole('link', { name: /유튜브 채팅 열기/ })).toHaveCount(1);
+      await expect(chatLinks(tile)).toHaveCount(1);
     }
     await expect(page.locator('.tile--idle .tile__controls a')).toHaveCount(0);
 
@@ -138,7 +142,7 @@ test.describe('phone', () => {
 
   test("a tile's label and buttons sit under its picture, clear of YouTube's controls", async ({ page }) => {
     await page.goto('/?venue=taikolabs');
-    const tile = page.locator('.tile').filter({ has: page.locator('.tile__badge') }).first();
+    const tile = onAirTiles(page).first();
     const picture = (await tile.locator('.tile__body').boundingBox())!;
 
     for (const part of ['.tile__header', '.tile__controls']) {
@@ -225,10 +229,10 @@ test.describe('phone', () => {
     for (const size of PHONE_SIZES) {
       await page.setViewportSize(size);
       await page.goto('/?venue=taikolabs');
-      const onAir = page.locator('.tile').filter({ has: page.locator('.tile__badge') });
+      const onAir = onAirTiles(page);
       await expect(onAir.first()).toBeVisible();
 
-      const chats = page.getByRole('link', { name: /유튜브 채팅 열기/ });
+      const chats = chatLinks(page);
       await expect(chats).toHaveCount(await onAir.count());
       await expect(page.locator('.tile--idle .tile__controls a')).toHaveCount(0);
       const hrefs = await chats.evaluateAll((links) => links.map((link) => link.getAttribute('href')));
@@ -244,7 +248,7 @@ test.describe('phone', () => {
       // The chat joins the bar under the picture without making it taller or wider.
       const tile = onAir.first();
       const bar = (await tile.locator('.tile__header').boundingBox())!;
-      const chat = (await tile.getByRole('link', { name: /유튜브 채팅 열기/ }).boundingBox())!;
+      const chat = (await chatLinks(tile).boundingBox())!;
       const tileBox = (await tile.boundingBox())!;
       expect(chat.y).toBeGreaterThanOrEqual(bar.y - 1);
       expect(chat.y + chat.height).toBeLessThanOrEqual(bar.y + bar.height + 1);
@@ -265,14 +269,14 @@ test.describe('phone', () => {
     for (const size of PHONE_SIZES) {
       await page.setViewportSize(size);
       await page.goto('/?venue=taikolabs');
-      const tile = page.locator('.tile').filter({ has: page.locator('.tile__badge') }).first();
+      const tile = onAirTiles(page).first();
       await expect(tile).toBeVisible();
 
       // The row inside the bezel, 390px or less: SE, 15 Pro and Pixel 7 upright, not sideways.
       const row = await tile.locator('.tile__row').evaluate((element) => (element as HTMLElement).offsetWidth);
       const narrow = row <= 390;
       expect(narrow, `${size.width}×${size.height}: row ${row}px`).toBe(size.width < size.height);
-      const chat = tile.getByRole('link', { name: /유튜브 채팅 열기/ });
+      const chat = chatLinks(tile);
       await expect(chat.locator('.arcade-button__text')).toBeVisible({ visible: !narrow });
       const box = (await chat.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(36);
@@ -378,17 +382,12 @@ test.describe('a venue the server failed to poll', () => {
 
   test('shows its error on its own wall only, and the refresh button keeps to that', async ({ page }) => {
     const names = await venueNames(page);
-    const ids = ((await (await page.request.get('/api/venues')).json()) as { venues: { id: string }[] }).venues.map(
-      (venue) => venue.id,
-    );
+    const ids = (await fetchVenues(page)).venues.map((venue) => venue.id);
     const failing = ids.find((id) => id !== 'taikolabs')!;
     let served = 0;
-    await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
-      const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
-      const body = (await response.json()) as { venues: { venueId: string; error?: string }[] };
+    await patchLive(page, (body) => {
       body.venues.find((venue) => venue.venueId === failing)!.error = '채널 조회 실패 (테스트)';
       served += 1;
-      await route.fulfill({ response, json: body });
     });
 
     await page.goto('/?venue=taikolabs');
@@ -523,7 +522,7 @@ test.describe('the row under the picture', () => {
     expect(await short.count()).toBeGreaterThan(5);
     for (const tile of await short.all()) {
       await expect(tile.locator('.tile__row')).toHaveAttribute('data-fit', 'words');
-      await expect(tile.getByRole('link', { name: /유튜브 채팅 열기/ }).locator('.arcade-button__text')).toBeVisible();
+      await expect(chatLinks(tile).locator('.arcade-button__text')).toBeVisible();
       await expect(tile.locator('button.tile__control .arcade-button__text')).toHaveText('음소거');
       await expect(tile.locator('button.tile__control .arcade-button__text')).toBeVisible();
     }
@@ -622,92 +621,6 @@ test.describe('the row under the picture', () => {
     await page.mouse.up();
   });
 });
-
-/**
- * Every tile whose row does not fit: wrapped onto a second line, spilling out of its own
- * box or its label part, buttons past the tile's edge, a hidden tag, or a label cut to less
- * than three letters and its ellipsis ("THE…", design.md "Tile labels") on a tile at least
- * `leastFrom` wide. Heights are layout sizes and
- * the rest are compared within one tile, since a tile gliding to a new layout is scaled
- * for a moment.
- */
-function rowFits(page: Page, { leastFrom = 0 }: { leastFrom?: number } = {}): Promise<string[]> {
-  return page.evaluate((leastFrom) => {
-    const found: string[] = [];
-    const bar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tile-bar')) * 16;
-    for (const tile of document.querySelectorAll<HTMLElement>('.grid-view .tile')) {
-      const row = tile.querySelector<HTMLElement>('.tile__row')!;
-      const header = tile.querySelector<HTMLElement>('.tile__header')!;
-      const label = tile.querySelector<HTMLElement>('.tile__label')!;
-      const name = label.textContent;
-      if (row.offsetHeight > bar + 1) found.push(`${name}: wrapped`);
-      if (row.scrollWidth > row.clientWidth) found.push(`${name}: row overflows`);
-      if (header.scrollWidth > header.clientWidth) found.push(`${name}: label part overflows`);
-      const scale = tile.getBoundingClientRect().width / tile.offsetWidth;
-      const edge = tile.getBoundingClientRect().right - tile.clientLeft * scale;
-      if (tile.querySelector('.tile__controls')!.getBoundingClientRect().right > edge + 0.5) {
-        found.push(`${name}: buttons past the edge`);
-      }
-      // The least a label may keep, in its own type: "THE…", or the whole name if shorter.
-      const probe = document.createElement('span');
-      probe.className = 'tile__label';
-      probe.textContent = 'THE…';
-      probe.style.cssText = 'position: absolute; visibility: hidden; min-width: 0; overflow: visible;';
-      header.appendChild(probe);
-      const least = Math.min(probe.offsetWidth, label.scrollWidth);
-      probe.remove();
-      if (tile.offsetWidth >= leastFrom && label.offsetWidth + 0.5 < least) {
-        found.push(`${name}: label ${label.offsetWidth}px, less than ${least}px`);
-      }
-      // The tag never goes (design.md, "Tile labels").
-      const tag = tile.querySelector<HTMLElement>('.tile__tag');
-      if (tag && getComputedStyle(tag).display === 'none') found.push(`${name}: tag hidden`);
-    }
-    return found;
-  }, leastFrom);
-}
-
-/**
- * The longest row we list, on every tile: a tagged "THE BASE 2", LIVE, a five-digit count,
- * and a sound button with its longer words - shown though offline nothing can play.
- */
-async function withLongestRow(page: Page) {
-  await page.addStyleTag({ content: '.tile__control:disabled { display: inline-flex !important; }' });
-  await page.evaluate(() => {
-    for (const tile of document.querySelectorAll('.grid-view .tile')) {
-      tile.querySelector('.tile__label')!.textContent = 'THE BASE 2';
-      if (!tile.querySelector('.tile__tag')) {
-        const tag = document.createElement('span');
-        tag.className = 'tile__tag';
-        tag.textContent = '미등록';
-        tile.querySelector('.tile__label')!.after(tag);
-      }
-      const viewers = tile.querySelector('.tile__viewers');
-      if (viewers) viewers.textContent = '12,345명';
-      const sound = tile.querySelector('.tile__control .arcade-button__text');
-      if (sound) sound.textContent = '소리 켜짐';
-    }
-  });
-  await remeasureRows(page);
-}
-
-/**
- * Written behind React's back, so the rows are made to measure again: each is narrowed by a
- * pixel and given it back, which their resize observer reports (lib/rowFit.ts). A row at
- * the very edge of a step may stay a step tighter (the slack before loosening), never
- * looser. Telling them that fonts loaded was not heard every time in WebKit.
- */
-async function remeasureRows(page: Page) {
-  const nudge = await page.addStyleTag({ content: '.grid-view .tile__row { padding-right: 1px; }' });
-  await settled(page);
-  await nudge.evaluate((element) => (element as Element).remove());
-  await settled(page);
-}
-
-/** Two frames: the rows' resize observer reports after layout, before the next paint. */
-async function settled(page: Page) {
-  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-}
 
 // The type in a row follows the tile's width, so where the row gives way holds in any
 // window; a window's height used to move it (QA F-1: 1920×1080 4×4 spilled 17px).
@@ -882,7 +795,7 @@ test.describe('cabinets with nothing on air', () => {
     const answered = new Promise<void>((resolve) => (answer = resolve));
     await withOnAir(page, 'taikolabs', onAir.map((station) => station.id));
     // Laid over withOnAir's route, so it runs first and holds the answer back.
-    await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
+    await page.route(LIVE_ROUTE, async (route) => {
       await answered;
       await route.fallback();
     });
@@ -1017,48 +930,6 @@ async function installFakeYouTube(page: Page) {
   });
 }
 
-type UnlistedPhase = 'unlisted' | 'over' | 'registered';
-
-function columnsOf(page: Page): Promise<number> {
-  return page.locator('.grid-view').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
-}
-
-/**
- * Every element of ours drawn over a tile's picture: whatever in the tile lies outside its
- * body yet overlaps the body's box. Reported as "tile label: class" so a failure names it.
- */
-function overlapsOverPictures(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const found: string[] = [];
-    for (const tile of document.querySelectorAll<HTMLElement>('.grid-view .tile')) {
-      const body = tile.querySelector('.tile__body')!.getBoundingClientRect();
-      for (const element of tile.querySelectorAll<HTMLElement>('.tile__row, .tile__row *')) {
-        const box = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        if (box.width === 0 || box.height === 0 || style.visibility === 'hidden' || style.opacity === '0') {
-          continue;
-        }
-        const overlaps =
-          box.left < body.right - 0.5 &&
-          box.right > body.left + 0.5 &&
-          box.top < body.bottom - 0.5 &&
-          box.bottom > body.top + 0.5;
-        if (overlaps) {
-          found.push(`${tile.querySelector('.tile__label')?.textContent}: ${element.className}`);
-        }
-      }
-    }
-    return found;
-  });
-}
-
-async function stationsOf(page: Page, venueId: string): Promise<{ id: string; label: string }[]> {
-  const body = (await (await page.request.get('/api/venues')).json()) as {
-    venues: { id: string; stations: { id: string; label: string }[] }[];
-  };
-  return body.venues.find((venue) => venue.id === venueId)!.stations;
-}
-
 /**
  * Serves `/api/live` (and the refresh button's POST) with only `stationIds` of the venue on
  * air - each given a copy of the venue's first broadcast if the mock server had none for
@@ -1069,44 +940,33 @@ async function withOnAir(
   page: Page,
   venueId: string,
   stationIds: string[] | null,
-  patch: Record<string, unknown> = {},
+  patch: Partial<LiveStream> = {},
 ) {
-  type Stream = { stationId: string | null; videoId: string; watchUrl: string; name: string };
-  await page.unroute(/\/api\/live(\/refresh)?$/);
-  await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
-    const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
-    const body = (await response.json()) as { venues: { venueId: string; streams: Stream[]; unmatched: Stream[] }[] };
+  await page.unroute(LIVE_ROUTE);
+  await patchLive(page, (body) => {
     const venue = body.venues.find((candidate) => candidate.venueId === venueId)!;
     if (stationIds) {
       const template = venue.streams[0];
       venue.streams = stationIds.map(
         (stationId) =>
-          venue.streams.find((stream) => stream.stationId === stationId) ?? {
-            ...template,
-            stationId,
-            name: stationId.toUpperCase(),
-            videoId: `mock-${venueId}-${stationId}`,
-            watchUrl: `https://www.youtube.com/watch?v=mock-${venueId}-${stationId}`,
-          },
+          venue.streams.find((stream) => stream.stationId === stationId) ?? fakeStream(template, venueId, stationId),
       );
       venue.unmatched = [];
     }
     venue.streams = venue.streams.map((stream) => ({ ...stream, ...patch }));
-    await route.fulfill({ response, json: body });
   });
 }
 
 /** Serves `/api/venues` with every cabinet of the venue under `label`. */
 async function withLongLabels(page: Page, venueId: string, label: string) {
-  await page.route('**/api/venues', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { venues: { id: string; stations: { label: string }[] }[] };
+  await patchVenues(page, (body) => {
     for (const station of body.venues.find((venue) => venue.id === venueId)!.stations) {
       station.label = label;
     }
-    await route.fulfill({ response, json: body });
   });
 }
+
+type UnlistedPhase = 'unlisted' | 'over' | 'registered';
 
 /**
  * Serves the venue list and the live data as if `stationId` were a new cabinet: missing
@@ -1121,42 +981,27 @@ async function playUnlistedCabinet(
   name: string,
   { viewers, everyListedOnAir = false }: { viewers?: number; everyListedOnAir?: boolean } = {},
 ) {
-  type Station = { id: string };
-  type Stream = { stationId: string | null; name: string; isLive: boolean; videoId?: string; watchUrl?: string };
   const listed = everyListedOnAir
-    ? ((await (await page.request.get('/api/venues')).json()) as { venues: { id: string; stations: Station[] }[] }).venues
-        .find((venue) => venue.id === venueId)!
-        .stations.map((station) => station.id)
-        .filter((id) => id !== stationId)
+    ? (await stationsOf(page, venueId)).map((station) => station.id).filter((id) => id !== stationId)
     : [];
   // Counted up front from the real server, so the test's expectations never wait on the page.
-  const live = (await (await page.request.get('/api/live')).json()) as { venues: { venueId: string; streams: Stream[] }[] };
   const server = {
     phase: 'unlisted' as UnlistedPhase,
     // What the wall's tiles are without the new cabinet: the listed cabinets on air.
-    liveListed: live.venues
-      .find((venue) => venue.venueId === venueId)!
-      .streams.filter((stream) => stream.stationId !== stationId && stream.isLive).length,
+    liveListed: (await liveStreams(page, venueId)).filter((stream) => stream.stationId !== stationId && stream.isLive)
+      .length,
   };
   const version = () => (server.phase === 'registered' ? 900_002 : 900_001);
 
-  await page.route('**/api/venues', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { version: number; venues: { id: string; stations: Station[] }[] };
+  await patchVenues(page, (body) => {
     const venue = body.venues.find((candidate) => candidate.id === venueId)!;
     if (server.phase !== 'registered') {
       venue.stations = venue.stations.filter((station) => station.id !== stationId);
     }
-    await route.fulfill({ response, json: { ...body, version: version() } });
+    body.version = version();
   });
 
-  // The refresh button's POST is answered from the same data as a plain read.
-  await page.route(/\/api\/live(\/refresh)?$/, async (route) => {
-    const response = await route.fetch({ url: route.request().url().replace(/\/refresh$/, ''), method: 'GET' });
-    const body = (await response.json()) as {
-      venuesVersion: number;
-      venues: { venueId: string; streams: Stream[]; unmatched: Stream[] }[];
-    };
+  await patchLive(page, (body) => {
     const venue = body.venues.find((candidate) => candidate.venueId === venueId)!;
     venue.streams = venue.streams.filter((stream) => stream.stationId !== stationId);
     // Every listed cabinet on air, each with a copy of the venue's first broadcast if the
@@ -1164,11 +1009,11 @@ async function playUnlistedCabinet(
     const template = venue.streams[0];
     for (const id of listed) {
       if (!venue.streams.some((stream) => stream.stationId === id)) {
-        venue.streams.push({ ...template, stationId: id, name: id.toUpperCase(), videoId: `mock-${venueId}-${id}` });
+        venue.streams.push(fakeStream(template, venueId, id));
       }
     }
 
-    const broadcast = {
+    const broadcast: LiveStream = {
       videoId: `mock-${venueId}-${stationId}`,
       title: `${name} Live Streaming - 1부`,
       name,
@@ -1178,93 +1023,15 @@ async function playUnlistedCabinet(
       watchUrl: `https://www.youtube.com/watch?v=mock-${venueId}-${stationId}`,
       ...(viewers === undefined ? {} : { concurrentViewers: viewers }),
     };
-    venue.unmatched = server.phase === 'unlisted' ? [{ ...broadcast, stationId: null }] : [];
+    // Named by no cabinet, so - as the server leaves out what is null - with no stationId.
+    venue.unmatched = server.phase === 'unlisted' ? [broadcast] : [];
     if (server.phase === 'registered') {
       venue.streams.push({ ...broadcast, stationId });
     }
-    await route.fulfill({ response, json: { ...body, venuesVersion: version() } });
+    body.venuesVersion = version();
   });
 
   return server;
-}
-
-/** The phones the chat is checked on: SE, 15 Pro, Pixel 7, and an iPhone held sideways. */
-const PHONE_SIZES = [
-  { width: 375, height: 667 },
-  { width: 393, height: 852 },
-  { width: 412, height: 915 },
-  { width: 844, height: 390 },
-];
-
-/** Written out rather than taken from lib/youtube.ts, so a change there has to agree with this. */
-function chatSignInUrl(videoId: string): string {
-  return `https://www.youtube.com/signin?action_handle_signin=true&next=%2Flive_chat%3Fis_popout%3D1%26v%3D${videoId}`;
-}
-
-type WindowOpenCall = [url: string, target: string, features: string];
-
-/** What recordWindowOpen hands back for a window: enough of one for the page to use. */
-interface FakeWindow {
-  opener: unknown;
-  closed: boolean;
-  focusCount: number;
-}
-
-declare global {
-  /** The fake windows recordWindowOpen has handed out, read from inside the page. */
-  function fakeWindows(): FakeWindow[];
-}
-
-/**
- * Stands in for window.open from the page's first script: each call is noted, and
- * answered with a fake window or, as a popup blocker would, with null. Returns the calls so far.
- */
-async function recordWindowOpen(page: Page, answer: 'window' | 'blocked'): Promise<() => Promise<WindowOpenCall[]>> {
-  await page.addInitScript((answer) => {
-    const calls: unknown[][] = [];
-    const opened: FakeWindow[] = [];
-    Object.assign(window, { openCalls: calls, fakeWindows: () => opened });
-    window.open = ((...args: unknown[]) => {
-      calls.push(args);
-      if (answer === 'blocked') {
-        return null;
-      }
-      // A real new window starts out with this page as its opener.
-      const popup = {
-        opener: window as unknown,
-        closed: false,
-        focusCount: 0,
-        focus() {
-          popup.focusCount += 1;
-        },
-      };
-      opened.push(popup);
-      return popup as unknown as Window;
-    }) as typeof window.open;
-  }, answer);
-  return () => page.evaluate(() => ((window as { openCalls?: WindowOpenCall[] }).openCalls ?? []) as WindowOpenCall[]);
-}
-
-
-/** A tab the page opens is outside offline(): answer youtube.com there without the network. */
-async function answerYouTube(context: BrowserContext) {
-  await context.route(/youtube\.com|google\.com/, (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>YouTube</title>' }),
-  );
-}
-
-async function liveStreams(page: Page, venueId: string) {
-  const response = await page.request.get('/api/live');
-  const body = (await response.json()) as {
-    venues: { venueId: string; streams: { stationId: string | null; videoId: string; watchUrl: string }[] }[];
-  };
-  return body.venues.find((venue) => venue.venueId === venueId)?.streams ?? [];
-}
-
-async function liveVideoId(page: Page, venueId: string, stationId: string): Promise<string> {
-  const stream = (await liveStreams(page, venueId)).find((candidate) => candidate.stationId === stationId);
-  expect(stream, `${venueId}/${stationId} on air`).toBeDefined();
-  return stream!.videoId;
 }
 
 /**
@@ -1274,16 +1041,24 @@ async function liveVideoId(page: Page, venueId: string, stationId: string): Prom
  */
 async function withManyVenues(page: Page, total: number): Promise<string[]> {
   const names: string[] = [];
-  await page.route('**/api/venues', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.json()) as { venues: { id: string; name: string }[] };
+  await patchVenues(page, (body) => {
     const originals = body.venues;
     for (let index = originals.length; index < total; index += 1) {
       const source = originals[index % originals.length];
       body.venues.push({ ...source, id: `${source.id}-copy-${index}`, name: `${source.name} 복제 ${index}` });
     }
     names.splice(0, names.length, ...body.venues.map((venue) => venue.name));
-    await route.fulfill({ response, json: body });
   });
   return names;
 }
+
+/**
+ * The phones every phone check runs on - the chat, the buttons' icons, the 10px type, the
+ * viewer count: SE, 15 Pro, Pixel 7, and an iPhone held sideways.
+ */
+const PHONE_SIZES = [
+  { width: 375, height: 667 },
+  { width: 393, height: 852 },
+  { width: 412, height: 915 },
+  { width: 844, height: 390 },
+];
