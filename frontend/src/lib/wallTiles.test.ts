@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveStream, Venue, VenueLive } from './types';
-import { normalizeCabinetName, wallTilesFor } from './wallTiles';
+import { wallTilesFor } from './wallTiles';
 
 const venue = (...stations: [id: string, label: string, zoneId?: string][]): Venue => ({
   id: 'v',
@@ -103,13 +103,5 @@ describe('wallTilesFor', () => {
 
   it('is empty before the venue arrives', () => {
     expect(wallTilesFor(undefined, 'all-grid', live([], [stream('Z9')]))).toEqual([]);
-  });
-});
-
-describe('normalizeCabinetName', () => {
-  it('compares names the way the server matches aliases', () => {
-    expect(normalizeCabinetName('the-base 2')).toBe('THEBASE2');
-    expect(normalizeCabinetName('SECTOR A 1번 기체')).toBe('SECTORA1번기체');
-    expect(normalizeCabinetName(undefined)).toBe('');
   });
 });

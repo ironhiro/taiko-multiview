@@ -1,3 +1,4 @@
+import { normalizeCabinetName } from './cabinetName';
 import type { LiveStream, Venue, VenueLive } from './types';
 import { stationsForView, type ViewMode } from './views';
 
@@ -94,13 +95,4 @@ export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: Ven
     });
 
   return [...tiles, ...extra];
-}
-
-/**
- * Uppercased, with everything but letters and digits dropped - what the server does
- * (Venue.Normalize), so a name matches here exactly where it would match a station alias
- * there.
- */
-export function normalizeCabinetName(name: string | null | undefined): string {
-  return (name ?? '').toUpperCase().replace(/[^\p{L}\p{N}]/gu, '');
 }
