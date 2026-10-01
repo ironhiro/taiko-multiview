@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Venue, VenueLive } from '../lib/types';
 import { accentStyle } from '../lib/venue';
-import { liveCountOf, liveElsewhere, PHONE_LAYOUT_QUERY, venueRowMode, type VenueRowMode } from '../lib/venueRow';
+import { PHONE_LAYOUT_QUERY, useMediaQuery } from '../lib/media';
+import { liveCountOf, liveElsewhere, venueRowMode, type VenueRowMode } from '../lib/venueRow';
 import { VenueMark } from './VenueMark';
 
 interface VenueTabsProps {
@@ -274,21 +275,4 @@ function VenueList({ venues, liveByVenue, activeVenueId, onSelect }: VenueTabsPr
       </ul>
     </>
   );
-}
-
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => typeof window.matchMedia === 'function' && window.matchMedia(query).matches);
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const list = window.matchMedia(query);
-    const onChange = () => setMatches(list.matches);
-    onChange();
-    list.addEventListener('change', onChange);
-    return () => list.removeEventListener('change', onChange);
-  }, [query]);
-
-  return matches;
 }

@@ -1,6 +1,6 @@
 import { normalizeCabinetName } from './cabinetName';
 import type { LiveStream, Venue, VenueLive } from './types';
-import { stationsForView, type ViewMode } from './views';
+import { stationsForView, WALL_VIEW, type ViewMode } from './views';
 
 /** One tile on the wall: a cabinet the venue lists, or one on air that it does not list yet. */
 export interface WallTile {
@@ -80,7 +80,7 @@ export function wallTilesFor(venue: Venue | undefined, view: ViewMode, live: Ven
     unregistered: false,
   }));
 
-  if (view !== 'all' && view !== 'all-grid') {
+  if (view !== WALL_VIEW) {
     return tiles;
   }
 

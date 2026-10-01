@@ -1,12 +1,6 @@
 import type { Venue, VenueLive } from './types';
+import { WALL_VIEW } from './views';
 import { wallTilesFor } from './wallTiles';
-
-/**
- * The phone layout, as `styles.css` switches it on. Kept word for word with the media
- * block there: the venue row folds only where the phone rules apply, and the desktop
- * keeps every tab in its row.
- */
-export const PHONE_LAYOUT_QUERY = '(max-width: 820px), (pointer: coarse) and (max-height: 520px)';
 
 export type VenueRowMode = 'tabs' | 'folded';
 
@@ -49,7 +43,7 @@ export function venueRowMode({
  * cabinet's tile - and the count has to say what the viewer can see.
  */
 export function liveCountOf(venue: Venue | undefined, live: VenueLive | undefined): number {
-  return wallTilesFor(venue, 'all-grid', live).filter((tile) => tile.stream?.isLive).length;
+  return wallTilesFor(venue, WALL_VIEW, live).filter((tile) => tile.stream?.isLive).length;
 }
 
 /**

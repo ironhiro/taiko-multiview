@@ -1,8 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
+import { gridColumns } from '../lib/gridLayout';
 import { splitWall } from '../lib/idleCabinets';
 import type { WallTile } from '../lib/wallTiles';
 import { IdleStrip } from './IdleStrip';
-import { gridColumns } from './LayoutPicker';
 import { PlayerTile } from './PlayerTile';
 
 interface GridViewProps {
@@ -65,7 +65,14 @@ export function GridView({
 }
 
 const GLIDE_MS = 320;
-const GLIDE_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+/**
+ * The tokens' --ease-out (tokens.css), read from the page where a glide starts so the
+ * tiles move as every other transition does, and a change to the token reaches them too.
+ */
+function glideEasing(grid: HTMLElement): string {
+  return getComputedStyle(grid).getPropertyValue('--ease-out').trim() || 'ease-out';
+}
 
 /**
  * Tiles glide from where they were to where a new layout puts them, instead of jumping
@@ -90,6 +97,7 @@ function useGlideOnRelayout(columns: number) {
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     if (relaid && !reduced) {
+      const easing = glideEasing(grid);
       tiles.forEach((tile, index) => {
         const from = lastBoxes.current[index];
         const to = boxes[index];
@@ -110,7 +118,7 @@ function useGlideOnRelayout(columns: number) {
             { transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})` },
             { transformOrigin: 'top left', transform: 'none' },
           ],
-          { duration: GLIDE_MS, easing: GLIDE_EASING },
+          { duration: GLIDE_MS, easing },
         );
       });
     }

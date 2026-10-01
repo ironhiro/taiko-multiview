@@ -74,13 +74,17 @@ type ArcadeLinkProps = ArcadeFace & Omit<AnchorHTMLAttributes<HTMLAnchorElement>
 /**
  * A control that leaves the page, dressed as the arcade button. Never a toggle and never
  * 카: opening somewhere else is not a choice the wall remembers.
+ *
+ * A link to a new tab is cut off from the wall unless the caller says otherwise: the page
+ * it opens gets no window.opener to reach back through, and no referrer.
  */
-export function ArcadeLink({ label, icon, content, className, ...rest }: ArcadeLinkProps) {
+export function ArcadeLink({ label, icon, content, className, rel, ...rest }: ArcadeLinkProps) {
   const resolved = resolveArcadeContent(icon, content);
   return (
     <a
       className={arcadeClassName(resolved, className)}
       aria-label={rest['aria-label'] ?? (resolved === 'icon-only' ? label : undefined)}
+      rel={rel ?? (rest.target === '_blank' ? 'noopener noreferrer' : undefined)}
       {...rest}
     >
       <Face label={label} icon={icon} content={resolved} />

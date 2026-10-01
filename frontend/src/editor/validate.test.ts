@@ -40,6 +40,16 @@ describe('validateVenue', () => {
     expect(errors(backwards).length).toBe(7);
   });
 
+  it('warns of a zone named as the whole wall is, without blocking the save', () => {
+    for (const id of ['all-grid', 'all']) {
+      const venue = { ...good(), zones: [{ key: 'z', id, code: 'ALL', label: '전체' }] };
+      const issues = validateVenue(venue, [venue]);
+      expect(issues.filter((issue) => issue.error)).toEqual([]);
+      expect(issues.some((issue) => issue.message.includes(`구역 id '${id}'`))).toBe(true);
+    }
+    expect(validateVenue(good(), [good()]).some((issue) => issue.message.includes('전체 보기'))).toBe(false);
+  });
+
   it('ignores the hours of a closed day', () => {
     const venue = good();
     venue.hours = venue.hours.map((hour) => ({ ...hour, open: 'x', closed: true }));

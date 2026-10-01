@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
 import type { LiveResponse, Venue, VenueLive } from './lib/types';
-import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
 import { retryUntilDone, type RetryHandle } from './lib/retry';
 import { onVenuesSaved } from './lib/settingsChannel';
+import { GRID_DEFAULT, GRID_SIZES, type GridSize } from './lib/gridLayout';
 import { accentStyle, venueSummary } from './lib/venue';
-import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
+import { useCompactDevice } from './lib/media';
+import { isValidView, viewOptionsFor, WALL_VIEW, type ViewMode } from './lib/views';
 import { liveCountOf } from './lib/venueRow';
 import { wallTilesFor } from './lib/wallTiles';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
-import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
+import { LayoutPicker } from './components/LayoutPicker';
 
 const GRID_STORAGE_KEY = 'taiko-multiview:grid';
 
@@ -108,15 +109,9 @@ export default function App() {
     }
 
     const requested = new URLSearchParams(window.location.search).get('view');
-    const canUseUrl = !hasChosenView.current && isValidView(activeVenue, requested);
+    const fromUrl = !hasChosenView.current && isValidView(activeVenue, requested) ? requested : null;
 
-    setView((current) =>
-      canUseUrl
-        ? (requested as ViewMode)
-        : isValidView(activeVenue, current)
-          ? current
-          : defaultViewFor(activeVenue, isCompactViewport()),
-    );
+    setView((current) => fromUrl ?? (isValidView(activeVenue, current) ? current : WALL_VIEW));
   }, [activeVenue]);
 
   // --- live data ------------------------------------------------------------
@@ -254,7 +249,7 @@ export default function App() {
 
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
   const tiles = useMemo(
-    () => wallTilesFor(activeVenue, view ?? 'all-grid', activeLive),
+    () => wallTilesFor(activeVenue, view ?? WALL_VIEW, activeLive),
     [activeVenue, view, activeLive],
   );
 
