@@ -257,8 +257,9 @@ docker run -p 8080:8080 -e YouTube__Mode=Mock taiko-multiview   # http://localho
 | --- | --- |
 | 리소스 그룹 (한국 중부) | `rg-taiko-multiview` |
 | Container Apps 환경 (개발·실서버 공용) | `cae-taiko-multiview` |
-| 개발 서버 | `taiko-multiview-dev` (최소 0 / 최대 1, 0.25 vCPU / 0.5 GiB)<br>https://taiko-multiview-dev.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io |
+| 개발 서버 | `taiko-multiview-dev` (최소 0 / 최대 1, 0.25 vCPU / 0.5 GiB)<br>https://multiview-dev.ironhiro.dev (기본 주소 https://taiko-multiview-dev.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io) |
 | 실서버 | `taiko-multiview` (최소 1 / 최대 1, 0.25 vCPU / 0.5 GiB, `Production`)<br>https://multiview.ironhiro.dev (기본 주소 https://taiko-multiview.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io) |
+| 개발 서버 도메인 | Cloudflare DNS: `multiview-dev` CNAME, `asuid.multiview-dev` TXT, `_dnsauth.multiview-dev` TXT. 인증서는 관리형이지만 **TXT 검증**(`mc-multiview-dev`): IP 잠금 때문에 접속 검증(CNAME·HTTP)은 막힘. `_dnsauth` 레코드를 지우지 말 것 |
 | 실서버 도메인 | Cloudflare DNS: `multiview` CNAME → 기본 주소, `asuid.multiview` TXT (환경 검증 ID). **프록시 끄기(DNS only)**: 켜면 모든 접속이 Cloudflare IP로 보여 요청 제한을 함께 쓰고, 관리형 인증서 갱신 검증도 실패. 인증서는 Container Apps 관리형(자동 갱신) |
 | 이미지 | `ghcr.io/ironhiro/taiko-multiview` (공개) |
 

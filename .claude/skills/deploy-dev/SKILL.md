@@ -29,9 +29,11 @@ description: "태고 멀티뷰를 Azure Container Apps 개발 서버(taiko-multi
 
 ## 배포 후 확인
 
-주소: https://taiko-multiview-dev.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io
+주소: https://multiview-dev.ironhiro.dev (기본 주소 https://taiko-multiview-dev.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io도 그대로 열림)
 
-**접근 제한:** 인그레스 IP 허용 규칙 `this-pc`(작업 PC 공인 IP /32)만 열려 있다. 아래 확인이 전부 `403 RBAC: access denied`면 앱 문제가 아니라 공인 IP가 바뀐 것이다. `curl -s https://api.ipify.org`와 `az containerapp ingress access-restriction list -n taiko-multiview-dev -g rg-taiko-multiview -o table`을 비교하고, 다르면 사용자에게 알린 뒤 README "Azure Container Apps"의 명령으로 규칙을 덮어쓴다. 외부에서 막히는지 볼 때 WebFetch는 이 PC에서 나가므로 판정에 못 쓴다(외부 프록시 `https://r.jina.ai/<주소>`로 403 확인).
+**배포는 보통 CI가 한다:** main에 push하면 테스트 후 `deploy-backend` 작업이 ghcr에 이미지를 올리고 개발 서버를 바꾼다. 이 절차의 수동 빌드는 main이 아닌 브랜치를 올릴 때만. CI는 개발 서버에 접속하지 못하므로(IP 잠금) 아래 확인은 이 PC에서 한다.
+
+**접근 제한:** 인그레스 IP 허용 규칙 `this-pc`(작업 PC 공인 IP /32)만 열려 있다. 아래 확인이 전부 `403 RBAC: access denied`면 앱 문제가 아니라 공인 IP가 바뀐 것이다. `curl -s https://api.ipify.org`와 `az containerapp ingress access-restriction list -n taiko-multiview-dev -g rg-taiko-multiview -o table`을 비교하고, 다르면 사용자에게 알린 뒤 README "Azure Container Apps"의 명령으로 규칙을 덮어쓴다. 도메인 인증서(`mc-multiview-dev`)는 TXT 검증이라 IP 잠금과 무관하지만, 갱신 무렵(만료 2027-04-08)에 `az containerapp env certificate list -g rg-taiko-multiview -n cae-taiko-multiview --managed-certificates-only -o table`로 상태를 확인한다. 외부에서 막히는지 볼 때 WebFetch는 이 PC에서 나가므로 판정에 못 쓴다(외부 프록시 `https://r.jina.ai/<주소>`로 403 확인).
 
 - `/api/health`: environment가 `Staging`, youTubeMode `Api`, hasApiKey `true`
 - 보안 헤더: `curl -sI <주소>/`에서 content-security-policy, strict-transport-security, x-content-type-options, x-frame-options, referrer-policy가 있고 `server` 헤더가 없음
