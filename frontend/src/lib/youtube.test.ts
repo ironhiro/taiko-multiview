@@ -1,25 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CHAT_WINDOW_FEATURES, chatSignInUrl, chatWindowName, openChatWindow } from './youtube';
+import { CHAT_WINDOW_FEATURES, chatWindowName, openChatWindow, popoutChatUrl } from './youtube';
 
-describe('chatSignInUrl', () => {
-  it("signs in on youtube.com and lands on the broadcast's pop-out chat", () => {
-    const url = new URL(chatSignInUrl('abc123'));
-    expect(`${url.origin}${url.pathname}`).toBe('https://www.youtube.com/signin');
-    expect(url.searchParams.get('action_handle_signin')).toBe('true');
-    expect(url.searchParams.get('next')).toBe('/live_chat?is_popout=1&v=abc123');
+describe('popoutChatUrl', () => {
+  it("opens the broadcast's pop-out chat on youtube.com itself, not through its sign-in", () => {
+    const url = new URL(popoutChatUrl('abc123'));
+    expect(`${url.origin}${url.pathname}`).toBe('https://www.youtube.com/live_chat');
+    expect(url.searchParams.get('is_popout')).toBe('1');
+    expect(url.searchParams.get('v')).toBe('abc123');
+    expect(url.searchParams.has('next')).toBe(false);
   });
 
-  it('encodes the chat address, so its own parameters stay inside next', () => {
-    const url = chatSignInUrl('abc123');
-    expect(url).toBe(
-      'https://www.youtube.com/signin?action_handle_signin=true&next=%2Flive_chat%3Fis_popout%3D1%26v%3Dabc123',
-    );
-    expect(new URL(url).searchParams.get('v')).toBeNull();
+  it('is the address YouTube serves the chat at', () => {
+    expect(popoutChatUrl('abc123')).toBe('https://www.youtube.com/live_chat?is_popout=1&v=abc123');
   });
 
   it('keeps an id with URL-special characters intact', () => {
-    const next = new URL(chatSignInUrl('a-b_c&d')).searchParams.get('next')!;
-    expect(new URLSearchParams(next.split('?')[1]).get('v')).toBe('a-b_c&d');
+    expect(new URL(popoutChatUrl('a-b_c&d')).searchParams.get('v')).toBe('a-b_c&d');
   });
 });
 
@@ -51,7 +47,7 @@ describe('openChatWindow', () => {
 
     expect(openChatWindow('abc123', open, new Map())).toBe(true);
     expect(open).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledWith(chatSignInUrl('abc123'), 'taiko-chat-abc123', CHAT_WINDOW_FEATURES);
+    expect(open).toHaveBeenCalledWith(popoutChatUrl('abc123'), 'taiko-chat-abc123', CHAT_WINDOW_FEATURES);
     expect(opened[0].opener).toBeNull();
     expect(opened[0].focus).toHaveBeenCalledTimes(1);
   });
@@ -73,7 +69,7 @@ describe('openChatWindow', () => {
     openChatWindow('abc123', open, windows);
     openChatWindow('xyz789', open, windows);
     expect(open).toHaveBeenCalledTimes(2);
-    expect(open).toHaveBeenLastCalledWith(chatSignInUrl('xyz789'), 'taiko-chat-xyz789', CHAT_WINDOW_FEATURES);
+    expect(open).toHaveBeenLastCalledWith(popoutChatUrl('xyz789'), 'taiko-chat-xyz789', CHAT_WINDOW_FEATURES);
     expect(opened).toHaveLength(2);
   });
 

@@ -56,7 +56,7 @@ test.describe('desktop', () => {
     await expect(page.locator('.choice[aria-pressed="true"]')).toHaveText('통합');
   });
 
-  test("a tile's chat opens YouTube's sign-in in a popup of its own, one per broadcast", async ({ page, context }) => {
+  test("a tile's chat opens YouTube's pop-out chat in a popup of its own, one per broadcast", async ({ page, context }) => {
     const openCalls = await recordWindowOpen(page, 'window');
     // A tab the link wrongly opened must not reach the network either.
     await answerYouTube(context);
@@ -80,7 +80,7 @@ test.describe('desktop', () => {
     const a1 = await liveVideoId(page, 'taikolabs', 'a1');
     const a3 = await liveVideoId(page, 'taikolabs', 'a3');
     await page.getByRole('link', { name: 'A1 유튜브 채팅 열기' }).click();
-    expect(await openCalls()).toEqual([[chatSignInUrl(a1), `taiko-chat-${a1}`, 'popup=yes,width=420,height=720']]);
+    expect(await openCalls()).toEqual([[popoutChatUrl(a1), `taiko-chat-${a1}`, 'popup=yes,width=420,height=720']]);
 
     // Cut off from the wall: YouTube's page cannot reach back through window.opener.
     expect(await page.evaluate(() => fakeWindows().map((popup) => popup.opener))).toEqual([null]);
@@ -115,7 +115,7 @@ test.describe('desktop', () => {
     const tab = await opened;
 
     expect(await openCalls()).toHaveLength(1);
-    await expect(tab).toHaveURL(chatSignInUrl(a1));
+    await expect(tab).toHaveURL(popoutChatUrl(a1));
     // The wall stays where it was.
     await expect(page).toHaveURL(/\/\?venue=taikolabs$/);
   });
@@ -1058,8 +1058,8 @@ const PHONE_SIZES = [
 ];
 
 /** Written out rather than taken from lib/youtube.ts, so a change there has to agree with this. */
-function chatSignInUrl(videoId: string): string {
-  return `https://www.youtube.com/signin?action_handle_signin=true&next=%2Flive_chat%3Fis_popout%3D1%26v%3D${videoId}`;
+function popoutChatUrl(videoId: string): string {
+  return `https://www.youtube.com/live_chat?is_popout=1&v=${videoId}`;
 }
 
 type WindowOpenCall = [url: string, target: string, features: string];

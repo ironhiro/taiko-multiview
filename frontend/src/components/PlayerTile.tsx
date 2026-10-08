@@ -12,7 +12,7 @@ import { isDesktopShell } from '../lib/shell';
 import { useCoveredTop } from '../lib/stickyCover';
 import { ArcadeLink } from './ArcadeButton';
 import { ChatIcon, TileLabelRow } from './TileLabelRow';
-import { chatSignInUrl, loadYouTubeApi, openChatWindow, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
+import { loadYouTubeApi, openChatWindow, playerOrigin, PlayerState, popoutChatUrl, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
   label: string;
@@ -800,7 +800,7 @@ function ChatLink({ label, stream, inTab }: { label: string; stream: LiveStream;
       className="tile__control tile__control--chat"
       label="채팅"
       icon={<ChatIcon />}
-      href={inTab ? stream.watchUrl : chatSignInUrl(stream.videoId)}
+      href={inTab ? stream.watchUrl : popoutChatUrl(stream.videoId)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={inTab ? undefined : openPopup}

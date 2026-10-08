@@ -102,14 +102,16 @@ export function playerOrigin(): string | undefined {
 }
 
 /**
- * YouTube's sign-in, landing on this broadcast's pop-out chat once done. The chat is
- * written to in a youtube.com window of its own, never framed in the wall: a frame inside
- * another site does not get the viewer's YouTube sign-in, so it could only be read.
- * Already signed in, YouTube passes straight through to the chat.
+ * This broadcast's pop-out chat on youtube.com. It is written to in a youtube.com window of
+ * its own, never framed in the wall: a frame inside another site does not get the viewer's
+ * YouTube sign-in, so it could only be read. A viewer signed in to YouTube can write
+ * straight away; anyone else gets the chat to read and YouTube's own sign-in prompt in it.
+ *
+ * Opened directly, not through youtube.com/signin with the chat as `next`: signed out, that
+ * address answered 303 to youtube.com/oops, YouTube's error page, and never reached the chat.
  */
-export function chatSignInUrl(videoId: string): string {
-  const chat = `/live_chat?${new URLSearchParams({ is_popout: '1', v: videoId })}`;
-  return `https://www.youtube.com/signin?${new URLSearchParams({ action_handle_signin: 'true', next: chat })}`;
+export function popoutChatUrl(videoId: string): string {
+  return `https://www.youtube.com/live_chat?${new URLSearchParams({ is_popout: '1', v: videoId })}`;
 }
 
 /**
@@ -149,7 +151,7 @@ export function openChatWindow(
     return true;
   }
 
-  const popup = open(chatSignInUrl(videoId), chatWindowName(videoId), CHAT_WINDOW_FEATURES);
+  const popup = open(popoutChatUrl(videoId), chatWindowName(videoId), CHAT_WINDOW_FEATURES);
   if (!popup) {
     windows.delete(videoId);
     return false;
