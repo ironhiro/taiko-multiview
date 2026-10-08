@@ -672,6 +672,16 @@ async function settled(page: Page) {
 // window; a window's height used to move it (QA F-1: 1920×1080 4×4 spilled 17px).
 /** The narrowest phone tile on which the longest row keeps "THE…" (measured: 198px). */
 const PHONE_LEAST_LABEL_FROM = 198;
+/**
+ * The narrowest desktop tile on which the longest row keeps "THE…", on every system we
+ * test on. At 184px the label part had exactly the room "THE…" takes in Chromium on
+ * Windows (28.17px), with nothing to spare; Chromium on Linux rounds each glyph of the
+ * 11px label to a whole pixel (6.6px becomes 7px), so there "THE…" takes 29.77px and the
+ * label got 29.11px. The first step of the sweep that holds on all of them is 188px (3.3px to spare
+ * on Linux). Below it the row still never spills and keeps its tag; only the label is cut
+ * further, as on a narrower tile.
+ */
+const DESKTOP_LEAST_LABEL_FROM = 188;
 
 test.describe('the row under the picture, measured', () => {
   test.skip(
@@ -700,9 +710,11 @@ test.describe('the row under the picture, measured', () => {
           }, width);
         }
         await settled(page);
-        // A phone's 14px label keeps "THE…" beside the longest row from a 198px tile; below
-        // that - no phone is that narrow - it is cut further rather than the tag hidden.
-        expect(await rowFits(page, { leastFrom: isMobile ? PHONE_LEAST_LABEL_FROM : 0 }), `tile ${width}px, window height ${height}px`).toEqual([]);
+        // A phone's 14px label keeps "THE…" beside the longest row from a 198px tile, a
+        // desktop's from 188px; below that the label is cut further rather than the tag
+        // hidden, and nothing spills at any width.
+        const leastFrom = isMobile ? PHONE_LEAST_LABEL_FROM : DESKTOP_LEAST_LABEL_FROM;
+        expect(await rowFits(page, { leastFrom }), `tile ${width}px, window height ${height}px`).toEqual([]);
       }
     });
   }

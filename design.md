@@ -84,9 +84,11 @@ bounces, glows or lifts.
 - Phones held upright (a row 390px wide or less: iPhone SE, 15 Pro, Pixel 7) show the
   icons alone whatever the row holds; a phone held sideways follows the row.
 - Measured on the longest row we list (tagged "THE BASE 2", LIVE, "12,345명", "소리 켜짐",
-  "채팅"): it keeps "THE…" on every desktop tile from 184px, and on phone tiles from 198px
+  "채팅"): it keeps "THE…" on every desktop tile from 188px, and on phone tiles from 198px
   (no phone held upright is narrower than 296px); below that it is cut further rather
-  than lose its tag.
+  than lose its tag. The desktop figure holds on Linux too, whose Chromium rounds each
+  glyph of the 11px label to a whole pixel: there a 184px tile, the floor on Windows with
+  nothing to spare, keeps only "TH…".
 - LIVE, the tag and the count are 10px on phones; the label is 14px there.
 - The row's type follows the tile's width, not the window's height (in the grid; the
   `--text-tile-*` tokens stay vh-based for anything else), and a row measures itself
