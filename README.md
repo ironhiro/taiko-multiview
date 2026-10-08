@@ -373,3 +373,45 @@ cd frontend && npm run test:e2e
 - `Public` 모드: RSS의 최근 15개만 조회. 더 오래된 방송은 못 찾음
 - 백엔드 실행: .NET 10 SDK 필요 (도커 빌드는 무관)
 - 경로에 `#` 이 들어간 폴더: Vite 빌드 실패
+
+## 사용한 오픈소스
+
+### 사이트·서버
+
+| 이름 | 용도 | 라이선스 |
+| --- | --- | --- |
+| [React](https://github.com/facebook/react), React DOM | 화면 구성 | MIT |
+| [Pretendard](https://github.com/orioncactus/pretendard) | 본문 글꼴 | SIL OFL 1.1 |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) ([Fontsource](https://github.com/fontsource/font-files)) | 숫자·라벨 글꼴 | SIL OFL 1.1 |
+| [Black Han Sans](https://fonts.google.com/specimen/Black+Han+Sans) ([Fontsource](https://github.com/fontsource/font-files)) | 제목 글꼴 | SIL OFL 1.1 |
+| [.NET](https://github.com/dotnet/runtime) · [ASP.NET Core](https://github.com/dotnet/aspnetcore) | 백엔드 런타임 | MIT |
+| [Microsoft.AspNetCore.OpenApi](https://github.com/dotnet/aspnetcore) | OpenAPI 문서 | MIT |
+| [Swashbuckle.AspNetCore](https://github.com/domaindrivendev/Swashbuckle.AspNetCore) | `/swagger` 화면 | MIT |
+
+### 데스크톱 앱
+
+| 이름 | 용도 | 라이선스 |
+| --- | --- | --- |
+| [Tauri](https://github.com/tauri-apps/tauri) | 앱 창과 웹뷰 | MIT 또는 Apache-2.0 |
+| [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | 매장 등록기의 파일 대화상자 | MIT 또는 Apache-2.0 |
+| [serde](https://github.com/serde-rs/serde) · [serde_json](https://github.com/serde-rs/json) | `shell.config.json` 읽기, `venues.json` 검사 | MIT 또는 Apache-2.0 |
+| [ureq](https://github.com/algesten/ureq) | 매장 등록기의 유튜브 페이지 조회 | MIT 또는 Apache-2.0 |
+
+### 개발·테스트 도구
+
+| 이름 | 라이선스 |
+| --- | --- |
+| [Vite](https://github.com/vitejs/vite) · [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react) | MIT |
+| [TypeScript](https://github.com/microsoft/TypeScript) | Apache-2.0 |
+| [Vitest](https://github.com/vitest-dev/vitest) | MIT |
+| [Playwright](https://github.com/microsoft/playwright) | Apache-2.0 |
+| [xUnit.net](https://github.com/xunit/xunit) · xunit.runner.visualstudio | Apache-2.0 |
+| [Microsoft.NET.Test.Sdk](https://github.com/microsoft/vstest) · [coverlet](https://github.com/coverlet-coverage/coverlet) | MIT |
+
+### 외부 서비스
+
+- 영상 재생: [YouTube IFrame Player API](https://developers.google.com/youtube/iframe_api_reference)
+- 방송 조회: [YouTube Data API v3](https://developers.google.com/youtube/v3)
+- 둘 다 [YouTube API 서비스 약관](https://developers.google.com/youtube/terms/api-services-terms-of-service)을 따름
+
+방송 영상과 매장 로고·이름의 권리는 각 매장과 원저작자에게 있음.
