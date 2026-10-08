@@ -31,6 +31,8 @@ description: "태고 멀티뷰를 Azure Container Apps 개발 서버(taiko-multi
 
 주소: https://taiko-multiview-dev.agreeabletree-b826eb73.koreacentral.azurecontainerapps.io
 
+**접근 제한:** 인그레스 IP 허용 규칙 `this-pc`(작업 PC 공인 IP /32)만 열려 있다. 아래 확인이 전부 `403 RBAC: access denied`면 앱 문제가 아니라 공인 IP가 바뀐 것이다. `curl -s https://api.ipify.org`와 `az containerapp ingress access-restriction list -n taiko-multiview-dev -g rg-taiko-multiview -o table`을 비교하고, 다르면 사용자에게 알린 뒤 README "Azure Container Apps"의 명령으로 규칙을 덮어쓴다. 외부에서 막히는지 볼 때 WebFetch는 이 PC에서 나가므로 판정에 못 쓴다(외부 프록시 `https://r.jina.ai/<주소>`로 403 확인).
+
 - `/api/health`: environment가 `Staging`, youTubeMode `Api`, hasApiKey `true`
 - 보안 헤더: `curl -sI <주소>/`에서 content-security-policy, strict-transport-security, x-content-type-options, x-frame-options, referrer-policy가 있고 `server` 헤더가 없음
 - 요청 제한: `POST /api/live/refresh` 7번째부터 429. `X-Forwarded-For`를 위조해도 429(인그레스가 붙인 마지막 IP를 쓰므로)
