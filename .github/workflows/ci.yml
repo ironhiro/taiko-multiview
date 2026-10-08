@@ -62,23 +62,46 @@ jobs:
           name: playwright-traces
           path: frontend/test-results/
 
+  # Builds the image from main, pushes it to ghcr under the short commit hash (the same tag
+  # a hand build gets), and points the dev server at it. Production is never deployed from
+  # here: once the dev server looks right, the same tag goes to it by hand (README "배포").
   # Off until the repository is given what it needs (Settings → Secrets and variables → Actions):
   #   secret   AZURE_CREDENTIALS   output of `az ad sp create-for-rbac --sdk-auth` scoped to the resource group
-  #   variable AZURE_RESOURCE_GROUP, AZURE_CONTAINERAPP   e.g. rg-taiko-multiview / taiko-multiview-dev
+  #   variable AZURE_RESOURCE_GROUP, AZURE_CONTAINERAPP   rg-taiko-multiview / taiko-multiview-dev
   #   variable DEPLOY_BACKEND = true
+  # and the ghcr package lets this repository write to it (package settings → Manage Actions
+  # access → add the repository with the Write role), since it was first pushed by hand.
   # The container app keeps its own environment variables (the YouTube key among them);
-  # this only ships new code and a new venues.json.
+  # this only ships new code and a new venues.json. Nothing here requests the dev server
+  # itself: its ingress only admits the work PC, so a runner would get 403.
   deploy-backend:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_BACKEND == 'true'
     needs: [backend, frontend, e2e]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
+      - id: tag
+        run: echo "tag=ghcr.io/ironhiro/taiko-multiview:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          tags: ${{ steps.tag.outputs.tag }}
+          push: true
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       - run: >
-          az containerapp up
+          az containerapp update
           --name "${{ vars.AZURE_CONTAINERAPP }}"
           --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
-          --source .
+          --image "${{ steps.tag.outputs.tag }}"
