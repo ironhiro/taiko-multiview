@@ -7,7 +7,7 @@ import { usePageAway } from '../lib/pageAway';
 import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib/playbackSlots';
 import { compactPlayerBudget } from '../lib/playerBudget';
 import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
-import { joinsPlaybackSlots, nextPlayerAction } from '../lib/tilePlayer';
+import { applyTileAudio, joinsPlaybackSlots, nextPlayerAction, startReadyPlayer } from '../lib/tilePlayer';
 import { useCoveredTop } from '../lib/stickyCover';
 import { ArcadeButton } from './ArcadeButton';
 import { ChatLink } from './ChatLink';
@@ -109,6 +109,8 @@ export function PlayerTile({
   // Read by the player's own callbacks, which outlive any one render.
   const shouldPlayRef = useRef(shouldPlay);
   shouldPlayRef.current = shouldPlay;
+  const holdsSoundRef = useRef(isAudioActive);
+  holdsSoundRef.current = isAudioActive;
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
@@ -270,14 +272,10 @@ export function PlayerTile({
               if (disposed) {
                 return;
               }
-              // Autoplay only survives while muted; audio is granted separately. The slot
-              // may have gone while the player loaded.
-              event.target.mute();
-              if (shouldPlayRef.current) {
-                event.target.playVideo();
-              } else {
-                event.target.pauseVideo();
-              }
+              // Muted to start, as autoplay requires; the slot may have gone while the player
+              // loaded; and the sound back if this tile already holds it - chosen before this
+              // player was built, the effect below found no player to give it to.
+              startReadyPlayer(event.target, { shouldPlay: shouldPlayRef.current, holdsSound: holdsSoundRef.current });
               watchdog = watchPlayback(event.target, where, isLiveRef, startedAtRef, shouldPlayRef);
               stopResync = resyncWhenShownAgain(event.target, tileRef.current, where, startedAtRef, shouldPlayRef);
             },
@@ -336,18 +334,14 @@ export function PlayerTile({
     };
   }, [mountedId, failed]);
 
+  // A player still loading takes its sound when ready (startReadyPlayer above).
   useEffect(() => {
     const player = playerRef.current;
     if (!player) {
       return;
     }
 
-    if (isAudioActive) {
-      player.unMute();
-      player.setVolume(100);
-    } else {
-      player.mute();
-    }
+    applyTileAudio(player, isAudioActive);
   }, [isAudioActive, mountedId]);
 
   // A tap on a lazy tile's thumbnail asks for a slot, taking one from the least visible
