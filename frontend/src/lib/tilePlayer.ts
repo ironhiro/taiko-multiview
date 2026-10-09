@@ -93,3 +93,47 @@ export function nextPlayerAction({
   // before the window narrowed into the phone rules. Without one, it waits for a slot.
   return wantsPlayer && !newStream ? { budget: 'park', wantsPlayer: true } : { budget: 'release', wantsPlayer: false };
 }
+
+/** The part of a player that sets its sound. */
+export interface AudioControls {
+  mute(): void;
+  unMute(): void;
+  setVolume(volume: number): void;
+}
+
+/**
+ * Gives a player the sound its tile should have: the tile holding the sound unmuted at full
+ * volume, every other tile muted. Applied both when the choice changes and when a player
+ * becomes ready - a tile can hold the sound before its player exists (the wall rebuilt on the
+ * way back from 다시보기, a zone view left and come back to, a phone tile's player rebuilt
+ * after the budget took it), and a ready player starts muted for autoplay's sake.
+ */
+export function applyTileAudio(player: AudioControls, holdsSound: boolean): void {
+  if (holdsSound) {
+    player.unMute();
+    player.setVolume(100);
+  } else {
+    player.mute();
+  }
+}
+
+/**
+ * What a tile does with its player the moment it is ready: start it muted - autoplay only
+ * survives while muted - playing or paused as its slot says, and then give it its sound. The
+ * tile holding the sound used to stay muted here, its button saying "on": its player was
+ * built after the choice was made, so nothing ever unmuted it.
+ */
+export function startReadyPlayer(
+  player: AudioControls & { playVideo(): void; pauseVideo(): void },
+  { shouldPlay, holdsSound }: { shouldPlay: boolean; holdsSound: boolean },
+): void {
+  player.mute();
+  if (shouldPlay) {
+    player.playVideo();
+  } else {
+    player.pauseVideo();
+  }
+  if (holdsSound) {
+    applyTileAudio(player, true);
+  }
+}

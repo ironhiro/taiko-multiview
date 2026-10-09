@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joinsPlaybackSlots, nextPlayerAction, type TilePlayerState } from './tilePlayer';
+import { applyTileAudio, joinsPlaybackSlots, nextPlayerAction, startReadyPlayer, type TilePlayerState } from './tilePlayer';
 
 const phoneTile: TilePlayerState = {
   lazy: true,
@@ -79,5 +79,66 @@ describe('joinsPlaybackSlots', () => {
 
   it('leaves out a tile whose embed failed, so its slot goes to one that can play', () => {
     expect(joinsPlaybackSlots({ lazy: true, hasStream: true, failed: true })).toBe(false);
+  });
+});
+
+describe('applyTileAudio', () => {
+  const recorder = () => {
+    const calls: string[] = [];
+    return {
+      calls,
+      player: {
+        mute: () => calls.push('mute'),
+        unMute: () => calls.push('unMute'),
+        setVolume: (volume: number) => calls.push(`volume ${volume}`),
+      },
+    };
+  };
+
+  it('unmutes the tile holding the sound, at full volume', () => {
+    const { calls, player } = recorder();
+    applyTileAudio(player, true);
+    expect(calls).toEqual(['unMute', 'volume 100']);
+  });
+
+  it('mutes every other tile', () => {
+    const { calls, player } = recorder();
+    applyTileAudio(player, false);
+    expect(calls).toEqual(['mute']);
+  });
+});
+
+describe('startReadyPlayer', () => {
+  const recorder = () => {
+    const calls: string[] = [];
+    return {
+      calls,
+      player: {
+        mute: () => calls.push('mute'),
+        unMute: () => calls.push('unMute'),
+        setVolume: (volume: number) => calls.push(`volume ${volume}`),
+        playVideo: () => calls.push('play'),
+        pauseVideo: () => calls.push('pause'),
+      },
+    };
+  };
+
+  it('starts muted and playing, and a tile that already holds the sound gets it back', () => {
+    // The wall rebuilt on the way back from 다시보기: the sound was chosen before the player was.
+    const { calls, player } = recorder();
+    startReadyPlayer(player, { shouldPlay: true, holdsSound: true });
+    expect(calls).toEqual(['mute', 'play', 'unMute', 'volume 100']);
+  });
+
+  it('leaves every other tile muted', () => {
+    const { calls, player } = recorder();
+    startReadyPlayer(player, { shouldPlay: true, holdsSound: false });
+    expect(calls).toEqual(['mute', 'play']);
+  });
+
+  it('a tile without a slot starts paused, with its sound still set', () => {
+    const { calls, player } = recorder();
+    startReadyPlayer(player, { shouldPlay: false, holdsSound: true });
+    expect(calls).toEqual(['mute', 'pause', 'unMute', 'volume 100']);
   });
 });
