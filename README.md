@@ -333,6 +333,8 @@ ContainerAppConsoleLogs_CL
 | project TimeGenerated, App = ContainerAppName_s, Level = tostring(e.LogLevel), Message = tostring(e.Message), Units = toint(e.State.Units)
 ```
 
+쿼리마다 따로 실행됨 (Log Analytics 작업 영역 → 로그).
+
 ```kusto
 // 최근 하루의 프론트엔드 오류, 최신순
 ContainerAppConsoleLogs_CL
@@ -345,14 +347,39 @@ ContainerAppConsoleLogs_CL
     Station = tostring(s.Station), VideoId = tostring(s.VideoId), Message = tostring(s.Message),
     Source = tostring(s.Source), Session = tostring(s.Session), Detail = parse_json(tostring(s.Detail)), Stack = tostring(s.Stack)
 | order by TimeGenerated desc
+```
 
-// 종류·빌드별 건수 (위 쿼리의 project 까지 이어서)
-| summarize Count = count(), Sessions = dcount(Session) by Kind, Severity, Build
+```kusto
+// 최근 7일, 종류·빌드별 건수와 세션 수
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and Log_s has "ClientDiagnostics"
+| extend s = parse_json(Log_s).State
+| where isnotempty(s.Kind)
+| summarize Count = count(), Sessions = dcount(tostring(s.Session))
+    by Kind = tostring(s.Kind), Severity = tostring(s.Severity), Build = tostring(s.Build)
 | order by Count desc
+```
 
-// 플레이어 오류 코드별 (150 = 임베드 거부)
-| where Kind == "player-error" | summarize count() by Code = toint(Detail.code), Station
+```kusto
+// 최근 7일, 플레이어 오류 코드별 (150 = 임베드 거부)
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and Log_s has "ClientDiagnostics"
+| extend s = parse_json(Log_s).State
+| where tostring(s.Kind) == "player-error"
+| summarize Count = count() by Code = toint(parse_json(tostring(s.Detail)).code), Venue = tostring(s.Venue), Station = tostring(s.Station)
+| order by Count desc
+```
 
+```kusto
+// 서버가 버린 미등록 kind 개수 (오래된 탭, 탐색 요청). 분당 한 줄씩 묶여 찍힘
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and Log_s has "UnknownKindCount"
+| extend e = parse_json(Log_s)
+| where tostring(e.Category) == "ClientDiagnostics"
+| summarize Dropped = sum(toint(e.State.UnknownKindCount)) by App = ContainerAppName_s, bin(TimeGenerated, 1h)
+```
+
+```kusto
 // 보고가 차지하는 로그 양 (비용 확인용)
 ContainerAppConsoleLogs_CL
 | where TimeGenerated > ago(7d) and Log_s has "ClientDiagnostics"
