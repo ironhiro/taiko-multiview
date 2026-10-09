@@ -201,6 +201,7 @@ TAIKO LABS THE BASE Live Streaming 26.09.22 - 2부
 | `GET /api/venues` | 매장 설정 |
 | `GET /api/live` | 매장별 현재 방송과 영업 상태 |
 | `POST /api/live/refresh` | 즉시 재조회. `?venueId=` 로 한 매장만 |
+| `GET` · `POST /api/diagnostics` | 프론트엔드 오류 보고. `Diagnostics__ClientReports=true` 일 때만 존재 ([프론트엔드 오류 수집](#프론트엔드-오류-수집)) |
 
 개발 환경 전용 페이지 (다른 환경은 `ApiDocs__Enabled=true` 로 켜기):
 
@@ -245,6 +246,11 @@ docker run -p 8080:8080 -e YouTube__Mode=Mock taiko-multiview   # http://localho
 | `YouTube__Mode` | `Api` / `Public` / `Mock` |
 | `ApiDocs__Enabled` | `true` 면 `/swagger`, `/status` 공개 |
 | `ASPNETCORE_ENVIRONMENT` | 개발 서버 `Staging`, 실서버는 기본값 (`Production`) |
+| `Diagnostics__ClientReports` | `true` 면 프론트엔드 오류 보고를 받음 (기본 꺼짐) |
+| `Diagnostics__InfoSampleRate` | 정보성 보고를 받는 세션 비율 0~1 (기본 0) |
+| `Diagnostics__PerClientPerMinute` · `Diagnostics__TotalPerMinute` | 보고 제한: 주소당 분당 (기본 30) · 서버 전체 분당 (기본 300) |
+
+이미지를 직접 빌드할 때는 `--build-arg BUILD_VERSION=$(git rev-parse --short HEAD)` 를 붙임. 페이지가 오류를 보고할 때 이 값을 빌드 버전으로 보냄 (없으면 `unknown`). CI는 자동으로 넣음.
 
 ### Azure Container Apps
 
@@ -277,7 +283,7 @@ az containerapp ingress access-restriction list -n taiko-multiview-dev -g rg-tai
 
 ```bash
 # ARM 맥에서도 에뮬레이션 없이 amd64 로 빌드 (Dockerfile 주석 참고)
-docker buildx build --platform linux/amd64 -t ghcr.io/ironhiro/taiko-multiview:$(git rev-parse --short HEAD) --push .
+docker buildx build --platform linux/amd64 --build-arg BUILD_VERSION=$(git rev-parse --short HEAD)   -t ghcr.io/ironhiro/taiko-multiview:$(git rev-parse --short HEAD) --push .
 az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview --image ghcr.io/ironhiro/taiko-multiview:<태그>
 ```
 
@@ -288,6 +294,80 @@ az containerapp update -n taiko-multiview -g rg-taiko-multiview --image ghcr.io/
 ```
 
 유튜브 키 위치는 컨테이너 앱 시크릿 `youtube-api-key`, 연결은 `YouTube__ApiKey=secretref:youtube-api-key`. 키 교체 시 시크릿만 변경.
+
+### 프론트엔드 오류 수집
+
+페이지가 스크립트 오류, 처리 안 된 Promise 거부, 플레이어 오류·재생 문제를 `POST /api/diagnostics` 로 보내고, 서버가 `ClientDiagnostics` 로그로 남김. 서버 로그와 같은 Log Analytics 작업 영역(`ContainerAppConsoleLogs_CL`)에 쌓임.
+
+켜기 (새 이미지가 먼저 올라가 있어야 함. 이전 이미지에 켜면 제한이 약한 옛 엔드포인트가 열림):
+
+```bash
+az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview \
+  --set-env-vars Diagnostics__ClientReports=true Diagnostics__InfoSampleRate=0.1
+# 끄기
+az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview --remove-env-vars Diagnostics__ClientReports Diagnostics__InfoSampleRate
+```
+
+꺼진 서버에서 페이지는 첫 보고 때 설정 조회 1회(404)만 하고 그 세션 동안 멈춤.
+
+**무엇을 받는지.** 보고 종류(kind)마다 등급이 정해져 있고(서버 `ClientReportKinds`, 프론트 `src/lib/diagnosticKinds.ts`, 테스트가 둘을 맞춰 봄), 서버는 보고가 주장하는 등급이 아니라 자기 표를 따름.
+
+| 등급 | 종류 | 받는 양 |
+| --- | --- | --- |
+| 오류 | `js-error`, `js-unhandled-rejection`, `player-error`, `player-load-failed`, `venues-fetch-failed`, `live-fetch-failed`, `replay-fetch-failed` | 전부 |
+| 경고 | `player-destroy-failed`, `autoplay-timeout`, `buffering-long`, `playback-stalled`, `behind-live`, `ended-while-live`, `video-swapped` | 전부 |
+| 정보 | `…-recovered`, `jumped-to-live`, `ended-reload`, `resynced` | `InfoSampleRate` 비율의 세션만 |
+
+- 표에 없는 종류는 버리고 분당 1회 개수만 기록. 알려진 필드만 남기고 문자열은 필드별로 자름(메시지 300자, 위치 200자, 스택 600자, 그 밖 40자), 제어 문자·줄바꿈 제거. 본문 4KB 초과는 413
+- 같은 타일의 같은 문제(스크립트 오류는 같은 메시지)는 페이지에서 1분에 한 번만 보냄
+- 정보성 표본은 세션 단위: 페이지가 무작위 세션 id(16진수 8자리)를 만들고, 앞 4자리 / 65536 이 비율보다 작은 세션만 정보성 보고를 보냄. 서버도 같은 계산으로 거름
+- 남기는 것: 종류, 등급, 클라이언트(`browser`/`tauri`), 빌드(커밋), 브라우저 요약(예: `Safari 18/iOS/mobile`, User-Agent 원문은 남기지 않음), 매장, 보기, 기체, 영상 id, 메시지, 위치, 스택 앞부분, 세션 id, 종류별 숫자(오류 코드, 지연 초 등). **IP는 요청 제한의 키로만 쓰고 기록하지 않음**
+
+**로그 형식.** 개발 환경(`Development`, `Mock`) 밖에서는 콘솔 로그가 한 줄에 JSON 하나(`Logging:Console:FormatterName=json`). 기본 형식은 수준·범주와 메시지를 두 줄로 쓰는데, Container Apps 는 줄마다 따로 행을 만들고 두 행의 시간이 같아 다시 묶을 수 없었음(2026-10 실측). JSON 이면 행 하나에 수준·범주·메시지·이름 붙은 값(`State`)이 함께 들어감. 서버 자체 로그도 같은 방식으로 읽음:
+
+```kusto
+// 시작할 때 찍는 예상 쿼터 (위 "쿼터")
+ContainerAppConsoleLogs_CL
+| where Log_s has "units/day"
+| extend e = parse_json(Log_s)
+| project TimeGenerated, App = ContainerAppName_s, Level = tostring(e.LogLevel), Message = tostring(e.Message), Units = toint(e.State.Units)
+```
+
+```kusto
+// 최근 하루의 프론트엔드 오류, 최신순
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(1d) and Log_s has "ClientDiagnostics"
+| extend e = parse_json(Log_s)
+| where tostring(e.Category) == "ClientDiagnostics" and isnotempty(e.State.Kind)
+| extend s = e.State
+| project TimeGenerated, App = ContainerAppName_s, Kind = tostring(s.Kind), Severity = tostring(s.Severity),
+    Client = tostring(s.Client), Build = tostring(s.Build), Ua = tostring(s.Ua), Venue = tostring(s.Venue),
+    Station = tostring(s.Station), VideoId = tostring(s.VideoId), Message = tostring(s.Message),
+    Source = tostring(s.Source), Session = tostring(s.Session), Detail = parse_json(tostring(s.Detail)), Stack = tostring(s.Stack)
+| order by TimeGenerated desc
+
+// 종류·빌드별 건수 (위 쿼리의 project 까지 이어서)
+| summarize Count = count(), Sessions = dcount(Session) by Kind, Severity, Build
+| order by Count desc
+
+// 플레이어 오류 코드별 (150 = 임베드 거부)
+| where Kind == "player-error" | summarize count() by Code = toint(Detail.code), Station
+
+// 보고가 차지하는 로그 양 (비용 확인용)
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(7d) and Log_s has "ClientDiagnostics"
+| summarize Rows = count(), MB = round(sum(_BilledSize) / 1e6, 2) by ContainerAppName_s, bin(TimeGenerated, 1d)
+```
+
+**양과 비용.** 보고 1건은 로그 한 줄 약 0.9~1.3KB, 행마다 붙는 열(앱 이름, 리비전 등) 약 0.33KB를 더해 약 1.5KB로 계산. Log Analytics(PerGB2018)는 청구 계정당 월 5GB 무료, 넘으면 GB당 약 $2.3~3 (지역 단가는 Azure 가격표로 확인).
+
+| 상황 (가정) | 하루 | 한 달 |
+| --- | --- | --- |
+| 하루 500 세션, 세션당 오류·경고 2건, 정보 끔 | 1,000건 ≈ 1.5MB | ≈ 45MB |
+| 하루 2,000 세션, 세션당 오류·경고 5건, 정보 10% (세션당 10건) | 12,000건 ≈ 18MB | ≈ 0.54GB |
+| 상한: 서버 전체 분당 300건이 하루 종일 | 432,000건 ≈ 650MB | ≈ 19.5GB (≈ $35~45) |
+
+상한은 오용이나 큰 장애가 하루 종일 이어질 때의 값. 작업 영역에는 일일 상한이 없으므로(`dailyQuotaGb -1`) 걱정되면 `TotalPerMinute` 를 낮추거나 작업 영역 일일 상한을 둠(서버 로그도 함께 멈춤에 주의).
 
 ## 데스크톱 앱
 

@@ -197,18 +197,35 @@ function readBackendLog() {
     const line = lines[i];
     const client = line.indexOf('CLIENT ');
     if (client >= 0) {
-      try {
-        // The report's own kind is renamed so it cannot overwrite the event's.
-        const { kind: report, ...detail } = JSON.parse(line.slice(client + 'CLIENT '.length));
-        emit('client', { report, ...detail });
-      } catch {
-        emit('client', { raw: line.slice(client + 7, client + 400) });
-      }
+      // The backend's ClientReportLog line (the console formatter's "simple" form, which
+      // Development and Mock use). The report's own kind is renamed so it cannot overwrite
+      // the event's.
+      const parsed = parseClientLine(line.slice(client));
+      emit('client', parsed ?? { raw: line.slice(client + 7, client + 400) });
     } else if (/\b(fail|crit): /.test(line)) {
       // The message sits on the next line in the console formatter.
       emit('backend-error', { message: `${line.trim()} ${lines[i + 1]?.trim() ?? ''}`.slice(0, 400) });
     }
   }
+}
+
+const CLIENT_LINE =
+  /^CLIENT (\S+) (\S+) (.*?) \| client=(\S*) build=(\S*) ua=(.*?) venue=(\S*) view=(\S*) station=(.*?) video=(\S*) source=(.*?) session=(\S*) detail=(.*?) stack=(.*)$/;
+
+function parseClientLine(text) {
+  const match = CLIENT_LINE.exec(text.trimEnd());
+  if (!match) {
+    return null;
+  }
+  const [, report, severity, message, client, build, ua, venueId, view, station, videoId, source, session, detail, stack] =
+    match.map((value) => (value === '(null)' ? undefined : value));
+  let extra = {};
+  try {
+    extra = detail ? JSON.parse(detail) : {};
+  } catch {
+    extra = { detail };
+  }
+  return { report, severity, message, client, build, ua, venueId, view, station, videoId, source, session, stack, ...extra };
 }
 
 function writeSummary(final) {

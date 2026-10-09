@@ -2,7 +2,7 @@ import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { isLocalPage } from './lib/localPage';
 import App from './App';
-import { report } from './lib/diagnostics';
+import { installErrorReporting, report } from './lib/diagnostics';
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import '@fontsource/black-han-sans/400.css';
 import '@fontsource/jetbrains-mono/latin-500.css';
@@ -10,13 +10,7 @@ import '@fontsource/jetbrains-mono/latin-700.css';
 import './tokens.css';
 import './styles.css';
 
-window.addEventListener('error', (event) => {
-  report('js-error', { message: event.message, source: `${event.filename}:${event.lineno}` });
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-  report('js-unhandled-rejection', { message: String(event.reason) });
-});
+installErrorReporting(window, report);
 
 const container = document.getElementById('root');
 if (!container) {
