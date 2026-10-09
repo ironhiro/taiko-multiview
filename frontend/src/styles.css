@@ -57,7 +57,8 @@ input {
 
 /* ------------------------------------------------------------------ shell */
 
-/* Marquee over the wall, the credit line under it. */
+/* Marquee over the wall, the credit line under it; the chat sidebar takes a column beside
+   the wall when open (ChatSidebar). */
 .app {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -67,6 +68,20 @@ input {
     'stage'
     'credit';
   height: 100%;
+}
+
+/* 320px from a 1024px window (the narrowest that gets the sidebar, lib/chatSidebar.ts) up
+   to 400px from 1600px: about the width of YouTube's own pop-out chat (420px). The wall's
+   tiles are sized by the window's height up to 1920x1080, with room to spare on either
+   side, so at 1280x720, 1440x900 and 1920x1080 they keep their size with the sidebar open. */
+.app--chat {
+  --chat-width: clamp(20rem, 25vw, 25rem);
+
+  grid-template-columns: minmax(0, 1fr) var(--chat-width);
+  grid-template-areas:
+    'marquee marquee'
+    'stage chat'
+    'credit credit';
 }
 
 /* ---------------------------------------------------------------- marquee */
@@ -1119,6 +1134,96 @@ input {
 .placeholder__link:hover {
   text-decoration: underline;
   text-underline-offset: 0.2em;
+}
+
+/* ----------------------------------------------------------- chat sidebar */
+
+/* One broadcast's YouTube chat beside the wall (design.md, "Chat sidebar"): a panel like the
+   marquee and the credit strip, with the arcade buttons of the rest of the page. */
+.chat-sidebar {
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-paper-2);
+  border-left: var(--rule-mark) solid var(--color-rule);
+}
+
+.chat-sidebar__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: var(--space-2xs) var(--space-xs) calc(var(--space-2xs) + var(--press-depth));
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.chat-sidebar__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-ink-2);
+}
+
+.chat-sidebar__cabinet {
+  font-family: var(--font-data);
+  letter-spacing: 0.04em;
+  color: var(--color-ink);
+}
+
+.chat-sidebar__signin {
+  flex: none;
+  gap: var(--space-3xs);
+  min-height: 2rem;
+  padding: 0 var(--space-2xs);
+  font-size: var(--text-xs);
+}
+
+.chat-sidebar__close {
+  flex: none;
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
+.chat-sidebar__icon {
+  flex: none;
+}
+
+/* YouTube's chat page is dark itself (dark_theme=1); the ground under it shows only while
+   it loads. */
+.chat-sidebar__frame {
+  flex: 1;
+  min-height: 0;
+  background: var(--color-paper);
+}
+
+.chat-sidebar__frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Over the chat, where it is read before the chat's own sign-in button is pressed: that
+   button does nothing here (ChatSidebar), the header's "로그인하고 채팅" does. */
+.chat-sidebar__hint {
+  padding: var(--space-2xs) var(--space-xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  /* Breaks between words, not inside "로그인하고". */
+  word-break: keep-all;
+}
+
+/* The button's name stays on one line, so it reads as the button it names. */
+.chat-sidebar__hint-name {
+  white-space: nowrap;
 }
 
 /* ----------------------------------------------------------------- mobile */

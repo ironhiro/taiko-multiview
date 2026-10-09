@@ -9,6 +9,9 @@ import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './li
 import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
 import { liveCountOf } from './lib/venueRow';
 import { wallTilesFor } from './lib/wallTiles';
+import { chatPlacement, chatTileOf, useWideEnoughForChatSidebar, type OpenChat } from './lib/chatSidebar';
+import { isDesktopShell } from './lib/shell';
+import { ChatSidebar } from './components/ChatSidebar';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
@@ -31,6 +34,12 @@ export default function App() {
   const [audioTileId, setAudioTileId] = useState<string | null>(null);
 
   const isCompactDevice = useCompactDevice();
+  const isWideEnoughForChat = useWideEnoughForChatSidebar();
+  const chatGoesInSidebar =
+    chatPlacement({ compact: isCompactDevice, desktopShell: isDesktopShell, wide: isWideEnoughForChat }) === 'sidebar';
+
+  // The chat open in the sidebar beside the wall, if any.
+  const [openChat, setOpenChat] = useState<OpenChat | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const hasChosenView = useRef(false);
 
@@ -250,6 +259,26 @@ export default function App() {
     () => wallTilesFor(activeVenue, view ?? 'all-grid', activeLive),
     [activeVenue, view, activeLive],
   );
+  // The sidebar's tile. Gone once its broadcast has ended, the wall has moved to a venue or
+  // view without it, or the window has become too narrow for the sidebar: the sidebar then
+  // closes for good, rather than keep a chat for a tile no longer there or come back later.
+  const chatTile = chatGoesInSidebar ? chatTileOf(tiles, openChat) : undefined;
+  const chatStream = chatTile?.stream;
+  useEffect(() => {
+    if (openChat && !chatStream) {
+      setOpenChat(null);
+    }
+  }, [openChat, chatStream]);
+
+  // The same tile's chat again keeps the state as it is, so nothing renders and the frame
+  // is left alone.
+  const handleOpenChat = useCallback(
+    (tileId: string, videoId: string) =>
+      setOpenChat((current) => (current?.tileId === tileId && current.videoId === videoId ? current : { tileId, videoId })),
+    [],
+  );
+  const handleCloseChat = useCallback(() => setOpenChat(null), []);
+
   const idle = useMemo(() => (live ? idleMessageFor(activeLive?.venue) : LOADING_MESSAGE), [live, activeLive]);
 
   const closedSummary = venueSummary(activeLive?.venue);
@@ -291,7 +320,7 @@ export default function App() {
   // --- render ---------------------------------------------------------------
 
   return (
-    <div className="app venue-scope" style={accentStyle(activeVenue?.accent)}>
+    <div className={chatStream ? 'app app--chat venue-scope' : 'app venue-scope'} style={accentStyle(activeVenue?.accent)}>
       {/* The marquee: the cabinet's lit sign. Who is on screen, and every control. */}
       <header className="marquee">
         <div className="marquee__brand">
@@ -337,10 +366,14 @@ export default function App() {
             onRequestAudio={handleRequestAudio}
             gridSize={gridSize}
             lazy={isCompactDevice}
+            onOpenChat={chatGoesInSidebar ? handleOpenChat : undefined}
+            chatTileId={chatTile?.id ?? null}
             idle={idle}
           />
         </main>
       </div>
+
+      {chatTile && chatStream && <ChatSidebar label={chatTile.label} stream={chatStream} onClose={handleCloseChat} />}
 
       {/* The credit line: what an arcade screen keeps along its bottom edge. */}
       <footer className="credit">

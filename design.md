@@ -55,9 +55,11 @@ bounces, glows or lifts.
 - Radius: `--radius-control` 10px on buttons, `--radius-tile` 12px on tiles, pills 999px.
 - Chosen state: `--color-ka` edge and text on `--color-paper-3`.
 - Focus: 2px `--color-ka` ring, offset 2px, never animated.
-- A control that leaves the page (the tile's 채팅, which opens YouTube) is a link dressed
-  as the arcade button: same base, same press, no underline. It is never `aria-pressed`
-  and never takes `--color-ka` - opening a chat is not a choice the wall remembers.
+- A control that leaves the page (the tile's 채팅 where it opens YouTube, the chat
+  sidebar's 로그인하고 채팅) is a link dressed as the arcade button: same base, same press, no
+  underline. It is never `aria-pressed` and never takes `--color-ka` - opening YouTube
+  elsewhere is not a choice the wall remembers. Where the tile's 채팅 opens the chat
+  sidebar instead, it is a button and is chosen (카) while the sidebar shows its chat.
 - Narrow tiles drop a control's word before the row wraps: the icon stays, the
   accessible name keeps the full words.
 
@@ -116,6 +118,36 @@ bounces, glows or lifts.
 - The layout picker (1×1-4×4) and the automatic column shrink count tiles, which are the
   cabinets on air: 3×3 with two on air is two columns.
 
+## Chat sidebar
+- A computer's browser window 1024px wide or more opens a tile's chat beside the wall:
+  one broadcast's YouTube chat (its embedded chat, dark theme) in a column down the right,
+  between the marquee and the credit strip, which keep the full width. One chat at a time;
+  another tile's 채팅 moves it there, pressing the same 채팅 again leaves it as it is.
+- Width `clamp(20rem, 25vw, 25rem)` (320-400px), about YouTube's own pop-out chat (420px).
+  Up to 1920x1080 the wall is sized by the window's height and the sidebar takes the room
+  beside it, so the tiles keep their size; at 1024px a 3×3 wall's tiles stay above 188px.
+- A panel like the marquee: `--color-paper-2`, a `--rule-mark` `--color-rule` edge on its
+  left, a header with the cabinet (data face, `--color-ink`) and "채팅" (`--color-ink-2`),
+  then 로그인하고 채팅 (a link: Google's sign-in for YouTube in a window of its own, arriving
+  at YouTube's pop-out chat; signed in, straight to the chat) and 닫기 (an icon-only arcade
+  button). Its words say what a viewer gets, not how: "팝아웃" told nobody it was the way to
+  sign in.
+- Over the chat, under the header, a hint in `--color-ink-2` (words kept whole,
+  `keep-all`): "입력란이 없거나 채팅 안의 로그인 버튼이 반응하지 않으면 ‘로그인하고 채팅’을
+  누르세요." The chat's own "채팅하려면 로그인" takes the whole window to Google, so the
+  frame's sandbox stops it, and the hint sends the viewer to the header instead.
+- 로그인하고 채팅 is always there: whether the viewer is signed in, and whether the browser
+  lets that reach the framed chat (a Chrome signed in to YouTube did, measured; Safari,
+  Firefox and private windows keep youtube.com's cookies from other sites' frames), cannot
+  be seen from the page. Back from that window, the chat is loaded once more, so a sign-in
+  the frame does get shows its input.
+- The tile whose chat it is shows it on its 채팅 alone (카, chosen) - not on its bezel,
+  which is the sound's.
+- It closes when its broadcast leaves the wall (ended, another venue or view) and when the
+  window gets narrower than 1024px; it does not come back on its own.
+- Phones, tablets, narrower windows and the desktop shell have no sidebar: phones and
+  tablets open the broadcast's page (the YouTube app), the rest YouTube's pop-out chat.
+
 ## Motion
 - Easings `--ease-out` / `--ease-in` / `--ease-in-out`; durations `--dur-micro` 120ms,
   `--dur-short` 220ms.
@@ -163,4 +195,7 @@ load there; this file and `tokens.css` win wherever the two differ.
 | IdleStrip | `frontend/src/components/IdleStrip.tsx` (`IdleStrip`, `.idle-strip`) | title (default 방송 없음), `cabinets` |
 | TileLabelRow | `frontend/src/components/TileLabelRow.tsx` (`.tile__row`) | sound off/on = `sound`; width regular/narrow = not a prop: each row measures itself (`data-fit` words/icons/no-count/tight/snug, `lib/rowFit.ts`), and phones upright (row ≤390px) keep the icons alone; Cabinet = `cabinet`, Viewers = `viewers`, Tag = `tag` |
 | Tile | `frontend/src/components/PlayerTile.tsx` (`.grid-view .tile`) | device desktop/phone = the phone media block in `styles.css`, not a prop |
+| ChatLink | `frontend/src/components/ChatLink.tsx` (`ChatLink`, an `ArcadeLink`) | in tab (the broadcast's page) / popup (YouTube's pop-out chat) = `inTab`; popup starting at the sign-in = `signIn`; Label = `label`, Icon = `icon`, accessible name = `name` |
+| TileChatButton (sidebar) | `frontend/src/components/PlayerTile.tsx` (`SidebarChatButton`, `.tile__control--chat`, `data-testid="tile-chat"`) | chosen = sidebar shows this tile's chat (`aria-pressed`, 카) |
+| ChatSidebar | `frontend/src/components/ChatSidebar.tsx` (`.chat-sidebar`, `data-testid="chat-sidebar"`); when it shows, `lib/chatSidebar.ts` | Cabinet = `label`, the broadcast = `stream`; 로그인하고 채팅 = `ChatLink` with `signIn`, 닫기 = icon-only `ArcadeButton` |
 | VenueTab, ViewChip, LayoutChip (header) | `VenueTabs.tsx` (`.venue-tab`), `ViewPicker.tsx` (`.choice`), `LayoutPicker.tsx` (`.layout-picker__option`) | names only for now; they already share the arcade button rules in `styles.css` |

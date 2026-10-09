@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CHAT_WINDOW_FEATURES, chatWindowName, openChatWindow, popoutChatUrl } from './youtube';
+import { CHAT_WINDOW_FEATURES, chatSignInUrl, chatWindowName, openChatWindow, popoutChatUrl } from './youtube';
 
 describe('popoutChatUrl', () => {
   it("opens the broadcast's pop-out chat on youtube.com itself, not through its sign-in", () => {
@@ -16,6 +16,26 @@ describe('popoutChatUrl', () => {
 
   it('keeps an id with URL-special characters intact', () => {
     expect(new URL(popoutChatUrl('a-b_c&d')).searchParams.get('v')).toBe('a-b_c&d');
+  });
+});
+
+describe('chatSignInUrl', () => {
+  it("is Google's sign-in for YouTube, measured to ask for the e-mail address when signed out", () => {
+    expect(chatSignInUrl('abc123')).toBe(
+      'https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26next%3D%252Flive_chat%253Fis_popout%253D1%2526v%253Dabc123',
+    );
+  });
+
+  it("arrives at the broadcast's pop-out chat through YouTube's own sign-in handler", () => {
+    const signedIn = new URL(new URL(chatSignInUrl('abc123')).searchParams.get('continue')!);
+    expect(`${signedIn.origin}${signedIn.pathname}`).toBe('https://www.youtube.com/signin');
+    expect(signedIn.searchParams.get('action_handle_signin')).toBe('true');
+    expect(signedIn.searchParams.get('next')).toBe('/live_chat?is_popout=1&v=abc123');
+  });
+
+  it('keeps an id with URL-special characters intact', () => {
+    const signedIn = new URL(new URL(chatSignInUrl('a-b_c&d')).searchParams.get('continue')!);
+    expect(new URLSearchParams(signedIn.searchParams.get('next')!.split('?')[1]).get('v')).toBe('a-b_c&d');
   });
 });
 
@@ -60,6 +80,13 @@ describe('openChatWindow', () => {
     expect(openChatWindow('abc123', open, windows)).toBe(true);
     expect(open).toHaveBeenCalledTimes(1);
     expect(opened[0].focus).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts the window where it is asked to, in the same named popup', () => {
+    const { open } = fakeOpen();
+
+    expect(openChatWindow('abc123', open, new Map(), chatSignInUrl('abc123'))).toBe(true);
+    expect(open).toHaveBeenCalledWith(chatSignInUrl('abc123'), 'taiko-chat-abc123', CHAT_WINDOW_FEATURES);
   });
 
   it('opens another window for another broadcast', () => {
