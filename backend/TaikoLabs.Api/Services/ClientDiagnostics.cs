@@ -254,7 +254,7 @@ public static partial class ClientReportReader
         return Encoding.UTF8.GetString(buffer.WrittenSpan);
     }
 
-    /// <summary>A string field, without control or line-separator characters, cut to <paramref name="limit"/>; null when absent or empty.</summary>
+    /// <summary>A string field, without control, line-separator or bidi formatting characters, cut to <paramref name="limit"/>; null when absent or empty.</summary>
     internal static string? Text(JsonElement root, string name, int limit) =>
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? Clean(value.GetString(), limit)
@@ -280,6 +280,11 @@ public static partial class ClientReportReader
             {
                 builder.Append(' ');
             }
+            else if (IsBidiFormatting(c))
+            {
+                // Direction overrides and isolates would make the line read reversed to a
+                // person looking at it, though the JSON itself stays one line.
+            }
             else if (char.IsControl(c))
             {
                 // Tabs and newlines in a stack become spaces; the rest go.
@@ -303,6 +308,10 @@ public static partial class ClientReportReader
         var cleaned = builder.ToString().Trim();
         return cleaned.Length == 0 ? null : cleaned;
     }
+
+    /// <summary>U+200E/200F (marks), U+202A-202E (embeddings, overrides), U+2066-2069 (isolates).</summary>
+    internal static bool IsBidiFormatting(char c) =>
+        c is '\u200E' or '\u200F' or (>= '\u202A' and <= '\u202E') or (>= '\u2066' and <= '\u2069');
 
     [GeneratedRegex("^[0-9A-Za-z._+-]{1,40}$")]
     private static partial Regex BuildPattern();

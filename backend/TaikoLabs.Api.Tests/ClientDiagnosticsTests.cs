@@ -190,6 +190,18 @@ public class ClientDiagnosticsTests
     }
 
     [Fact]
+    public void Direction_overrides_cannot_make_a_line_read_backwards()
+    {
+        // RLO, LRE, PDF, the isolates and the marks: format characters, not controls.
+        var json = """{"kind":"js-error","message":"a\u202Eb\u202Ac\u202Cd\u2066e\u2069f\u200Eg\u200Fh","station":"\u202EA1"}""";
+
+        var (_, report) = ClientReportReader.Read(Encoding.UTF8.GetBytes(json), null);
+
+        Assert.Equal("abcdefgh", report!.Message);
+        Assert.Equal("A1", report.Station);
+    }
+
+    [Fact]
     public void Fields_with_a_fixed_shape_fall_back_rather_than_pass_through()
     {
         var json = """{"kind":"player-error","client":"curl","build":"x y","session":"ZZZZ","videoId":"<script>"}""";
