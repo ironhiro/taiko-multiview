@@ -73,7 +73,9 @@ test.describe('desktop', () => {
     const onAir = page.locator('.tile').filter({ has: page.locator('.tile__badge') });
     await expect(onAir.first()).toBeVisible();
     expect(await page.locator('.idle-chip').count()).toBeGreaterThan(0);
-    await expect(page.locator('.idle-strip a, .idle-strip button')).toHaveCount(0);
+    // A chip opens its cabinet's last broadcast in 다시보기 (replay.spec.ts), never a chat.
+    await expect(page.locator('.idle-strip a')).toHaveCount(0);
+    await expect(page.locator('.idle-strip button')).toHaveCount(await page.locator('.idle-chip').count());
     const chats = page.getByRole('link', { name: /유튜브 채팅 열기/ });
     await expect(chats).toHaveCount(await onAir.count());
     for (const tile of await onAir.all()) {

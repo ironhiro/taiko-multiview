@@ -14,6 +14,7 @@ wall is watched for hours and video needs a dark surround.
 ## Macrostructure family
 - App screens (multiview): **Catalogue** — a uniform wall of the same thing, the
   cabinets' streams, under a **marquee** header and above a one-line **credit** strip.
+  다시보기 is the same catalogue of a past 회차, with thumbnails where the players were.
 - Tool screens (venue editor): the same marquee and credit, with a venue list down the
   left and a tabbed form beside it.
 - No marketing or content pages exist yet. When one does, it keeps the marquee voice.
@@ -109,7 +110,14 @@ bounces, glows or lifts.
 - Neutral only: `--color-paper-2` fill, `--color-rule-strong` dashed edge, `--color-ink-3`
   title, chips edged in `--color-rule-strong` with `--color-ink-2` data-face labels. An
   empty cabinet is neither on air, nor chosen, nor the venue's identity - no 돈, 카 or
-  venue colour, and no button look: a chip is not something to press.
+  venue colour.
+- **A chip opens the cabinet's last broadcast** in 다시보기 (its newest finished one, played
+  1×1). It says so the arcade way and no louder: a `--color-button` face on a 2px
+  `--color-button-base` base (2px, not `--press-depth`: the chip is a line of type and the
+  strip keeps to 48px), a circling-arrow icon in `--color-ink-3` before the label, the label
+  to `--color-ink` and the edge to `--color-ink-3` on hover, sinking 2px when pressed. Its
+  name says where it goes ("B3 지난 방송 보기"). On phones it is a thumb's height (2.25rem).
+  Still no 돈, 카 or venue colour: pressing it is not a state the wall keeps.
 - The strip always says "방송 없음": whether the venue is open is the credit strip's to
   say ("영업 종료 · 내일 10:00 오픈"), as it already does when nothing is on air.
 - With nothing on air at all the wall is the strip alone, as wide as the chosen layout.
@@ -117,6 +125,52 @@ bounces, glows or lifts.
   its tile, blinking "불러오는 중", and the strip does not appear.
 - The layout picker (1×1-4×4) and the automatic column shrink count tiles, which are the
   cabinets on air: 3×3 with two on air is two columns.
+
+## 다시보기 (past broadcasts)
+- **Mode switch** `라이브 | 다시보기`: two view-chip buttons, the chosen one 카. It is not a
+  view - a view is part of the venue's wall, and 다시보기 is not the wall - so it never joins
+  the 통합·구역 chips.
+  - On a computer it sits in the **credit strip, left of 새로고침**, as tall as 새로고침
+    (2rem) so the strip keeps its height. Not in the marquee: the marquee has 31px to spare
+    for TAIKO LABS at 1280px and 117px at 1366px, and the switch takes about 157px, so it
+    would push the marquee to a second row and shrink every tile on those laptops.
+  - On a phone it opens the **views' row** of the sticky bar, with a `--rule-hair`
+    `--color-rule` line after it; the bar gains no row. A venue with no views has no such
+    row, so there it takes a line of its own at the end of the credit strip, which scrolls
+    away, rather than a row of the sticky bar.
+  - In 다시보기 the view and layout pickers step aside; the venue tabs stay and choose the
+    venue as on the wall.
+- **The mode lives in the address only** (`?venue=…&mode=replay&date=…&session=…&cabinet=…`).
+  A page opened without `mode=replay` is always the wall; nothing remembers the last mode.
+- **Which days**: today, if anything has finished, and the seven most recent days before it
+  that had broadcasts, looking at most 30 days back. A venue streaming daily shows its last
+  week; one streaming now and then shows its last seven days on air within the month. So
+  there are at most eight day chips, and they need not be consecutive.
+- **The screen**: a row of day chips ("오늘", "어제", then "10.6 월"; the full date in
+  `title`), a row of 회차 chips ("1부", "2부" when the titles say 부, else "1회"), each labelled
+  in `--color-ink-3` (날짜, 회차), chosen 카; then the 회차's cabinets as a catalogue of
+  **replay cards** in the venue's order, unlisted cabinets last with the 미등록 tag. Phones
+  keep each chip row to one line that scrolls sideways, and put two cards to a row from
+  375px (one on a 320px SE).
+- **Replay card** = a wall tile you press: the tile's bezel (`--rule-mark` `--color-rule`,
+  `--radius-tile`), a 16:9 thumbnail (YouTube's 320px one; the 480px one cropped to 16:9
+  where wider), and under it the row: cabinet label (data face, 700) and the hours
+  ("17:00–23:05", data face, `--color-ink-3`). A round play mark (`--color-scrim` fill,
+  `--color-ink-3` edge) sits in the picture's lower right. It does not sink - it is a
+  picture - but its edge goes to `--color-ink-3` on hover. Pictures only: no player is
+  built until one is pressed.
+- **Replay player** = one broadcast, 1×1, the only player on the page: a header row (목록 -
+  an icon+text arcade button with a back chevron; the cabinet in the data face at
+  `--text-md`, the day, 회차 and hours under or beside it in `--color-ink-2`; YouTube - an
+  arcade link to the broadcast's page, icon-only on phones) over the picture in a tile
+  bezel, as large as the stage allows at 16:9. 목록, Escape and the browser's Back return to
+  the list. A broadcast the venue will not let be embedded shows its thumbnail dimmed with
+  a line saying so and "YouTube에서 보기" instead of a player. No chat in 다시보기.
+- **Credit strip**: when the venue is closed and nothing is on air, "지난 방송 보기" follows
+  "영업 종료 · 내일 10:00 오픈" - an underlined link in `--color-ink-2` (to `--color-ink` on
+  hover), a way in rather than a state, so never 돈 or 카.
+- Back on the wall, the layout and the tile with the sound are as they were; the players are
+  built again.
 
 ## Chat sidebar
 - A computer's browser window 1024px wide or more opens a tile's chat beside the wall:
@@ -191,8 +245,13 @@ load there; this file and `tokens.css` win wherever the two differ.
 | ArcadeButton | `frontend/src/components/ArcadeButton.tsx` (`ArcadeButton`, `ArcadeLink`); `.arcade-button` in `styles.css` | state default/hover/pressed/focus/disabled = CSS `:hover`/`:active`/`:focus-visible`/`:disabled`; chosen = `chosen` prop (`aria-pressed`, 카). content text / icon+text / icon-only = `content` prop (inferred from `icon`; icon-only keeps `label` as the accessible name). Label = `label`, Icon = `icon` |
 | LiveBadge | `frontend/src/components/LiveBadge.tsx` (`.tile__badge`) | none |
 | TagChip | `frontend/src/components/TagChip.tsx` (`.tile__tag`) | Label = `label`, default 미등록 |
-| IdleChip | `frontend/src/components/IdleStrip.tsx` (`IdleChip`, `.idle-chip`) | Cabinet = `cabinet` |
-| IdleStrip | `frontend/src/components/IdleStrip.tsx` (`IdleStrip`, `.idle-strip`) | title (default 방송 없음), `cabinets` |
+| IdleChip | `frontend/src/components/IdleStrip.tsx` (`IdleChip`, `.idle-chip`; pressable `.idle-chip--replay`) | Cabinet = `cabinet`; pressable (opens 다시보기) = `onOpen` given |
+| IdleStrip | `frontend/src/components/IdleStrip.tsx` (`IdleStrip`, `.idle-strip`) | title (default 방송 없음), `cabinets` (`{ id, label }`); chips pressable = `onOpenReplay` given |
+| ModeSwitch | `frontend/src/components/ModeSwitch.tsx` (`.control-group--mode`, `.mode-switch__option`, styled as the view chip `.choice` but its own class) | mode live/replay = `mode` (chosen = `aria-pressed`, 카); where = `placement` credit (computer; phone too with `onPhone`, a venue without views) / marquee (phone views' row) |
+| ReplayDayChip, ReplaySessionChip | `frontend/src/components/ReplayView.tsx` (`.replay__day`, `.replay__session`, each a `.choice`) | chosen = `aria-pressed` (카); labels from `lib/replayRoute.ts` (`dayLabel`, `sessionLabel`) |
+| ReplayCard | `frontend/src/components/ReplayView.tsx` (`ReplayCard`, `.replay-card`) | Cabinet = `label`, hours = `time`, 미등록 = no `stationId` (TagChip); state default/hover/focus = CSS |
+| ReplayPlayer | `frontend/src/components/ReplayPlayer.tsx` (`.replay-player`, `data-testid="replay-player"`) | Cabinet = `label`, when = `when`, embeddable/blocked = `broadcast.embeddable`; 목록 = `ArcadeButton` icon+text, YouTube = `ArcadeLink` (icon-only on phones) |
+| ReplayLink (credit) | `frontend/src/App.tsx` (`.credit__replay`) | none |
 | TileLabelRow | `frontend/src/components/TileLabelRow.tsx` (`.tile__row`) | sound off/on = `sound`; width regular/narrow = not a prop: each row measures itself (`data-fit` words/icons/no-count/tight/snug, `lib/rowFit.ts`), and phones upright (row ≤390px) keep the icons alone; Cabinet = `cabinet`, Viewers = `viewers`, Tag = `tag` |
 | Tile | `frontend/src/components/PlayerTile.tsx` (`.grid-view .tile`) | device desktop/phone = the phone media block in `styles.css`, not a prop |
 | ChatLink | `frontend/src/components/ChatLink.tsx` (`ChatLink`, an `ArcadeLink`) | in tab (the broadcast's page) / popup (YouTube's pop-out chat) = `inTab`; popup starting at the sign-in = `signIn`; Label = `label`, Icon = `icon`, accessible name = `name` |

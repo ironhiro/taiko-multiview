@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Options;
 using TaikoLabs.Api.Models;
@@ -79,6 +80,7 @@ builder.Services.AddSingleton<VenueScheduleProvider>();
 builder.Services.AddSingleton<LiveSnapshotCache>();
 builder.Services.AddSingleton<LiveStreamStore>();
 builder.Services.AddSingleton<ChannelAvatarCache>();
+builder.Services.AddSingleton<ReplayArchive>();
 
 builder.Services.AddSingleton<LivePollingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LivePollingService>());
@@ -228,6 +230,19 @@ app.MapGet("/api/live", (
     .WithTags("라이브")
     .WithSummary("매장별 현재 방송")
     .WithDescription("매장마다 기체에 연결된 방송(streams), 기체를 못 찾은 방송(unmatched), 데이터 출처, 영업 상태. 서버가 주기적으로 폴링한 결과를 그대로 돌려주므로 호출해도 유튜브 API 사용량은 늘지 않습니다.");
+
+// A venue's finished broadcasts for 다시보기, from the archive the polls fill. Like /api/live
+// it is served from memory: no number of viewers makes it call YouTube.
+app.MapGet("/api/replay/{venueId}", Results<Ok<ReplayResponse>, NotFound> (
+    string venueId,
+    VenueRegistry registry,
+    ReplayArchive archive) =>
+    registry.Find(venueId) is { } venue
+        ? TypedResults.Ok(archive.Describe(venue, registry.TimeZone, registry.Options.TimeZone))
+        : TypedResults.NotFound())
+    .WithTags("다시보기")
+    .WithSummary("매장의 지난 방송")
+    .WithDescription("최근 며칠(retentionDays)의 끝난 방송을 날짜(매장 영업일) → 회차(제목의 N부, 없으면 기체별 그날 N번째 방송) → 기체 순으로 묶어 돌려줍니다. 라이브 중인 방송, 비공개·삭제된 영상, 1분 미만 방송은 빠집니다. 폴링이 이미 받은 응답으로 채우므로 호출해도 유튜브 API 사용량은 늘지 않습니다.");
 
 // Forces an immediate refresh - handy while developing and from the desktop shell.
 app.MapPost("/api/live/refresh", async (

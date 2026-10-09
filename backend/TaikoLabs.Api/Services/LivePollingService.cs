@@ -12,6 +12,9 @@ namespace TaikoLabs.Api.Services;
 /// open; otherwise it drops to <see cref="YouTubeOptions.ClosedPollIntervalSeconds"/>.
 /// The on-air check matters - venues do stream outside their listed hours, and a stream
 /// must still be seen to end.
+///
+/// The same polls feed 다시보기 (<see cref="ReplayArchive"/>): the answer that says what is
+/// live also says what has finished, so the archive costs no polls of its own.
 /// </summary>
 public sealed class LivePollingService(
     IServiceScopeFactory scopeFactory,
@@ -20,7 +23,8 @@ public sealed class LivePollingService(
     VenueScheduleProvider schedule,
     IOptions<YouTubeOptions> options,
     ILogger<LivePollingService> logger,
-    TimeProvider? clock = null) : BackgroundService
+    TimeProvider? clock = null,
+    ReplayArchive? replay = null) : BackgroundService
 {
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Dictionary<string, DateTimeOffset> _lastPolled = [];
@@ -70,6 +74,12 @@ public sealed class LivePollingService(
                 quota.OpenHoursPerDay,
                 quota.PercentOfLimit,
                 QuotaEstimate.DailyLimit);
+
+            logger.LogInformation(
+                "다시보기 adds nothing per poll; filling it back after a start without its file (until {Days} earlier days with broadcasts are found, {MaxAge} days back at most) costs at most {Units} units, once",
+                options.Value.ReplayDaysClamped,
+                options.Value.ReplayMaxAgeDaysClamped,
+                quota.ReplayBackfillUnitsAtMost);
         }
         else
         {
@@ -169,8 +179,13 @@ public sealed class LivePollingService(
                 using var scope = scopeFactory.CreateScope();
                 var client = scope.ServiceProvider.GetRequiredService<YouTubeLiveClient>();
 
-                var snapshot = await client.FetchAsync(venue, ct);
+                var fetch = replay?.FetchFor(venue, registry.TimeZone);
+                var (snapshot, harvest) = await client.FetchAsync(venue, ct, fetch);
                 store.Publish(venue.Id, snapshot);
+                if (harvest is not null)
+                {
+                    replay?.Record(venue, registry.TimeZone, harvest);
+                }
                 lock (_lastPolled)
                 {
                     _lastPolled[venue.Id] = _clock.GetUtcNow();

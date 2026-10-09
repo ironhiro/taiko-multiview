@@ -8,6 +8,9 @@ import { wallTilesFor } from './wallTiles';
  */
 export const PHONE_LAYOUT_QUERY = '(max-width: 820px), (pointer: coarse) and (max-height: 520px)';
 
+/** A phone held sideways: the stylesheet's landscape block. */
+export const PHONE_LANDSCAPE_QUERY = '(max-height: 520px) and (orientation: landscape) and (pointer: coarse)';
+
 export type VenueRowMode = 'tabs' | 'folded';
 
 /**

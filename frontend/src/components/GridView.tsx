@@ -23,6 +23,8 @@ interface GridViewProps {
   /** The tile whose chat the sidebar shows, if any. */
   chatTileId?: string | null;
   idle: IdleMessage;
+  /** Opens a cabinet with nothing on air in 다시보기, at its newest finished broadcast. */
+  onOpenReplay?: (cabinetId: string) => void;
 }
 
 
@@ -41,6 +43,7 @@ export function GridView({
   onOpenChat,
   chatTileId,
   idle,
+  onOpenReplay,
 }: GridViewProps) {
   const wall = splitWall(tiles, Boolean(idle.loading));
   const hasStrip = wall.idle.length > 0;
@@ -75,7 +78,7 @@ export function GridView({
           idle={idle}
         />
       ))}
-      <IdleStrip cabinets={wall.idle.map((tile) => tile.label)} />
+      <IdleStrip cabinets={wall.idle.map((tile) => ({ id: tile.id, label: tile.label }))} onOpenReplay={onOpenReplay} />
     </div>
   );
 }

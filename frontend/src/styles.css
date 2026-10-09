@@ -191,6 +191,7 @@ input {
 .venue-tab,
 .venue-more,
 .choice,
+.mode-switch__option,
 .layout-picker__option,
 .btn,
 .arcade-button {
@@ -219,6 +220,7 @@ input {
 .venue-tab:hover,
 .venue-more:hover,
 .choice:hover,
+.mode-switch__option:hover,
 .layout-picker__option:hover,
 .btn:hover:not(:disabled),
 .arcade-button:hover:not(:disabled) {
@@ -229,6 +231,7 @@ input {
 .venue-tab:active,
 .venue-more:active,
 .choice:active,
+.mode-switch__option:active,
 .layout-picker__option:active,
 .btn:active:not(:disabled),
 .arcade-button:active:not(:disabled) {
@@ -242,6 +245,7 @@ input {
 .venue-tab[aria-selected='true'],
 .venue-more[aria-expanded='true'],
 .choice[aria-pressed='true'],
+.mode-switch__option[aria-pressed='true'],
 .layout-picker__option[aria-pressed='true'],
 .arcade-button[aria-pressed='true'],
 .arcade-button[aria-pressed='true']:hover:not(:disabled) {
@@ -254,6 +258,7 @@ input {
 .venue-tab[aria-selected='true']:active,
 .venue-more[aria-expanded='true']:active,
 .choice[aria-pressed='true']:active,
+.mode-switch__option[aria-pressed='true']:active,
 .layout-picker__option[aria-pressed='true']:active,
 .arcade-button[aria-pressed='true']:active,
 .arcade-button[aria-pressed='true']:active:not(:disabled) {
@@ -426,7 +431,8 @@ input {
   padding-bottom: var(--press-depth);
 }
 
-.choice {
+.choice,
+.mode-switch__option {
   padding-inline: var(--space-xs);
 }
 
@@ -954,6 +960,358 @@ input {
   white-space: nowrap;
 }
 
+/* A chip that opens its cabinet's last broadcast in 다시보기. Still neutral - an empty cabinet
+   is neither on air, nor chosen, nor the venue's identity - but with a base under it, as every
+   control has, so it reads as something to press. The base is 2px, not --press-depth: the
+   chip is a line of type, and the strip keeps to one 48px line on a desktop. */
+.idle-chip-slot {
+  display: flex;
+  max-width: 100%;
+  padding-bottom: 2px;
+}
+
+.idle-chip--replay {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  margin: 0;
+  border: 0;
+  background: var(--color-button);
+  box-shadow:
+    inset 0 0 0 1px var(--color-rule-strong),
+    0 2px 0 var(--color-button-base);
+  cursor: pointer;
+  transition:
+    transform var(--dur-micro) var(--ease-out),
+    color var(--dur-micro) var(--ease-out);
+}
+
+.idle-chip--replay:hover {
+  color: var(--color-ink);
+  box-shadow:
+    inset 0 0 0 1px var(--color-ink-3),
+    0 2px 0 var(--color-button-base);
+}
+
+.idle-chip--replay:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 0 0 1px var(--color-ink-3);
+}
+
+.idle-chip__icon {
+  flex: none;
+  color: var(--color-ink-3);
+}
+
+.idle-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------------------------------------------------------------- 다시보기 */
+
+/* 라이브 | 다시보기 sits in the credit strip on a computer, as tall as 새로고침 beside it so the
+   strip - and the wall above it - keep their size; the phone block moves it to the marquee. */
+.control-group--mode-marquee {
+  display: none;
+}
+
+.control-group--mode-credit {
+  flex: none;
+}
+
+.control-group--mode-credit .choice-list {
+  padding-bottom: 0;
+}
+
+.control-group--mode-credit .mode-switch__option {
+  min-height: 2rem;
+}
+
+/* "지난 방송 보기" in the credit strip once the venue has closed: a way into the page, not a
+   state, so plain ink and an underline - never 돈 or 카. */
+.credit__replay {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.credit__replay:hover {
+  color: var(--color-ink);
+}
+
+/* Days, then 회차, then the 회차's cabinets as a catalogue of thumbnails: the wall's shape,
+   with pictures where the players would be. */
+.replay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+}
+
+.replay__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-md);
+}
+
+.replay__picker {
+  gap: var(--space-2xs);
+}
+
+.replay__picker-label {
+  flex: none;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.replay__picker .choice-list {
+  flex-wrap: wrap;
+}
+
+.replay__note {
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+}
+
+.replay__note--error {
+  color: var(--color-live-text);
+}
+
+.replay-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.replay-grid__item {
+  min-width: 0;
+}
+
+/* A tile you press: the wall tile's bezel and its row under the picture. It does not sink
+   like a button - it is a picture - but its edge answers the pointer. */
+.replay-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--color-paper-2);
+  border: var(--rule-mark) solid var(--color-rule);
+  border-radius: var(--radius-tile);
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+
+.replay-card:hover {
+  border-color: var(--color-ink-3);
+}
+
+.replay-card__picture {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  background: var(--color-video);
+}
+
+/* Laid over the box rather than in it: YouTube's larger thumbnail is 4:3 with the 16:9 picture
+   letterboxed inside, and in flow its own height would stretch the box past 16:9. Covering
+   the 16:9 box crops exactly the letterbox away. */
+.replay-card__image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.replay-card__play {
+  position: absolute;
+  right: var(--space-2xs);
+  bottom: var(--space-2xs);
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding-left: 2px;
+  border-radius: 50%;
+  background: var(--color-scrim);
+  border: var(--rule-mark) solid var(--color-ink-3);
+  color: var(--color-ink);
+}
+
+.replay-card:hover .replay-card__play {
+  border-color: var(--color-ink);
+}
+
+.replay-card__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+  min-height: var(--tile-bar);
+  padding: 0 var(--space-xs);
+}
+
+.replay-card__label {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-card__row .tile__tag {
+  font-size: var(--text-2xs);
+}
+
+.replay-card__time {
+  flex: none;
+  margin-left: auto;
+  color: var(--color-ink-3);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The broadcast playing, 1×1: as large as the stage allows at 16:9 under its header. */
+.replay--playing {
+  height: 100%;
+}
+
+.replay-player {
+  --replay-header: 3rem;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 0;
+}
+
+.replay-player__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 100%;
+  min-height: var(--replay-header);
+  padding-bottom: var(--press-depth);
+}
+
+.replay-player__title {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-xs);
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.replay-player__cabinet {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-data);
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-player__title .tile__tag {
+  align-self: center;
+  font-size: var(--text-2xs);
+}
+
+.replay-player__when {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2xs);
+  color: var(--color-ink-2);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.replay-player__icon {
+  flex: none;
+}
+
+.replay-player__screen {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-video);
+  border: var(--rule-mark) solid var(--color-rule);
+  border-radius: var(--radius-tile);
+}
+
+/* Desktop: the stage is a size container, so the picture is held to its height too. */
+@media (min-width: 821px) {
+  .replay-player__screen {
+    width: min(100%, calc((100cqh - 2 * var(--space-sm) - var(--replay-header) - var(--space-xs)) * 16 / 9));
+  }
+}
+
+.replay-player__screen iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.replay-player__blocked {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  text-align: center;
+}
+
+.replay-player__poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.25;
+}
+
+.replay-player__blocked > :not(img) {
+  position: relative;
+}
+
+.replay-player__blocked-text {
+  color: var(--color-ink-2);
+  word-break: keep-all;
+}
+
 /* --------------------------------------------------------- poster (mobile) */
 
 .poster {
@@ -1329,13 +1687,15 @@ input {
 
   .venue-tab,
   .choice,
+  .mode-switch__option,
   .btn {
     flex: none;
     min-height: 2.5rem;
   }
 
   /* Views are the lesser row: a size down from the venue tabs, still a thumb's width. */
-  .choice {
+  .choice,
+  .mode-switch__option {
     min-height: 2.25rem;
     font-size: var(--text-sm);
   }
@@ -1418,6 +1778,108 @@ input {
     font-size: var(--text-sm);
   }
 
+  /* A thumb's worth to press. */
+  .idle-chip--replay {
+    min-height: 2.25rem;
+    padding-inline: var(--space-xs);
+  }
+
+  /* 라이브 | 다시보기 opens the views' row and stays put while the views scroll beside it:
+     the bar gains no row. */
+  .control-group--mode-credit:not(.control-group--mode-on-phone) {
+    display: none;
+  }
+
+  /* A venue with no views: the switch takes a line of the credit strip, which scrolls away,
+     rather than a row of the sticky bar. */
+  .control-group--mode-on-phone {
+    order: 3;
+    flex: 1 0 100%;
+  }
+
+  .control-group--mode-on-phone .mode-switch__option {
+    min-height: 2.25rem;
+  }
+
+  .credit--mode-line {
+    flex-wrap: wrap;
+    row-gap: var(--space-3xs);
+  }
+
+  .control-group--mode-marquee {
+    display: flex;
+    order: -1;
+    flex: none;
+  }
+
+  /* A hairline after it when the views follow, so the two choices do not read as one row of
+     the same thing. */
+  .control-group--mode-marquee:not(:only-child) {
+    padding-right: var(--space-2xs);
+    border-right: var(--rule-hair) solid var(--color-rule);
+  }
+
+  .marquee__controls {
+    gap: var(--space-2xs);
+  }
+
+  .replay {
+    padding: var(--space-xs);
+    padding-left: max(var(--space-xs), env(safe-area-inset-left));
+    padding-right: max(var(--space-xs), env(safe-area-inset-right));
+  }
+
+  /* Days and 회차 each keep one row and scroll sideways, as the views do. */
+  .replay__picker {
+    flex: 1 0 100%;
+    min-width: 0;
+  }
+
+  .replay__picker .choice-list {
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  /* Two thumbnails to a row from 375px; one on a 320px SE. Pictures only, so two is cheap. */
+  .replay-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
+    gap: var(--space-2xs);
+  }
+
+  .replay-card__row {
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding: var(--space-3xs) var(--space-2xs);
+  }
+
+  .replay-card__time {
+    margin-left: 0;
+  }
+
+  .replay-player__screen {
+    width: 100%;
+  }
+
+  /* The header keeps the cabinet whole: YouTube keeps its icon only, and the day and the
+     hours go under the cabinet's name. */
+  .replay-player__youtube .arcade-button__text {
+    display: none;
+  }
+
+  .replay-player__youtube {
+    min-width: 2.5rem;
+    padding: 0;
+  }
+
+  .replay-player__title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .replay-player__title .tile__tag {
+    align-self: flex-start;
+  }
+
   /* Up to a row 390px wide inside the bezel - an iPhone SE's, a 15 Pro's and a Pixel 7's
      (384px) held upright; not a phone held sideways - both buttons keep only their icons:
      the row's narrow form on a phone. With the words, the label of a cabinet with a tag,
@@ -1460,6 +1922,18 @@ input {
 
   .grid-view {
     grid-template-columns: minmax(0, calc((100dvh - 2 * var(--space-xs) - var(--tile-bar, 0px)) * 16 / 9)) !important;
+  }
+
+  /* The playing picture and its header fill one screen: the player scrolls itself to the top
+     (ReplayPlayer), with the stage tall enough to let it, and the picture is as large as the
+     height left under the header allows at 16:9. The header's base and the gap under it are
+     in the slack. */
+  .replay--playing {
+    min-height: 100dvh;
+  }
+
+  .replay-player__screen {
+    width: min(100%, calc((100dvh - var(--replay-header) - 3 * var(--space-xs)) * 16 / 9));
   }
 }
 

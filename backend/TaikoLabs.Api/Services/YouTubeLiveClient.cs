@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -28,7 +29,12 @@ public sealed class YouTubeLiveClient(
 
     private YouTubeOptions Options => options.Value;
 
-    public async Task<LiveSnapshot> FetchAsync(Venue venue, CancellationToken ct)
+    /// <summary>
+    /// One poll of one venue: the live snapshot, and - from the same answers - what 다시보기
+    /// keeps (<see cref="ReplayArchive"/>). <paramref name="replay"/> says how far back to fill
+    /// the archive on this poll, if at all; without it nothing is read beyond the usual page.
+    /// </summary>
+    public async Task<LivePoll> FetchAsync(Venue venue, CancellationToken ct, ReplayFetch? replay = null)
     {
         var mode = Options.EffectiveMode;
 
@@ -36,9 +42,11 @@ public sealed class YouTubeLiveClient(
         {
             return mode switch
             {
-                LiveSourceMode.Mock => BuildMockSnapshot(venue, Options.MockVideoIds),
+                LiveSourceMode.Mock => new LivePoll(
+                    BuildMockSnapshot(venue, Options.MockVideoIds),
+                    BuildMockReplay(venue, Options.MockVideoIds, replay?.TimeZone ?? TimeZoneInfo.Utc, DateTimeOffset.UtcNow, Options.ReplayDaysClamped)),
                 LiveSourceMode.Public => await FetchFromPublicPagesAsync(venue, ct),
-                LiveSourceMode.Api => await FetchFromApiAsync(venue, ct),
+                LiveSourceMode.Api => await FetchFromApiAsync(venue, replay, ct),
                 _ => await FetchFromPublicPagesAsync(venue, ct),
             };
         }
@@ -54,33 +62,91 @@ public sealed class YouTubeLiveClient(
             logger.LogError(
                 "YouTube daily quota is exhausted; '{Venue}' and every other venue stay empty until it resets at midnight Pacific time. Compare the quota estimate logged at startup with YouTube:PollIntervalSeconds",
                 venue.Id);
-            return LiveSnapshot.Empty(mode, ex.Message);
+            return new LivePoll(LiveSnapshot.Empty(mode, ex.Message));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to fetch live streams for '{Venue}' in {Mode} mode", venue.Id, mode);
-            return LiveSnapshot.Empty(mode, ex.Message);
+            return new LivePoll(LiveSnapshot.Empty(mode, ex.Message));
         }
     }
 
     // ---------------------------------------------------------------- API mode
 
-    private async Task<LiveSnapshot> FetchFromApiAsync(Venue venue, CancellationToken ct)
+    private async Task<LivePoll> FetchFromApiAsync(Venue venue, ReplayFetch? replay, CancellationToken ct)
     {
         if (!Options.HasApiKey)
         {
-            return LiveSnapshot.Empty(LiveSourceMode.Api, "YouTube:ApiKey is not configured.");
+            return new LivePoll(LiveSnapshot.Empty(LiveSourceMode.Api, "YouTube:ApiKey is not configured."));
         }
 
-        var videoIds = await GetRecentVideoIdsAsync(venue, ct);
-        if (videoIds.Count == 0)
+        var page = await GetRecentVideoIdsAsync(venue, pageToken: null, ct);
+        if (page.VideoIds.Count == 0)
         {
-            return LiveSnapshot.Empty(LiveSourceMode.Api);
+            return new LivePoll(
+                LiveSnapshot.Empty(LiveSourceMode.Api),
+                ReplayHarvest.None with { Backfilled = replay?.BackfillSince is not null });
         }
 
-        var candidates = await GetVideoDetailsAsync(venue, videoIds, ct);
+        var readings = await GetVideoDetailsAsync(venue, page.VideoIds, ct);
+        var snapshot = BuildSnapshot(venue, [.. readings.Select(reading => reading.Stream)], LiveSourceMode.Api, isFallbackSource: false);
 
-        return BuildSnapshot(venue, candidates, LiveSourceMode.Api, isFallbackSource: false);
+        var harvest = new HarvestBuilder();
+        harvest.Add(page.VideoIds, readings);
+
+        var backfilled = false;
+        if (replay?.BackfillSince is not null)
+        {
+            backfilled = true;
+            await BackfillAsync(venue, page, replay, harvest, ct);
+        }
+
+        return new LivePoll(snapshot, harvest.Build(backfilled));
+    }
+
+    /// <summary>
+    /// Reads older pages of uploads, for 다시보기 after a start that remembered nothing, until
+    /// it has the days with broadcasts it wants (<see cref="ReplayFetch.DaysWanted"/>) or the
+    /// pages reach back past <see cref="ReplayFetch.BackfillSince"/>. At most
+    /// <see cref="YouTubeOptions.ReplayBackfillPages"/> pages of 2 units each, once per venue
+    /// per process (<see cref="ReplayArchive.BackfillSince"/>). A failure ends it with what it
+    /// has so far: the live snapshot was already taken, and must not be lost to this.
+    /// </summary>
+    private async Task BackfillAsync(Venue venue, UploadsPage first, ReplayFetch replay, HarvestBuilder harvest, CancellationToken ct)
+    {
+        var since = replay.BackfillSince!.Value;
+        var page = first;
+        var pages = 0;
+
+        try
+        {
+            while (page.NextPageToken is { } token
+                   && page.OldestPublishedAt is { } oldest
+                   && oldest >= since
+                   && !HasDaysWanted(venue, replay, harvest)
+                   && pages < Options.ReplayBackfillPagesClamped)
+            {
+                page = await GetRecentVideoIdsAsync(venue, token, ct);
+                pages++;
+
+                if (page.VideoIds.Count > 0)
+                {
+                    harvest.Add(page.VideoIds, await GetVideoDetailsAsync(venue, page.VideoIds, ct));
+                }
+            }
+
+            logger.LogInformation(
+                "{Venue}: read {Pages} older page(s) of uploads ({Units} quota units) to fill 다시보기; {Days} earlier day(s) with broadcasts, looking back to {Since:u} at most",
+                venue.Id,
+                pages,
+                pages * QuotaEstimate.UnitsPerPoll,
+                PastDaysWithBroadcasts(venue, replay, harvest),
+                since);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "{Venue}: filling 다시보기 back stopped after {Pages} page(s)", venue.Id, pages);
+        }
     }
 
     /// <summary>
@@ -128,43 +194,156 @@ public sealed class YouTubeLiveClient(
         return avatars;
     }
 
-    /// <summary>Reads the newest uploads (1 quota unit). Live broadcasts appear here once started.</summary>
-    private async Task<List<string>> GetRecentVideoIdsAsync(Venue venue, CancellationToken ct)
+    /// <summary>
+    /// Whether the days with broadcasts before today - the archive's and those found so far -
+    /// already outnumber those wanted. One more than wanted, so the oldest wanted day is known
+    /// to be whole: pages run newest first, and a day can straddle two of them.
+    /// </summary>
+    internal static bool HasDaysWanted(Venue venue, ReplayFetch replay, HarvestBuilder harvest) =>
+        replay.DaysWanted > 0 && PastDaysWithBroadcasts(venue, replay, harvest) > replay.DaysWanted;
+
+    private static int PastDaysWithBroadcasts(Venue venue, ReplayFetch replay, HarvestBuilder harvest)
+    {
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, replay.TimeZone).DateTime);
+        var days = new HashSet<DateOnly>(replay.KnownDays ?? new HashSet<DateOnly>());
+        days.UnionWith(harvest.Ended.Select(broadcast => ReplayArchive.BroadcastDay(venue, replay.TimeZone, broadcast)));
+        return days.Count(day => day < today);
+    }
+
+    /// <summary>
+    /// One page of the uploads playlist, newest first (1 quota unit). Live broadcasts appear
+    /// here once started; the first page is what every poll reads, the rest only a backfill.
+    /// </summary>
+    private async Task<UploadsPage> GetRecentVideoIdsAsync(Venue venue, string? pageToken, CancellationToken ct)
     {
         var url = $"{ApiBase}/playlistItems?part=contentDetails" +
                   $"&maxResults={Options.MaxVideoIdsClamped}" +
                   $"&playlistId={Uri.EscapeDataString(YouTubeOptions.UploadsPlaylistId(venue.Definition.ChannelId))}" +
+                  (pageToken is null ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}") +
                   $"&key={Uri.EscapeDataString(Options.ApiKey)}";
 
         using var document = await GetJsonAsync(url, ct);
+        return ReadUploadsPage(document.RootElement);
+    }
 
+    /// <summary>The playlistItems.list answer, read; apart from the call so tests can hand it one.</summary>
+    internal static UploadsPage ReadUploadsPage(JsonElement root)
+    {
         var ids = new List<string>();
-        if (document.RootElement.TryGetProperty("items", out var items))
+        DateTimeOffset? oldest = null;
+        if (root.TryGetProperty("items", out var items))
         {
             foreach (var item in items.EnumerateArray())
             {
-                var id = item.GetPropertyOrNull("contentDetails")?.GetPropertyOrNull("videoId")?.GetString();
+                var details = item.GetPropertyOrNull("contentDetails");
+                var id = details?.GetPropertyOrNull("videoId")?.GetString();
                 if (!string.IsNullOrWhiteSpace(id))
                 {
                     ids.Add(id);
                 }
+
+                if (ParseDate(details?.GetPropertyOrNull("videoPublishedAt")?.GetString()) is { } published
+                    && (oldest is null || published < oldest))
+                {
+                    oldest = published;
+                }
             }
         }
 
-        return ids;
+        var next = root.GetPropertyOrNull("nextPageToken")?.GetString();
+        return new UploadsPage(ids, string.IsNullOrWhiteSpace(next) ? null : next, oldest);
     }
 
-    /// <summary>Confirms liveness and reads titles/viewer counts (1 quota unit for up to 50 ids).</summary>
-    private async Task<List<LiveStream>> GetVideoDetailsAsync(Venue venue, IReadOnlyList<string> videoIds, CancellationToken ct)
+    internal sealed record UploadsPage(List<string> VideoIds, string? NextPageToken, DateTimeOffset? OldestPublishedAt);
+
+    /// <summary>
+    /// One video as videos.list described it: the stream the wall would show, plus what only
+    /// 다시보기 needs - whether it is still public, and whether and when it ended.
+    /// </summary>
+    internal sealed record VideoReading(LiveStream Stream, string? BroadcastContent, bool IsPublic, DateTimeOffset? EndedAt)
+    {
+        /// <summary>
+        /// A broadcast worth watching again: finished (no longer live or upcoming, with an end
+        /// time), public, and longer than a false start. Plain uploads have no start and fail.
+        /// </summary>
+        public PastBroadcast? AsPastBroadcast()
+        {
+            if (!IsPublic
+                || !string.Equals(BroadcastContent, "none", StringComparison.OrdinalIgnoreCase)
+                || Stream.ActualStartTime is not { } started
+                || EndedAt is not { } ended
+                || ended - started < ReplayArchive.ShortestReplay)
+            {
+                return null;
+            }
+
+            return new PastBroadcast
+            {
+                VideoId = Stream.VideoId,
+                Title = Stream.Title,
+                Name = Stream.Name,
+                StreamDate = Stream.StreamDate,
+                Part = Stream.Part,
+                StartedAt = started,
+                EndedAt = ended,
+                Embeddable = Stream.Embeddable,
+            };
+        }
+    }
+
+    /// <summary>Collects a poll's readings, page by page, into one <see cref="ReplayHarvest"/>.</summary>
+    internal sealed class HarvestBuilder
+    {
+        private readonly List<PastBroadcast> _ended = [];
+        private readonly HashSet<string> _checked = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _stillPublic = new(StringComparer.Ordinal);
+
+        public IReadOnlyList<PastBroadcast> Ended => _ended;
+
+        public void Add(IEnumerable<string> asked, IEnumerable<VideoReading> readings)
+        {
+            _checked.UnionWith(asked);
+
+            foreach (var reading in readings)
+            {
+                if (reading.IsPublic)
+                {
+                    _stillPublic.Add(reading.Stream.VideoId);
+                }
+
+                if (reading.AsPastBroadcast() is { } past)
+                {
+                    _ended.Add(past);
+                }
+            }
+        }
+
+        public ReplayHarvest Build(bool backfilled) => new(_ended, _checked, _stillPublic, backfilled);
+    }
+
+    /// <summary>
+    /// Confirms liveness and reads titles/viewer counts (1 quota unit for up to 50 ids). The
+    /// same answer carries what 다시보기 needs - end times and privacy - at no extra cost.
+    /// </summary>
+    private async Task<List<VideoReading>> GetVideoDetailsAsync(Venue venue, IReadOnlyList<string> videoIds, CancellationToken ct)
     {
         var url = $"{ApiBase}/videos?part=snippet,status,liveStreamingDetails" +
                   $"&id={Uri.EscapeDataString(string.Join(',', videoIds))}" +
                   $"&key={Uri.EscapeDataString(Options.ApiKey)}";
 
         using var document = await GetJsonAsync(url, ct);
+        return ReadVideoDetails(venue, document.RootElement);
+    }
 
-        var results = new List<LiveStream>();
-        if (!document.RootElement.TryGetProperty("items", out var items))
+    /// <summary>
+    /// The videos.list answer, read; apart from the call so tests can hand it one. Only videos
+    /// whose titles fit the venue's pattern are kept. A deleted or private video does not come
+    /// back from videos.list at all, which is how the archive learns it is gone.
+    /// </summary>
+    internal static List<VideoReading> ReadVideoDetails(Venue venue, JsonElement root)
+    {
+        var results = new List<VideoReading>();
+        if (!root.TryGetProperty("items", out var items))
         {
             return results;
         }
@@ -187,26 +366,31 @@ public sealed class YouTubeLiveClient(
             }
 
             var liveDetails = item.GetPropertyOrNull("liveStreamingDetails");
-            var isLive = string.Equals(
-                snippet?.GetPropertyOrNull("liveBroadcastContent")?.GetString(),
-                "live",
-                StringComparison.OrdinalIgnoreCase);
+            var status = item.GetPropertyOrNull("status");
+            var broadcastContent = snippet?.GetPropertyOrNull("liveBroadcastContent")?.GetString();
+            // Absent is read as public: the field is always sent, and an answer without it
+            // should not empty the archive.
+            var privacy = status?.GetPropertyOrNull("privacyStatus")?.GetString();
 
-            results.Add(new LiveStream
-            {
-                StationId = venue.ResolveStationId(parsed.Name),
-                VideoId = videoId,
-                Title = title,
-                Name = parsed.Name,
-                StreamDate = parsed.StreamDate,
-                Part = parsed.Part,
-                IsLive = isLive,
-                Embeddable = item.GetPropertyOrNull("status")?.GetPropertyOrNull("embeddable")?.GetBoolean() ?? true,
-                ConcurrentViewers = ParseLong(liveDetails?.GetPropertyOrNull("concurrentViewers")?.GetString()),
-                ActualStartTime = ParseDate(liveDetails?.GetPropertyOrNull("actualStartTime")?.GetString()),
-                PublishedAt = ParseDate(snippet?.GetPropertyOrNull("publishedAt")?.GetString()),
-                ThumbnailUrl = ReadThumbnail(snippet),
-            });
+            results.Add(new VideoReading(
+                new LiveStream
+                {
+                    StationId = venue.ResolveStationId(parsed.Name),
+                    VideoId = videoId,
+                    Title = title,
+                    Name = parsed.Name,
+                    StreamDate = parsed.StreamDate,
+                    Part = parsed.Part,
+                    IsLive = string.Equals(broadcastContent, "live", StringComparison.OrdinalIgnoreCase),
+                    Embeddable = status?.GetPropertyOrNull("embeddable")?.GetBoolean() ?? true,
+                    ConcurrentViewers = ParseLong(liveDetails?.GetPropertyOrNull("concurrentViewers")?.GetString()),
+                    ActualStartTime = ParseDate(liveDetails?.GetPropertyOrNull("actualStartTime")?.GetString()),
+                    PublishedAt = ParseDate(snippet?.GetPropertyOrNull("publishedAt")?.GetString()),
+                    ThumbnailUrl = ReadThumbnail(snippet),
+                },
+                broadcastContent,
+                privacy is null || string.Equals(privacy, "public", StringComparison.OrdinalIgnoreCase),
+                ParseDate(liveDetails?.GetPropertyOrNull("actualEndTime")?.GetString())));
         }
 
         return results;
@@ -220,12 +404,12 @@ public sealed class YouTubeLiveClient(
     /// against its public watch page. Anything not live right now is dropped, which
     /// is what keeps finished broadcasts from lingering as "replays".
     /// </summary>
-    private async Task<LiveSnapshot> FetchFromPublicPagesAsync(Venue venue, CancellationToken ct)
+    private async Task<LivePoll> FetchFromPublicPagesAsync(Venue venue, CancellationToken ct)
     {
         var candidates = await ReadRssCandidatesAsync(venue, ct);
         if (candidates.Count == 0)
         {
-            return LiveSnapshot.Empty(LiveSourceMode.Public);
+            return new LivePoll(LiveSnapshot.Empty(LiveSourceMode.Public));
         }
 
         var statuses = await probe.ProbeAsync(candidates.Select(c => c.VideoId), ct);
@@ -239,8 +423,37 @@ public sealed class YouTubeLiveClient(
             })
             .ToList();
 
-        return BuildSnapshot(venue, live, LiveSourceMode.Public, isFallbackSource: true);
+        return new LivePoll(
+            BuildSnapshot(venue, live, LiveSourceMode.Public, isFallbackSource: true),
+            new ReplayHarvest(EndedFromProbe(candidates, statuses), Checked: [], StillPublic: []));
     }
+
+    /// <summary>
+    /// What Public mode can give 다시보기: the broadcasts the watch page has just shown to be
+    /// over. Each is probed once and then remembered as ended (<see cref="EndedBroadcastCache"/>),
+    /// so it is harvested once. The RSS feed holds only the newest fifteen uploads and nothing
+    /// there says whether one was deleted, so this path neither fills back nor prunes; Api
+    /// mode does both.
+    /// </summary>
+    internal static List<PastBroadcast> EndedFromProbe(
+        IEnumerable<LiveStream> candidates,
+        IReadOnlyDictionary<string, PublicLiveProbe.LiveStatus> statuses) =>
+        candidates
+            .Where(candidate => statuses.TryGetValue(candidate.VideoId, out var status)
+                                && status is { HasEnded: true, IsLiveNow: false, StartedAt: not null }
+                                && (status.EndedAt is null || status.EndedAt - status.StartedAt >= ReplayArchive.ShortestReplay))
+            .Select(candidate => new PastBroadcast
+            {
+                VideoId = candidate.VideoId,
+                Title = candidate.Title,
+                Name = candidate.Name,
+                StreamDate = candidate.StreamDate,
+                Part = candidate.Part,
+                StartedAt = statuses[candidate.VideoId].StartedAt!.Value,
+                EndedAt = statuses[candidate.VideoId].EndedAt,
+                Embeddable = candidate.Embeddable,
+            })
+            .ToList();
 
     /// <summary>Recent videos whose titles match the stream pattern. Costs no quota.</summary>
     private async Task<List<LiveStream>> ReadRssCandidatesAsync(Venue venue, CancellationToken ct)
@@ -338,6 +551,68 @@ public sealed class YouTubeLiveClient(
             Source = LiveSourceMode.Mock,
             IsFallbackSource = true,
         };
+    }
+
+    /// <summary>The name the mock archive gives a cabinet the venue does not list.</summary>
+    internal const string MockUnlistedCabinet = "NEW CABINET";
+
+    /// <summary>
+    /// Finished broadcasts for 다시보기 in Mock mode: on each of the last <paramref name="days"/>
+    /// days, a 1부 from 10:00 and a 2부 from 17:00, six hours each, on every cabinet - plus, in
+    /// the newest day's 2부, one cabinet the venue does not list, which cannot be embedded, so
+    /// both of those paths show too. With real video ids the broadcasts play one of them; without,
+    /// their ids are made up and nothing reaches YouTube.
+    /// </summary>
+    internal static ReplayHarvest BuildMockReplay(
+        Venue venue,
+        IReadOnlyList<string> videoIds,
+        TimeZoneInfo timeZone,
+        DateTimeOffset now,
+        int days)
+    {
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, timeZone).DateTime);
+        var ended = new List<PastBroadcast>();
+        var played = 0;
+
+        PastBroadcast Make(string name, DateOnly date, int part, int index, bool embeddable)
+        {
+            var naive = date.ToDateTime(new TimeOnly(10, 0)).AddHours((part - 1) * 7).AddMinutes(index);
+            var started = new DateTimeOffset(naive, timeZone.GetUtcOffset(naive));
+            var written = date.ToString("yy.MM.dd", CultureInfo.InvariantCulture);
+            var videoId = videoIds.Count > 0
+                ? videoIds[played++ % videoIds.Count]
+                : $"mock-replay-{venue.Id}-{Venue.Normalize(name).ToLowerInvariant()}-{date:yyMMdd}-{part}";
+
+            return new PastBroadcast
+            {
+                VideoId = videoId,
+                Title = $"{venue.Name} {name} Live Streaming {written} - {part}부",
+                Name = name,
+                StreamDate = written,
+                Part = part,
+                StartedAt = started,
+                EndedAt = started.AddHours(6),
+                Embeddable = embeddable,
+            };
+        }
+
+        for (var back = 1; back <= days; back++)
+        {
+            var date = today.AddDays(-back);
+            foreach (var part in (int[])[1, 2])
+            {
+                ended.AddRange(venue.Stations.Select((station, index) => Make(station.Label, date, part, index, embeddable: true)));
+            }
+        }
+
+        if (days > 0)
+        {
+            ended.Add(Make(MockUnlistedCabinet, today.AddDays(-1), 2, venue.Stations.Count, embeddable: false));
+        }
+
+        // Real ids repeat across cabinets, and the archive otherwise keys broadcasts by id: the
+        // made-up day replaces the venue's whole archive instead, every poll.
+        return new ReplayHarvest(ended, Checked: [], StillPublic: []) { ReplacesAll = true };
     }
 
     // ----------------------------------------------------------------- helpers
@@ -449,6 +724,19 @@ public sealed class YouTubeLiveClient(
     private static string Truncate(string value, int max) =>
         value.Length <= max ? value : value[..max] + "...";
 }
+
+/// <summary>
+/// What a poll is to do for 다시보기 beyond reading the newest uploads.
+/// </summary>
+/// <param name="TimeZone">The venues' time zone, which decides what "a day" is.</param>
+/// <param name="BackfillSince">Read older pages of uploads back to this at most, or null for none.</param>
+/// <param name="DaysWanted">Stop reading back once more than this many days before today have broadcasts; 0 for no such stop.</param>
+/// <param name="KnownDays">Days before today the archive already has broadcasts on.</param>
+public sealed record ReplayFetch(
+    TimeZoneInfo TimeZone,
+    DateTimeOffset? BackfillSince,
+    int DaysWanted = 0,
+    IReadOnlySet<DateOnly>? KnownDays = null);
 
 internal static class JsonElementExtensions
 {
