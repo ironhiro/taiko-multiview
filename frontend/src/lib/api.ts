@@ -1,4 +1,4 @@
-import type { LiveResponse, Venue } from './types';
+import type { LiveResponse, ReplayResponse, Venue } from './types';
 
 /**
  * Empty in the browser: the deployed container serves the site and /api from one origin,
@@ -94,4 +94,12 @@ export async function requestRefresh(signal?: AbortSignal): Promise<LiveResponse
   }
 
   return (await response.json()) as LiveResponse;
+}
+
+/**
+ * A venue's finished broadcasts for 다시보기. Served from the server's archive, which its
+ * polls fill: asking costs no YouTube quota, however many people ask.
+ */
+export function fetchReplay(venueId: string, signal?: AbortSignal): Promise<ReplayResponse> {
+  return getJson<ReplayResponse>(`/api/replay/${encodeURIComponent(venueId)}`, { signal, timeoutMs: REQUEST_TIMEOUT_MS });
 }

@@ -14,13 +14,19 @@ namespace TaikoLabs.Api.Services;
 /// <param name="Venues">How many venues are polled.</param>
 /// <param name="OpenHoursPerDay">Their opening hours added together, averaged over a week.</param>
 /// <param name="UnitsPerDay">Quota units a whole day of polling costs.</param>
-public sealed record QuotaEstimate(int Venues, double OpenHoursPerDay, int UnitsPerDay)
+/// <param name="ReplayBackfillUnitsAtMost">
+/// The most a start can add for 다시보기 (<see cref="ReplayArchive"/>), once, on top of the day:
+/// every venue reading <see cref="YouTubeOptions.ReplayBackfillPages"/> older pages of uploads.
+/// A start that restores the archive from its file reads none, nor does any later poll -
+/// 다시보기 is otherwise filled from the answers the polls above already get, at no extra cost.
+/// </param>
+public sealed record QuotaEstimate(int Venues, double OpenHoursPerDay, int UnitsPerDay, int ReplayBackfillUnitsAtMost = 0)
 {
     /// <summary>
     /// One poll of one venue: playlistItems.list (1 unit) plus videos.list (1 unit). See
     /// <see cref="YouTubeLiveClient"/>, which is where those two calls are made.
     /// </summary>
-    private const int UnitsPerPoll = 2;
+    internal const int UnitsPerPoll = 2;
 
     /// <summary>
     /// Channel avatars: one channels.list call covers up to 50 channels and is cached for a
@@ -66,7 +72,8 @@ public sealed record QuotaEstimate(int Venues, double OpenHoursPerDay, int Units
         return new QuotaEstimate(
             venues.Count,
             Math.Round(openHours, 2),
-            (int)Math.Round(units + AvatarUnitsPerDay));
+            (int)Math.Round(units + AvatarUnitsPerDay),
+            venues.Count * options.ReplayBackfillPagesClamped * UnitsPerPoll);
     }
 
     /// <summary>

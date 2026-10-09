@@ -103,7 +103,7 @@ public class QuotaTests
             options,
             NullLogger<YouTubeLiveClient>.Instance);
 
-        return await client.FetchAsync(TestVenues.Create(TestVenues.TaikoLabs()), CancellationToken.None);
+        return (await client.FetchAsync(TestVenues.Create(TestVenues.TaikoLabs()), CancellationToken.None)).Snapshot;
     }
 
     private static VenueDefinition EveryDay(string id, string hours)

@@ -24,6 +24,8 @@ apikey.txt
 closures.cache.json
 live.cache.json
 live.cache.json.tmp
+replay.cache.json
+replay.cache.json.tmp
 
 
 # Local design-tool notes (Hallmark)

@@ -153,6 +153,13 @@ public sealed class VenuesOptions
     /// </summary>
     public string LiveCachePath { get; set; } = "live.cache.json";
 
+    /// <summary>
+    /// Where the finished broadcasts kept for 다시보기 are mirrored. Unlike the live cache this
+    /// one is worth more than a warm start: without it a restart forgets every broadcast older
+    /// than the newest uploads a poll reads, and filling those back in costs quota.
+    /// </summary>
+    public string ReplayCachePath { get; set; } = "replay.cache.json";
+
     public List<VenueDefinition> Items { get; set; } = [];
 
     /// <summary>

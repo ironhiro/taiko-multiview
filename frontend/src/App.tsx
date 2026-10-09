@@ -17,6 +17,9 @@ import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
 import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
+import { ModeSwitch } from './components/ModeSwitch';
+import { ReplayView } from './components/ReplayView';
+import { parseRoute, routeHref, type AppMode, type AppRoute, type ReplayRoute } from './lib/replayRoute';
 
 // v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
 const GRID_STORAGE_KEY = 'taiko-multiview:grid';
@@ -40,6 +43,12 @@ export default function App() {
 
   // The chat open in the sidebar beside the wall, if any.
   const [openChat, setOpenChat] = useState<OpenChat | null>(null);
+
+  // 라이브 or 다시보기, and where in 다시보기 - read from the address and written back to it,
+  // never stored: without mode=replay the page is always the wall (lib/replayRoute.ts).
+  const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.search));
+  const isReplay = route.mode === 'replay';
+
   const abortRef = useRef<AbortController | null>(null);
   const hasChosenView = useRef(false);
 
@@ -108,6 +117,79 @@ export default function App() {
     () => venues.find((venue) => venue.id === activeVenueId),
     [venues, activeVenueId],
   );
+
+  // --- 라이브 / 다시보기 ----------------------------------------------------------
+
+  const activeVenueIdRef = useRef(activeVenueId);
+  activeVenueIdRef.current = activeVenueId;
+  const venuesRef = useRef(venues);
+  venuesRef.current = venues;
+
+  // Pushed for what Back should undo - switching mode, opening a broadcast - and replaced for
+  // the rest (another day, another 회차), so Back does not step through every chip pressed.
+  const navigate = useCallback(
+    (next: AppRoute, how: 'push' | 'replace', venueId?: string, state: unknown = null) => {
+      const href = routeHref(window.location.href, next, venueId ?? activeVenueIdRef.current ?? undefined);
+      if (how === 'push') {
+        window.history.pushState(state, '', href);
+      } else {
+        window.history.replaceState(window.history.state, '', href);
+      }
+      setRoute(next);
+    },
+    [],
+  );
+
+  // Back and Forward move between the wall, a 다시보기 list and a broadcast playing.
+  useEffect(() => {
+    const onPopState = () => {
+      setRoute(parseRoute(window.location.search));
+      const requested = new URLSearchParams(window.location.search).get('venue');
+      if (requested && venuesRef.current.some((venue) => venue.id === requested)) {
+        setActiveVenueId(requested);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const changeMode = useCallback(
+    (mode: AppMode) => {
+      hasChosenView.current = true;
+      navigate({ mode, replay: {} }, 'push');
+    },
+    [navigate],
+  );
+
+  // A 방송 없음 chip: that cabinet's newest finished broadcast.
+  const openCabinetReplay = useCallback(
+    (cabinetId: string) => {
+      hasChosenView.current = true;
+      navigate({ mode: 'replay', replay: { cabinet: cabinetId } }, 'push');
+    },
+    [navigate],
+  );
+
+  // A broadcast opened from the list is marked, so 목록 can go Back to that list rather than
+  // add a step of its own.
+  const navigateReplay = useCallback(
+    (replay: ReplayRoute, how: 'push' | 'replace') =>
+      navigate({ mode: 'replay', replay }, how, undefined, how === 'push' && replay.cabinet ? { replayFromList: true } : null),
+    [navigate],
+  );
+
+  const closeReplayPlayer = useCallback(() => {
+    if ((window.history.state as { replayFromList?: boolean } | null)?.replayFromList) {
+      window.history.back();
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const session = Number(params.get('session'));
+    navigate(
+      { mode: 'replay', replay: { date: params.get('date') ?? undefined, session: session > 0 ? session : undefined } },
+      'replace',
+    );
+  }, [navigate]);
 
   // The view picker is venue-specific, so a remembered choice may not exist here.
   useEffect(() => {
@@ -235,8 +317,9 @@ export default function App() {
   // The window title names the venue on screen - it is also what the desktop shell's
   // title bar and the taskbar show.
   useEffect(() => {
-    document.title = activeVenue ? `${activeVenue.name} · 태고 멀티뷰` : '태고 멀티뷰';
-  }, [activeVenue]);
+    const name = activeVenue ? (isReplay ? `${activeVenue.name} 다시보기` : activeVenue.name) : null;
+    document.title = name ? `${name} · 태고 멀티뷰` : '태고 멀티뷰';
+  }, [activeVenue, isReplay]);
 
   useEffect(() => {
     setDiagnosticsContext({ venueId: activeVenueId ?? undefined, view: view ?? undefined });
@@ -262,13 +345,14 @@ export default function App() {
   // The sidebar's tile. Gone once its broadcast has ended, the wall has moved to a venue or
   // view without it, or the window has become too narrow for the sidebar: the sidebar then
   // closes for good, rather than keep a chat for a tile no longer there or come back later.
-  const chatTile = chatGoesInSidebar ? chatTileOf(tiles, openChat) : undefined;
+  // Not in 다시보기, which has no wall beside it; the chat stays chosen for the way back.
+  const chatTile = chatGoesInSidebar && !isReplay ? chatTileOf(tiles, openChat) : undefined;
   const chatStream = chatTile?.stream;
   useEffect(() => {
-    if (openChat && !chatStream) {
+    if (openChat && !chatStream && !isReplay) {
       setOpenChat(null);
     }
-  }, [openChat, chatStream]);
+  }, [openChat, chatStream, isReplay]);
 
   // The same tile's chat again keeps the state as it is, so nothing renders and the frame
   // is left alone.
@@ -284,11 +368,18 @@ export default function App() {
   const closedSummary = venueSummary(activeLive?.venue);
   const liveCount = liveCountOf(activeVenue, activeLive);
 
-  const selectVenue = useCallback((venueId: string) => {
-    hasChosenView.current = true;
-    setActiveVenueId(venueId);
-    setAudioTileId(null);
-  }, []);
+  const selectVenue = useCallback(
+    (venueId: string) => {
+      hasChosenView.current = true;
+      setActiveVenueId(venueId);
+      setAudioTileId(null);
+      // Another venue's 다시보기 starts at its own newest day.
+      if (isReplay) {
+        navigate({ mode: 'replay', replay: {} }, 'replace', venueId);
+      }
+    },
+    [isReplay, navigate],
+  );
 
   const selectView = useCallback((next: ViewMode) => {
     hasChosenView.current = true;
@@ -341,8 +432,10 @@ export default function App() {
         />
 
         <div className="marquee__controls">
-          {viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
-          <LayoutPicker size={gridSize} onChange={setGridSize} />
+          {!isReplay && viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
+          {!isReplay && <LayoutPicker size={gridSize} onChange={setGridSize} />}
+          {/* Phones only (the stylesheet hides it elsewhere), and only beside views. */}
+          {viewOptions.length > 1 && <ModeSwitch mode={route.mode} onChange={changeMode} placement="marquee" />}
         </div>
       </header>
 
@@ -360,23 +453,38 @@ export default function App() {
         )}
 
         <main className="stage__main">
-          <GridView
-            tiles={tiles}
-            audioTileId={audioTileId}
-            onRequestAudio={handleRequestAudio}
-            gridSize={gridSize}
-            lazy={isCompactDevice}
-            onOpenChat={chatGoesInSidebar ? handleOpenChat : undefined}
-            chatTileId={chatTile?.id ?? null}
-            idle={idle}
-          />
+          {/* The wall is taken down in 다시보기, players and all, and built again on the way
+              back: the layout and the tile with the sound are App's, so they come back as
+              they were. */}
+          {isReplay ? (
+            activeVenue && (
+              <ReplayView
+                venue={activeVenue}
+                route={route.replay}
+                onNavigate={navigateReplay}
+                onClosePlayer={closeReplayPlayer}
+              />
+            )
+          ) : (
+            <GridView
+              tiles={tiles}
+              audioTileId={audioTileId}
+              onRequestAudio={handleRequestAudio}
+              gridSize={gridSize}
+              lazy={isCompactDevice}
+              onOpenChat={chatGoesInSidebar ? handleOpenChat : undefined}
+              chatTileId={chatTile?.id ?? null}
+              idle={idle}
+              onOpenReplay={openCabinetReplay}
+            />
+          )}
         </main>
       </div>
 
       {chatTile && chatStream && <ChatSidebar label={chatTile.label} stream={chatStream} onClose={handleCloseChat} />}
 
       {/* The credit line: what an arcade screen keeps along its bottom edge. */}
-      <footer className="credit">
+      <footer className={viewOptions.length > 1 ? 'credit' : 'credit credit--mode-line'}>
         <div className="credit__readout" aria-live="polite">
           {liveCount > 0 ? (
             <p className="tally tally--live">
@@ -389,6 +497,20 @@ export default function App() {
               <span className="tally__lamp" aria-hidden="true" />
               <span className="tally__text">{live ? closedSummary ?? '송출 대기중' : '방송 확인 중'}</span>
             </p>
+          )}
+
+          {/* Closed with nothing on air: what there is to watch is what was on before. */}
+          {!isReplay && live && liveCount === 0 && closedSummary && activeVenueId && (
+            <a
+              className="credit__replay"
+              href={routeHref(window.location.href, { mode: 'replay', replay: {} }, activeVenueId)}
+              onClick={(event) => {
+                event.preventDefault();
+                changeMode('replay');
+              }}
+            >
+              지난 방송 보기
+            </a>
           )}
 
           {activeLive?.isFallbackSource && (
@@ -411,6 +533,8 @@ export default function App() {
             </p>
           )}
         </div>
+
+        <ModeSwitch mode={route.mode} onChange={changeMode} placement="credit" onPhone={viewOptions.length <= 1} />
 
         <button
           type="button"

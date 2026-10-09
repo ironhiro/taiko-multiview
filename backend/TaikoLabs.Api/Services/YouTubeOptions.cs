@@ -48,12 +48,45 @@ public sealed class YouTubeOptions
     /// </summary>
     public List<string> MockVideoIds { get; set; } = [];
 
+    /// <summary>
+    /// How many days with finished broadcasts 다시보기 keeps before today - days with
+    /// something to watch, not calendar days, so a venue that streams now and then still
+    /// shows a week of it. Today's finished broadcasts are kept besides. Bounded by
+    /// <see cref="ReplayMaxAgeDays"/>.
+    /// </summary>
+    public int ReplayDays { get; set; } = 7;
+
+    /// <summary>
+    /// How far back 다시보기 looks for those days at most. A venue that streamed on fewer than
+    /// <see cref="ReplayDays"/> days in this span shows only those.
+    /// </summary>
+    public int ReplayMaxAgeDays { get; set; } = 30;
+
+    /// <summary>
+    /// After a start with nothing remembered - a fresh container has no cache file - how many
+    /// further pages of uploads (50 each) the first poll of a venue may read to fill 다시보기
+    /// back: until <see cref="ReplayDays"/> days with broadcasts are found, or the pages reach
+    /// past <see cref="ReplayMaxAgeDays"/>. Each page is one playlistItems.list and one
+    /// videos.list call, 2 units, and it happens at most once per venue per process. Zero turns
+    /// the backfill off. Eight is measured, not guessed: on 2026-10-10 CYGameworld, whose
+    /// channel carries other games and scheduled Taiko broadcasts that never start, needed 6
+    /// pages in all (5 beyond the poll's own) to reach 30 days back; TAIKO LABS, about 30
+    /// uploads a day, found its 8th day with broadcasts on page 5.
+    /// </summary>
+    public int ReplayBackfillPages { get; set; } = 8;
+
     public int PollIntervalSecondsClamped => Math.Clamp(PollIntervalSeconds, 15, 3600);
 
     public int ClosedPollIntervalSecondsClamped =>
         Math.Clamp(ClosedPollIntervalSeconds, PollIntervalSecondsClamped, 3600);
 
     public int MaxVideoIdsClamped => Math.Clamp(MaxVideoIdsPerLookup, 1, 50);
+
+    public int ReplayDaysClamped => Math.Clamp(ReplayDays, 1, 31);
+
+    public int ReplayMaxAgeDaysClamped => Math.Clamp(ReplayMaxAgeDays, ReplayDaysClamped, 90);
+
+    public int ReplayBackfillPagesClamped => Math.Clamp(ReplayBackfillPages, 0, 20);
 
     public bool HasApiKey => !string.IsNullOrWhiteSpace(ApiKey);
 

@@ -120,3 +120,46 @@ export interface LiveResponse {
   venuesVersion?: number;
   venues: VenueLive[];
 }
+
+// ----------------------------------------------------------------- 다시보기
+
+/** A finished broadcast (GET /api/replay/{venueId}). */
+export interface ReplayBroadcast {
+  videoId: string;
+  /** The cabinet it resolves to now; absent for a cabinet the venue does not list. */
+  stationId?: string | null;
+  name: string;
+  title: string;
+  part?: number;
+  startedAt: string;
+  endedAt?: string;
+  embeddable: boolean;
+}
+
+/** A 회차: every cabinet's broadcast of one part of one day. */
+export interface ReplaySession {
+  session: number;
+  /** True when the number came from the titles ("2부"); false when counted per cabinet. */
+  fromTitle: boolean;
+  startedAt: string;
+  /** The venue's cabinets in its order, then the ones it does not list. */
+  broadcasts: ReplayBroadcast[];
+}
+
+/** One business day of the venue, as "YYYY-MM-DD". */
+export interface ReplayDay {
+  date: string;
+  sessions: ReplaySession[];
+}
+
+export interface ReplayResponse {
+  venueId: string;
+  /** How many days with broadcasts before today the server keeps, besides today's. */
+  retentionDays: number;
+  /** How many calendar days back it looks for those at most. */
+  maxAgeDays?: number;
+  /** IANA zone the days are counted in, e.g. "Asia/Seoul". */
+  timeZone?: string;
+  /** Newest day first. */
+  days: ReplayDay[];
+}

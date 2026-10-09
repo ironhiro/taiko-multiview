@@ -35,7 +35,7 @@ public sealed partial class PublicLiveProbe(
     [GeneratedRegex(@"""liveBroadcastDetails"":\s*(\{[^}]*\})", RegexOptions.CultureInvariant)]
     private static partial Regex LiveBroadcastDetails();
 
-    public sealed record LiveStatus(bool IsLiveNow, DateTimeOffset? StartedAt, bool HasEnded);
+    public sealed record LiveStatus(bool IsLiveNow, DateTimeOffset? StartedAt, bool HasEnded, DateTimeOffset? EndedAt = null);
 
     public bool IsKnownEnded(string videoId) => endedCache.Contains(videoId);
 
@@ -110,7 +110,7 @@ public sealed partial class PublicLiveProbe(
             var isLiveNow = root.TryGetProperty("isLiveNow", out var liveNow)
                 && liveNow.ValueKind == JsonValueKind.True;
 
-            var hasEnded = root.TryGetProperty("endTimestamp", out _);
+            var hasEnded = root.TryGetProperty("endTimestamp", out var end);
 
             DateTimeOffset? startedAt =
                 root.TryGetProperty("startTimestamp", out var start)
@@ -118,7 +118,10 @@ public sealed partial class PublicLiveProbe(
                     ? parsed
                     : null;
 
-            return new LiveStatus(isLiveNow, startedAt, hasEnded);
+            DateTimeOffset? endedAt =
+                hasEnded && end.ValueKind == JsonValueKind.String && DateTimeOffset.TryParse(end.GetString(), out var parsedEnd) ? parsedEnd : null;
+
+            return new LiveStatus(isLiveNow, startedAt, hasEnded, endedAt);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
