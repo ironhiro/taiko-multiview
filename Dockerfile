@@ -7,6 +7,7 @@
 # Only the last stage, which runs nothing, is the target's - so an amd64 image for Azure
 # builds at native speed on an ARM Mac:
 #   docker buildx build --platform linux/amd64 -t taiko-multiview .
+# Pass --build-arg BUILD_VERSION=<commit> as well, or the page reports errors as "unknown".
 
 # Frontend
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
@@ -14,6 +15,9 @@ WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# The commit the page reports its errors under (frontend/vite.config.ts). The context has
+# no .git, so it is passed in: --build-arg BUILD_VERSION=$(git rev-parse --short HEAD).
+ARG BUILD_VERSION=unknown
 RUN npm run build
 
 # API

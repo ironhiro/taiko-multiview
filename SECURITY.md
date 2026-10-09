@@ -20,4 +20,4 @@ YouTube, Azure 등 외부 서비스 자체의 취약점은 각 서비스에 제�
 
 `GET /api/venues`, `GET /api/live`는 공개 대시보드용 데이터이므로 인증 없이 열려 있습니다.
 `POST /api/live/refresh`는 매장별 쿨다운과 IP당 요청 제한이 걸려 있으며,
-`POST /api/diagnostics`는 개발 환경에서만 등록됩니다.
+`POST /api/diagnostics`는 `Diagnostics__ClientReports`를 켠 환경에서만 등록되며, 켜져 있을 때도 IP당·서버 전체 분당 제한, 알려진 종류·필드만 기록, 필드 길이 제한이 걸려 있고 IP는 기록하지 않습니다.

@@ -1,7 +1,10 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using TaikoLabs.Api.Models;
 using TaikoLabs.Api.Services;
@@ -10,6 +13,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 // The stack is nobody's business.
 builder.WebHost.ConfigureKestrel(kestrel => kestrel.AddServerHeader = false);
+
+// Outside development the console writes one JSON object per line (appsettings.json:
+// Logging:Console:FormatterName). Container Apps stores each stdout line as its own row,
+// and the default format puts the level and category on one line and the message on the
+// next, so the two could not be joined back up, and a message's named values were lost.
+// Hangul stays readable instead of becoming \uXXXX; quotes and control characters are
+// still escaped, so a value cannot break out of its line.
+builder.Services.Configure<JsonConsoleFormatterOptions>(json =>
+    json.JsonWriterOptions = new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
 
 // Azure Container Apps ends TLS at its ingress and passes the client on in X-Forwarded-*.
 // The proxy's address is not fixed, so none is listed; ForwardLimit (1) still takes only
@@ -24,12 +36,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
 // A person presses 새로고침 now and then; anything faster is a script. The per-venue
 // cooldown already keeps YouTube calls down - this keeps the requests themselves down.
 const string RefreshLimit = "refresh";
+const string DiagnosticsLimit = "diagnostics";
 builder.Services.AddRateLimiter(limiter =>
 {
     limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     limiter.AddPolicy(RefreshLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1) }));
+
+    // Client reports, per address. The address is only the key here; it is never logged.
+    limiter.AddPolicy(DiagnosticsLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = Math.Max(1, context.RequestServices.GetRequiredService<IOptions<ClientDiagnosticsOptions>>().Value.PerClientPerMinute),
+            Window = TimeSpan.FromMinutes(1),
+        }));
 });
 
 // The venue list lives in a file of its own, apart from the app's settings: it is data
@@ -42,6 +64,7 @@ builder.Configuration.AddJsonFile(builder.Configuration["Venues:File"] ?? "venue
 
 builder.Services.Configure<YouTubeOptions>(builder.Configuration.GetSection(YouTubeOptions.SectionName));
 builder.Services.Configure<VenuesOptions>(builder.Configuration.GetSection(VenuesOptions.SectionName));
+builder.Services.Configure<ClientDiagnosticsOptions>(builder.Configuration.GetSection(ClientDiagnosticsOptions.SectionName));
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -81,6 +104,7 @@ builder.Services.AddSingleton<LiveSnapshotCache>();
 builder.Services.AddSingleton<LiveStreamStore>();
 builder.Services.AddSingleton<ChannelAvatarCache>();
 builder.Services.AddSingleton<ReplayArchive>();
+builder.Services.AddSingleton<ClientReportLog>();
 
 builder.Services.AddSingleton<LivePollingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LivePollingService>());
@@ -262,31 +286,51 @@ app.MapPost("/api/live/refresh", async (
     .WithSummary("지금 다시 확인")
     .WithDescription("venueId를 주면 그 매장만, 없으면 전체를 바로 폴링합니다. 매장마다 쿨다운이 있어 연달아 불러도 유튜브 API는 한 번만 호출됩니다. IP당 분당 6회 제한(초과 시 429).");
 
-// Playback trouble reported by clients (the desktop shell's webview has no reachable
-// console). Off unless Diagnostics:ClientReports is set, so production never maps it.
-if (app.Configuration.GetValue<bool>("Diagnostics:ClientReports"))
+// Trouble the page reports about itself: script errors, players that fail, playback that
+// stalls. Off unless Diagnostics:ClientReports is set; then the reports land in the
+// "ClientDiagnostics" log (README "프론트엔드 오류 수집" has the queries). The endpoint is
+// public, so what it writes is bounded three ways: per address (the rate-limit policy),
+// for the whole server (ClientReportLog), and per report (known kinds and fields only,
+// each cut to length - ClientReportReader).
+if (app.Configuration.GetValue<bool>($"{ClientDiagnosticsOptions.SectionName}:ClientReports"))
 {
-    var clientLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("ClientDiagnostics");
-    var limiter = new ClientReportLimiter(perMinute: 120);
+    // The page asks once, before its first report, so it never sends what would be dropped.
+    app.MapGet("/api/diagnostics", (ClientReportLog log) =>
+        TypedResults.Ok(new ClientDiagnosticsConfig(log.InfoSampleRate)))
+        .WithTags("진단")
+        .WithSummary("보고 설정")
+        .WithDescription("정보성 보고를 받는 세션 비율(infoSampleRate, 0~1). 오류·경고는 항상 받습니다.");
 
-    app.MapPost("/api/diagnostics", async (HttpRequest request) =>
+    app.MapPost("/api/diagnostics", async (HttpRequest request, ClientReportLog log, CancellationToken ct) =>
     {
-        if (!limiter.TryAcquire())
+        if (!log.TryTakeOne())
         {
             return Results.StatusCode(StatusCodes.Status429TooManyRequests);
         }
 
-        using var reader = new StreamReader(request.Body);
-        var buffer = new char[2048];
-        var read = await reader.ReadBlockAsync(buffer, 0, buffer.Length);
-        var body = new string(buffer, 0, read).ReplaceLineEndings(" ");
+        // One byte past the limit is enough to know the body is too long.
+        var buffer = new byte[ClientReportReader.MaxBodyBytes + 1];
+        var length = 0;
+        int read;
+        while (length < buffer.Length && (read = await request.Body.ReadAsync(buffer.AsMemory(length), ct)) > 0)
+        {
+            length += read;
+        }
 
-        clientLog.LogWarning("CLIENT {Report}", body);
-        return Results.NoContent();
+        if (length > ClientReportReader.MaxBodyBytes)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        // Dropped and sampled-out reports are answered the same as logged ones: there is
+        // nothing for the page to retry or change.
+        var outcome = log.Write(buffer.AsSpan(0, length), request.Headers.UserAgent.ToString());
+        return outcome == ClientReportOutcome.Malformed ? Results.BadRequest() : Results.NoContent();
     })
+        .RequireRateLimiting(DiagnosticsLimit)
         .WithTags("진단")
-        .WithSummary("클라이언트 재생 문제 보고")
-        .WithDescription("앱이 재생 문제를 서버 로그로 보냅니다. 분당 120건 제한.");
+        .WithSummary("클라이언트 오류 보고")
+        .WithDescription("페이지가 스크립트 오류·재생 문제를 서버 로그로 보냅니다. 알려진 종류와 필드만 기록, 본문 4KB, 주소당·서버 전체 분당 제한(초과 시 429).");
 }
 
 if (hasFrontend)
@@ -384,25 +428,7 @@ static VenueLive Project(Venue venue, LiveSnapshot snapshot, VenueStatus status)
     Venue = status,
 };
 
-/// <summary>A fixed-window cap, so a misbehaving client cannot flood the log.</summary>
-sealed class ClientReportLimiter(int perMinute)
-{
-    private readonly object _gate = new();
-    private DateTimeOffset _windowStart = DateTimeOffset.MinValue;
-    private int _count;
+sealed record ClientDiagnosticsConfig(double InfoSampleRate);
 
-    public bool TryAcquire()
-    {
-        lock (_gate)
-        {
-            var now = DateTimeOffset.UtcNow;
-            if (now - _windowStart >= TimeSpan.FromMinutes(1))
-            {
-                _windowStart = now;
-                _count = 0;
-            }
-
-            return ++_count <= perMinute;
-        }
-    }
-}
+// The tests start the app through WebApplicationFactory, which needs the entry point visible.
+public partial class Program;
