@@ -102,9 +102,10 @@ export function playerOrigin(): string | undefined {
 }
 
 /**
- * This broadcast's pop-out chat on youtube.com. It is written to in a youtube.com window of
- * its own, never framed in the wall: a frame inside another site does not get the viewer's
- * YouTube sign-in, so it could only be read. A viewer signed in to YouTube can write
+ * This broadcast's pop-out chat on youtube.com, in a youtube.com window of its own. There
+ * the viewer's YouTube sign-in always reaches it, whatever the browser does with
+ * youtube.com's cookies inside another site's frame - which decides whether the chat beside
+ * the wall can be written to (lib/chatSidebar.ts). A viewer signed in to YouTube can write
  * straight away; anyone else gets the chat to read and YouTube's own sign-in prompt in it.
  *
  * Opened directly, not through youtube.com/signin with the chat as `next`: signed out, that
@@ -112,6 +113,20 @@ export function playerOrigin(): string | undefined {
  */
 export function popoutChatUrl(videoId: string): string {
   return `https://www.youtube.com/live_chat?${new URLSearchParams({ is_popout: '1', v: videoId })}`;
+}
+
+/**
+ * Google's sign-in for YouTube, arriving at this broadcast's pop-out chat once done - the
+ * route YouTube's own "채팅하려면 로그인" in the framed chat takes, but ending at the chat
+ * rather than the watch page. Measured signed out (curl and Chromium, 2026-10-09): one 302
+ * to accounts.google.com's sign-in, asking for the e-mail address. Not youtube.com/signin on
+ * its own: signed out, that answered 303 to youtube.com/oops. `passive` is what YouTube's
+ * own link sends: a viewer already signed in is passed on to `continue` without a prompt.
+ */
+export function chatSignInUrl(videoId: string): string {
+  const chat = `/live_chat?${new URLSearchParams({ is_popout: '1', v: videoId })}`;
+  const signedIn = `https://www.youtube.com/signin?${new URLSearchParams({ action_handle_signin: 'true', app: 'desktop', next: chat })}`;
+  return `https://accounts.google.com/ServiceLogin?${new URLSearchParams({ service: 'youtube', passive: 'true', continue: signedIn })}`;
 }
 
 /**
@@ -137,13 +152,14 @@ const chatWindows = new Map<string, Window>();
  *
  * A broadcast whose window is still open gets that window brought to the front, not
  * opened again: opening would load the chat afresh and lose a message half written.
- * Otherwise a new popup opens, and false means it was blocked; the caller then falls back
- * to an ordinary new tab.
+ * Otherwise a new popup opens - at `url`, the chat itself unless the caller starts it at the
+ * sign-in - and false means it was blocked; the caller then falls back to an ordinary new tab.
  */
 export function openChatWindow(
   videoId: string,
   open: OpenWindow = (url, target, features) => window.open(url, target, features),
   windows: Map<string, Window> = chatWindows,
+  url: string = popoutChatUrl(videoId),
 ): boolean {
   const kept = windows.get(videoId);
   if (kept && !kept.closed) {
@@ -151,7 +167,7 @@ export function openChatWindow(
     return true;
   }
 
-  const popup = open(popoutChatUrl(videoId), chatWindowName(videoId), CHAT_WINDOW_FEATURES);
+  const popup = open(url, chatWindowName(videoId), CHAT_WINDOW_FEATURES);
   if (!popup) {
     windows.delete(videoId);
     return false;

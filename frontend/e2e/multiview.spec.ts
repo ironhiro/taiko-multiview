@@ -56,7 +56,11 @@ test.describe('desktop', () => {
     await expect(page.locator('.choice[aria-pressed="true"]')).toHaveText('통합');
   });
 
-  test("a tile's chat opens YouTube's pop-out chat in a popup of its own, one per broadcast", async ({ page, context }) => {
+  test("in a window too narrow for the sidebar, a tile's chat opens YouTube's pop-out chat in a popup of its own, one per broadcast", async ({
+    page,
+    context,
+  }) => {
+    await page.setViewportSize(NARROW_DESKTOP);
     const openCalls = await recordWindowOpen(page, 'window');
     // A tab the link wrongly opened must not reach the network either.
     await answerYouTube(context);
@@ -100,11 +104,13 @@ test.describe('desktop', () => {
     // a moment after the click, so the wall is given that moment before it is counted.
     await page.waitForTimeout(1_000);
     expect(context.pages()).toHaveLength(1);
-    // Nothing of the chat is framed in the wall.
+    // Nothing of the chat is framed in the window.
     await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar')).toHaveCount(0);
   });
 
   test('a blocked chat popup falls back to a new tab at the same address', async ({ page, context }) => {
+    await page.setViewportSize(NARROW_DESKTOP);
     const openCalls = await recordWindowOpen(page, 'blocked');
     await answerYouTube(context);
     await page.goto('/?venue=taikolabs');
@@ -119,6 +125,262 @@ test.describe('desktop', () => {
     // The wall stays where it was.
     await expect(page).toHaveURL(/\/\?venue=taikolabs$/);
   });
+});
+
+// The chat beside the wall (lib/chatSidebar.ts, components/ChatSidebar.tsx): computers in a
+// browser window 1024px wide or more. Phones keep the link to the broadcast's page, and
+// narrower windows the popup (both above and below).
+test.describe('the chat sidebar', () => {
+  test.skip(({ isMobile }) => isMobile, 'desktop layout');
+
+  test('opens beside the wall on a tile, stays as it is on a second press, moves to another tile and closes', async ({
+    page,
+    context,
+  }) => {
+    const openCalls = await recordWindowOpen(page, 'window');
+    await answerYouTube(context);
+    const chatRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/live_chat?')) chatRequests.push(request.url());
+    });
+    await page.goto('/?venue=taikolabs');
+    const a1 = await liveVideoId(page, 'taikolabs', 'a1');
+    const a3 = await liveVideoId(page, 'taikolabs', 'a3');
+    const sidebar = page.getByTestId('chat-sidebar');
+    const frame = page.getByTestId('chat-sidebar-frame');
+    await expect(page.locator('.grid-view .tile').first()).toBeVisible();
+    await expect(sidebar).toHaveCount(0);
+
+    // On a computer the tile's chat is a button: the sidebar stays in this window.
+    const chatA1 = page.getByRole('button', { name: 'A1 유튜브 채팅 열기' });
+    const chatA3 = page.getByRole('button', { name: 'A3 유튜브 채팅 열기' });
+    await expect(chatA1).toHaveAttribute('aria-pressed', 'false');
+    await chatA1.click();
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar).toHaveAttribute('aria-label', 'A1 채팅');
+    await expect(frame).toHaveCount(1);
+    await expect(frame).toHaveAttribute('src', embeddedChatUrl(a1));
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(1);
+    // The tile whose chat it is: 카, as a choice the wall keeps; no other.
+    await expect(chatA1).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('[data-testid="tile-chat"][aria-pressed="true"]')).toHaveCount(1);
+    await expect.poll(() => chatRequests.length).toBe(1);
+
+    // Pressed again, the same frame stays and loads nothing: a half-written message survives.
+    await frame.evaluate((element) => Object.assign(element, { untouched: true }));
+    await chatA1.click();
+    await page.waitForTimeout(500);
+    expect(await frame.evaluate((element) => (element as HTMLIFrameElement & { untouched?: boolean }).untouched)).toBe(true);
+    await expect(frame).toHaveAttribute('src', embeddedChatUrl(a1));
+    expect(chatRequests).toHaveLength(1);
+
+    // Another tile: its chat, in a frame of its own.
+    await chatA3.click();
+    await expect(sidebar).toHaveAttribute('aria-label', 'A3 채팅');
+    await expect(frame).toHaveAttribute('src', embeddedChatUrl(a3));
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(1);
+    expect(await frame.evaluate((element) => (element as HTMLIFrameElement & { untouched?: boolean }).untouched)).toBeUndefined();
+    await expect(chatA3).toHaveAttribute('aria-pressed', 'true');
+    await expect(chatA1).toHaveAttribute('aria-pressed', 'false');
+
+    // 로그인하고 채팅, always there with the line over the chat pointing to it: Google's sign-in
+    // in a window of its own, arriving at YouTube's pop-out chat.
+    await expect(page.getByTestId('chat-sidebar-hint')).toHaveText(
+      '입력란이 없거나 채팅 안의 로그인 버튼이 반응하지 않으면 ‘로그인하고 채팅’을 누르세요.',
+    );
+    const signInLink = page.getByRole('link', { name: '유튜브에 로그인하고 A3 채팅을 새 창에서 열기' });
+    await expect(signInLink).toHaveText('로그인하고 채팅');
+    await expect(signInLink).toHaveAttribute('href', chatSignInUrl(a3));
+    await expect(signInLink).toHaveAttribute('target', '_blank');
+    await expect(signInLink).toHaveAttribute('rel', /\bnoopener\b/);
+    await signInLink.click();
+    expect(await openCalls()).toEqual([[chatSignInUrl(a3), `taiko-chat-${a3}`, 'popup=yes,width=420,height=720']]);
+    await page.waitForTimeout(500);
+    expect(context.pages()).toHaveLength(1);
+    await expect(sidebar).toBeVisible();
+
+    // Closed: no frame left, and nothing marked.
+    await page.getByTestId('chat-sidebar-close').click();
+    await expect(sidebar).toHaveCount(0);
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
+    await expect(page.locator('.app--chat')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tile-chat"][aria-pressed="true"]')).toHaveCount(0);
+  });
+
+  test('loads the chat once more when the viewer comes back from signing in, and only once', async ({ page }) => {
+    await recordWindowOpen(page, 'window');
+    const chatRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/live_chat?')) chatRequests.push(request.url());
+    });
+    await page.goto('/?venue=taikolabs');
+    const a1 = await liveVideoId(page, 'taikolabs', 'a1');
+    const frame = page.getByTestId('chat-sidebar-frame');
+    const mark = () => frame.evaluate((element) => Object.assign(element, { untouched: true }));
+    const untouched = () => frame.evaluate((element) => (element as HTMLIFrameElement & { untouched?: boolean }).untouched === true);
+    // What a popup in front and the viewer coming back look like to this window.
+    const leaveAndComeBack = () =>
+      page.evaluate(() => {
+        window.dispatchEvent(new Event('blur'));
+        window.dispatchEvent(new Event('focus'));
+      });
+
+    await page.getByRole('button', { name: 'A1 유튜브 채팅 열기' }).click();
+    await expect.poll(() => chatRequests.length).toBe(1);
+    await mark();
+
+    // Leaving and coming back without asking for the sign-in reloads nothing.
+    await leaveAndComeBack();
+    await page.waitForTimeout(300);
+    expect(await untouched()).toBe(true);
+
+    await page.getByTestId('chat-sidebar-signin').click();
+    await page.waitForTimeout(300);
+    // Still away: nothing yet.
+    expect(await untouched()).toBe(true);
+    await leaveAndComeBack();
+    await expect.poll(untouched).toBe(false);
+    await expect(frame).toHaveAttribute('src', embeddedChatUrl(a1));
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(1);
+    await expect.poll(() => chatRequests.length).toBe(2);
+
+    // Once: coming back again loads nothing more.
+    await mark();
+    await leaveAndComeBack();
+    await leaveAndComeBack();
+    await page.waitForTimeout(300);
+    expect(await untouched()).toBe(true);
+    expect(chatRequests).toHaveLength(2);
+  });
+
+  test("closes when its broadcast ends, and when another venue's wall comes up", async ({ page }) => {
+    const stations = await stationsOf(page, 'taikolabs');
+    await withOnAir(page, 'taikolabs', stations.map((station) => station.id));
+    await page.goto('/?venue=taikolabs');
+    const sidebar = page.getByTestId('chat-sidebar');
+    const tiles = page.locator('.grid-view .tile');
+    await expect(tiles).toHaveCount(stations.length);
+
+    await page.getByRole('button', { name: `${stations[0].label} 유튜브 채팅 열기` }).click();
+    await expect(sidebar).toBeVisible();
+    // Another tile's broadcast ending leaves it be.
+    await withOnAir(page, 'taikolabs', stations.slice(0, -1).map((station) => station.id));
+    await page.getByRole('button', { name: '새로고침' }).click();
+    await expect(tiles).toHaveCount(stations.length - 1);
+    await expect(sidebar).toBeVisible();
+    // Its own ending closes it, rather than leave an empty chat.
+    await withOnAir(page, 'taikolabs', stations.slice(1, -1).map((station) => station.id));
+    await page.getByRole('button', { name: '새로고침' }).click();
+    await expect(tiles).toHaveCount(stations.length - 2);
+    await expect(sidebar).toHaveCount(0);
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
+
+    // Another venue: the broadcast is off the wall, so the chat goes - and stays gone on the
+    // way back.
+    await page.getByRole('button', { name: `${stations[1].label} 유튜브 채팅 열기` }).click();
+    await expect(sidebar).toBeVisible();
+    const tabs = page.locator('.venue-tab');
+    expect(await tabs.count()).toBeGreaterThan(1);
+    await tabs.nth(1).click();
+    await expect(sidebar).toHaveCount(0);
+    await tabs.nth(0).click();
+    await expect(tiles.first()).toBeVisible();
+    await expect(sidebar).toHaveCount(0);
+  });
+
+  test('opens on a cabinet the settings do not list too, and closes when a view without it comes up', async ({ page }) => {
+    await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2');
+    await page.goto('/?venue=taikolabs&view=all-grid');
+    const sidebar = page.getByTestId('chat-sidebar');
+
+    await page.getByRole('button', { name: 'THE BASE 2 유튜브 채팅 열기' }).click();
+    await expect(sidebar).toHaveAttribute('aria-label', 'THE BASE 2 채팅');
+    await expect(page.getByTestId('chat-sidebar-frame')).toHaveAttribute('src', embeddedChatUrl('mock-taikolabs-base2'));
+
+    // A zone's view leaves the unlisted cabinet out, so its chat goes with it.
+    await page.getByRole('button', { name: 'THE BASE', exact: true }).click();
+    await expect(page.locator('.grid-view .tile').first()).toBeVisible();
+    await expect(sidebar).toHaveCount(0);
+    await page.getByRole('button', { name: '통합' }).click();
+    await expect(page.getByRole('button', { name: 'THE BASE 2 유튜브 채팅 열기' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(sidebar).toHaveCount(0);
+  });
+
+  test('closes when the window becomes too narrow for it, and the tile chat turns back into the popup link', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/?venue=taikolabs');
+    const a1 = await liveVideoId(page, 'taikolabs', 'a1');
+    await page.getByRole('button', { name: 'A1 유튜브 채팅 열기' }).click();
+    await expect(page.getByTestId('chat-sidebar')).toBeVisible();
+
+    await page.setViewportSize(NARROW_DESKTOP);
+    await expect(page.getByTestId('chat-sidebar')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'A1 유튜브 채팅 열기' })).toHaveAttribute('href', popoutChatUrl(a1));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.getByRole('button', { name: 'A1 유튜브 채팅 열기' })).toBeVisible();
+    await expect(page.getByTestId('chat-sidebar')).toHaveCount(0);
+  });
+
+  for (const [width, height] of [
+    [1440, 900],
+    [1280, 720],
+    [1920, 1080],
+    [1024, 768],
+  ] as const) {
+    for (const size of [3, 4]) {
+      test(`${width}×${height} ${size}×${size} with the sidebar open: tiles keep clear of it, nothing scrolls sideways, the longest row fits`, async ({
+        page,
+      }) => {
+        // Two walls measured in one test; WebKit under a full parallel run needed past 30s.
+        test.setTimeout(60_000);
+        await page.setViewportSize({ width, height });
+        const stations = await stationsOf(page, 'taikolabs');
+        await withOnAir(page, 'taikolabs', stations.map((station) => station.id));
+        await page.goto('/?venue=taikolabs');
+        await page.getByRole('button', { name: `${size}×${size}` }).click();
+        await expect.poll(() => columnsOf(page)).toBe(size);
+        // Past the glide into the new layout, so the boxes are where the tiles rest.
+        await page.waitForTimeout(500);
+        const closed = await tileBoxes(page);
+        await withLongestRow(page);
+        const closedRows = await rowFits(page, { leastFrom: DESKTOP_LEAST_LABEL_FROM });
+        await page.getByRole('button', { name: `${stations[0].label} 유튜브 채팅 열기` }).click();
+        await expect(page.getByTestId('chat-sidebar')).toBeVisible();
+        await remeasureRows(page);
+        const open = await tileBoxes(page);
+        const sidebar = (await page.getByTestId('chat-sidebar').boundingBox())!;
+
+        expect(sidebar.x + sidebar.width).toBeCloseTo(width, 0);
+        expect(Math.max(...open.map((box) => box.right))).toBeLessThanOrEqual(sidebar.x);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        expect(
+          await page.locator('.stage__main').evaluate((element) => element.scrollWidth - element.clientWidth),
+        ).toBeLessThanOrEqual(0);
+        // The sidebar spans the wall's height, between the marquee and the credit strip.
+        const stage = (await page.locator('.stage').boundingBox())!;
+        expect(sidebar.y).toBeCloseTo(stage.y, 0);
+        expect(sidebar.height).toBeCloseTo(stage.height, 0);
+        // Up to 1920×1080 the wall is sized by the window's height, with room on either side
+        // that the sidebar takes: the tiles keep their size. A 1024px window is the narrowest
+        // with a sidebar, and its 3×3 tiles shrink but stay at least 188px.
+        if (width >= 1280) {
+          expect(open.map((box) => box.width)).toEqual(closed.map((box) => box.width));
+        } else if (size === 3) {
+          expect(Math.min(...open.map((box) => box.width))).toBeGreaterThanOrEqual(DESKTOP_LEAST_LABEL_FROM);
+        }
+
+        // The longest row fits as it did with the sidebar closed. On a 1280×720 4×4 wall the
+        // tiles are 135px, under the 184px the row was ever made for, and it spills there with
+        // or without the sidebar; every other wall here has room for it.
+        expect(await rowFits(page, { leastFrom: DESKTOP_LEAST_LABEL_FROM })).toEqual(closedRows);
+        if (!(width === 1280 && size === 4)) {
+          expect(closedRows).toEqual([]);
+        }
+      });
+    }
+  }
 });
 
 test.describe('phone', () => {
@@ -253,8 +515,27 @@ test.describe('phone', () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
     }
 
-    // A link on a phone: nothing asks for a popup.
+    // A link on a phone: nothing asks for a popup, and nothing opens beside the wall.
     expect(await openCalls()).toEqual([]);
+    await expect(page.getByTestId('chat-sidebar')).toHaveCount(0);
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
+  });
+
+  test("a tile's chat opens the broadcast's page in a new tab, and no sidebar", async ({ page, context }) => {
+    await answerYouTube(context);
+    for (const size of PHONE_SIZES) {
+      await page.setViewportSize(size);
+      await page.goto('/?venue=taikolabs');
+      const chat = page.getByRole('link', { name: /유튜브 채팅 열기/ }).first();
+      const href = await chat.getAttribute('href');
+      const opened = context.waitForEvent('page');
+      await chat.click();
+      const tab = await opened;
+      await expect(tab).toHaveURL(href!);
+      await tab.close();
+      await expect(page.getByTestId('chat-sidebar')).toHaveCount(0);
+      await expect(page.locator('.app--chat')).toHaveCount(0);
+    }
   });
 
   test("a phone held upright keeps only its buttons' icons, sideways their words, and the label its full name", async ({
@@ -482,9 +763,10 @@ test.describe('the row under the picture', () => {
     expect(await short.count()).toBeGreaterThan(5);
     for (const tile of await short.all()) {
       await expect(tile.locator('.tile__row')).toHaveAttribute('data-fit', 'words');
-      await expect(tile.getByRole('link', { name: /유튜브 채팅 열기/ }).locator('.arcade-button__text')).toBeVisible();
-      await expect(tile.locator('button.tile__control .arcade-button__text')).toHaveText('음소거');
-      await expect(tile.locator('button.tile__control .arcade-button__text')).toBeVisible();
+      await expect(tile.getByTestId('tile-chat').locator('.arcade-button__text')).toBeVisible();
+      const sound = tile.locator('button.tile__control:not(.tile__control--chat) .arcade-button__text');
+      await expect(sound).toHaveText('음소거');
+      await expect(sound).toBeVisible();
     }
     expect(await rowFits(page)).toEqual([]);
   });
@@ -557,7 +839,7 @@ test.describe('the row under the picture', () => {
     await expect(tile).toBeVisible();
     // Nothing plays offline, so the sound button is disabled and hidden: stand it up as a
     // chosen one, which is how it looks once its tile has the sound.
-    const sound = tile.locator('button.tile__control');
+    const sound = tile.locator('button.tile__control:not(.tile__control--chat)');
     await sound.evaluate((button) => {
       button.removeAttribute('disabled');
       button.setAttribute('aria-pressed', 'true');
@@ -880,6 +1162,16 @@ test.describe('the viewer count', () => {
 
 type UnlistedPhase = 'unlisted' | 'over' | 'registered';
 
+/** Every tile's box on the wall, in order. */
+function tileBoxes(page: Page): Promise<{ left: number; right: number; width: number; height: number }[]> {
+  return page.locator('.grid-view .tile').evaluateAll((tiles) =>
+    tiles.map((tile) => {
+      const box = tile.getBoundingClientRect();
+      return { left: box.left, right: box.right, width: box.width, height: box.height };
+    }),
+  );
+}
+
 function columnsOf(page: Page): Promise<number> {
   return page.locator('.grid-view').evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
 }
@@ -1061,6 +1353,22 @@ const PHONE_SIZES = [
 function popoutChatUrl(videoId: string): string {
   return `https://www.youtube.com/live_chat?is_popout=1&v=${videoId}`;
 }
+
+/** The same for lib/youtube.ts's chatSignInUrl: measured to ask for the e-mail address signed out. */
+function chatSignInUrl(videoId: string): string {
+  return (
+    'https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=' +
+    `https%3A%2F%2Fwww.youtube.com%2Fsignin%3Faction_handle_signin%3Dtrue%26app%3Ddesktop%26next%3D%252Flive_chat%253Fis_popout%253D1%2526v%253D${videoId}`
+  );
+}
+
+/** The same for lib/chatSidebar.ts: the chat framed beside the wall, on the test server's host. */
+function embeddedChatUrl(videoId: string): string {
+  return `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=localhost&dark_theme=1`;
+}
+
+/** A computer's window just too narrow for the chat sidebar (lib/chatSidebar.ts: 1024px). */
+const NARROW_DESKTOP = { width: 1000, height: 800 };
 
 type WindowOpenCall = [url: string, target: string, features: string];
 

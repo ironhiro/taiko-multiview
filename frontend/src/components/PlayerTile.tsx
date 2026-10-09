@@ -8,11 +8,11 @@ import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib
 import { compactPlayerBudget } from '../lib/playerBudget';
 import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
 import { joinsPlaybackSlots, nextPlayerAction } from '../lib/tilePlayer';
-import { isDesktopShell } from '../lib/shell';
 import { useCoveredTop } from '../lib/stickyCover';
-import { ArcadeLink } from './ArcadeButton';
+import { ArcadeButton } from './ArcadeButton';
+import { ChatLink } from './ChatLink';
 import { ChatIcon, TileLabelRow } from './TileLabelRow';
-import { loadYouTubeApi, openChatWindow, playerOrigin, PlayerState, popoutChatUrl, type YTPlayer } from '../lib/youtube';
+import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
   label: string;
@@ -51,6 +51,11 @@ interface PlayerTileProps {
    * already signed in.
    */
   opensChatInTab?: boolean;
+  /**
+   * Open the chat in the sidebar beside the wall instead (components/ChatSidebar): a wide
+   * browser window on a computer. `isOpen` while the sidebar shows this tile's broadcast.
+   */
+  chatSidebar?: { isOpen: boolean; onOpen: () => void };
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
   idle: IdleMessage;
 }
@@ -66,6 +71,7 @@ export function PlayerTile({
   pausesWhenAway,
   shielded,
   opensChatInTab,
+  chatSidebar,
   idle,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
@@ -409,7 +415,22 @@ export function PlayerTile({
         onToggleSound={onRequestAudio}
         // The chat has nothing to do with the embed, so a tile that cannot play still
         // offers it; only a cabinet with no broadcast has no chat.
-        chat={stream && <ChatLink label={label} stream={stream} inTab={Boolean(opensChatInTab)} />}
+        chat={
+          stream &&
+          (chatSidebar ? (
+            <SidebarChatButton label={label} isOpen={chatSidebar.isOpen} onOpen={chatSidebar.onOpen} />
+          ) : (
+            <ChatLink
+              className="tile__control tile__control--chat"
+              label="채팅"
+              icon={<ChatIcon />}
+              name={`${label} 유튜브 채팅 열기`}
+              stream={stream}
+              inTab={Boolean(opensChatInTab)}
+              data-testid="tile-chat"
+            />
+          ))
+        }
       />
     </div>
   );
@@ -774,37 +795,21 @@ function ThumbnailPoster({
 }
 
 /**
- * The broadcast's YouTube chat, in a youtube.com window of its own: that is where the
- * viewer's YouTube sign-in reaches, so the chat can be written to (the chat framed in the
- * wall could only be read, and was removed).
- *
- * A link rather than a button, so that whatever stops the popup still leaves a way there:
- * its own new tab. On a computer the click opens a popup instead and keeps the link from
- * following; a blocked popup lets the link go ahead. The desktop shell hands both kinds of
- * new window to the default browser and reports each as blocked, so there the link goes on
- * its own - opening a popup first would open the chat twice.
+ * The tile's 채팅 when the chat opens beside the wall: a button, chosen (카) while the
+ * sidebar shows this tile's chat - unlike the link that leaves the page, the open sidebar is
+ * a choice the wall keeps. Pressing it again leaves the chat as it is: loading it afresh
+ * would lose a message half written. The sidebar's own button closes it.
  */
-function ChatLink({ label, stream, inTab }: { label: string; stream: LiveStream; inTab: boolean }) {
-  const openPopup = (event: React.MouseEvent<HTMLAnchorElement>) => {
-    // A modified or middle click asked for a tab or a window of the browser's own kind.
-    if (isDesktopShell || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-      return;
-    }
-    if (openChatWindow(stream.videoId)) {
-      event.preventDefault();
-    }
-  };
-
+function SidebarChatButton({ label, isOpen, onOpen }: { label: string; isOpen: boolean; onOpen: () => void }) {
   return (
-    <ArcadeLink
+    <ArcadeButton
       className="tile__control tile__control--chat"
       label="채팅"
       icon={<ChatIcon />}
-      href={inTab ? stream.watchUrl : popoutChatUrl(stream.videoId)}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={inTab ? undefined : openPopup}
+      chosen={isOpen}
+      onClick={onOpen}
       aria-label={`${label} 유튜브 채팅 열기`}
+      data-testid="tile-chat"
     />
   );
 }

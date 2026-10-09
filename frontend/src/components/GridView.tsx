@@ -15,6 +15,13 @@ interface GridViewProps {
   /** The chosen N×N layout; fewer columns are used when fewer cabinets are on air. */
   gridSize: number;
   lazy?: boolean;
+  /**
+   * Opens a broadcast's chat in the sidebar beside the wall; left out where the chat opens
+   * elsewhere (lib/chatSidebar.ts, chatPlacement).
+   */
+  onOpenChat?: (tileId: string, videoId: string) => void;
+  /** The tile whose chat the sidebar shows, if any. */
+  chatTileId?: string | null;
   idle: IdleMessage;
 }
 
@@ -31,6 +38,8 @@ export function GridView({
   onRequestAudio,
   gridSize,
   lazy,
+  onOpenChat,
+  chatTileId,
   idle,
 }: GridViewProps) {
   const wall = splitWall(tiles, Boolean(idle.loading));
@@ -58,12 +67,21 @@ export function GridView({
           shielded={lazy}
           pausesWhenAway={lazy}
           opensChatInTab={lazy}
+          chatSidebar={
+            onOpenChat && tile.stream
+              ? { isOpen: tile.id === chatTileId, onOpen: openChatOf(tile.id, tile.stream.videoId, onOpenChat) }
+              : undefined
+          }
           idle={idle}
         />
       ))}
       <IdleStrip cabinets={wall.idle.map((tile) => tile.label)} />
     </div>
   );
+}
+
+function openChatOf(tileId: string, videoId: string, onOpenChat: (tileId: string, videoId: string) => void) {
+  return () => onOpenChat(tileId, videoId);
 }
 
 const GLIDE_MS = 320;
