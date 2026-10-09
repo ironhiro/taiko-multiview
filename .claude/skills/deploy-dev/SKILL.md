@@ -18,8 +18,9 @@ description: "태고 멀티뷰를 Azure Container Apps 개발 서버(taiko-multi
 1. 태그는 커밋 해시: `TAG=$(git rev-parse --short HEAD)`
 2. **이미지 빌드·push는 사용자가 실행한다.** 공개 레지스트리 push는 이 세션의 권한 검사에 막힌다. 사용자에게 정확한 명령을 준다:
    ```
-   ! docker buildx build --platform linux/amd64 -t ghcr.io/ironhiro/taiko-multiview:<TAG> --push .
+   ! docker buildx build --platform linux/amd64 --build-arg BUILD_VERSION=<TAG> -t ghcr.io/ironhiro/taiko-multiview:<TAG> --push .
    ```
+   `--build-arg BUILD_VERSION`을 빠뜨리지 않는다. 페이지가 오류 보고에 이 값을 빌드 버전으로 실어 보내므로, 없으면 로그에서 모든 빌드가 `unknown`이 된다(CI 배포는 자동으로 넣음).
 3. push가 끝나면 반영(이건 직접 실행 가능):
    ```bash
    az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview --image ghcr.io/ironhiro/taiko-multiview:<TAG> \
@@ -38,7 +39,11 @@ description: "태고 멀티뷰를 Azure Container Apps 개발 서버(taiko-multi
 - `/api/health`: environment가 `Staging`, youTubeMode `Api`, hasApiKey `true`
 - 보안 헤더: `curl -sI <주소>/`에서 content-security-policy, strict-transport-security, x-content-type-options, x-frame-options, referrer-policy가 있고 `server` 헤더가 없음
 - 요청 제한: `POST /api/live/refresh` 7번째부터 429. `X-Forwarded-For`를 위조해도 429(인그레스가 붙인 마지막 IP를 쓰므로)
-- `/api/diagnostics`는 404(Staging에서 꺼짐)
+- `/api/diagnostics`: `Diagnostics__ClientReports` 환경 변수에 따라 다름. 확인은 `az containerapp show -n taiko-multiview-dev -g rg-taiko-multiview --query "properties.template.containers[0].env[].name"`
+  - 꺼짐(변수 없음): `GET`·`POST` 모두 404
+  - 켜짐: `GET` → `{"infoSampleRate":<Diagnostics__InfoSampleRate, 기본 0>}`. 같은 IP로 `POST`(`{"kind":"js-error"}`) 31번째부터 429, `X-Forwarded-For`를 위조해도 429. 본문 4KB 초과 413, 표에 없는 kind는 204(로그에는 개수만)
+  - **켜는 것은 새 이미지가 올라간 뒤에만**(2026-10 이후 이미지). 옛 이미지에 켜면 제한이 약한 옛 엔드포인트가 열린다. 켜기·끄기 명령과 KQL은 README "프론트엔드 오류 수집"
+- 로그 형식: Staging·Production 콘솔 로그는 한 줄에 JSON 하나(`{"EventId":...,"LogLevel":...,"Category":...,"Message":...,"State":{...}}`). `az containerapp logs show`나 Log Analytics의 `Log_s`가 `info: ...` 두 줄 형식이면 옛 이미지다
 - 실제 사이트를 Chromium·WebKit으로 열어 CSP 위반 콘솔 메시지가 없고 플레이어가 뜨는지(mobile-verification의 shoot.mjs `--url <주소>`)
 
 ## 하지 않는 것
