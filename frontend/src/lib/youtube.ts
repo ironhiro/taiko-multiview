@@ -10,6 +10,11 @@ export interface YTPlayer {
   destroy(): void;
   mute(): void;
   unMute(): void;
+  /**
+   * Whether the player is muted now - including by the mute button in its own controls, for
+   * which the API sends no event.
+   */
+  isMuted(): boolean;
   setVolume(volume: number): void;
   playVideo(): void;
   pauseVideo(): void;

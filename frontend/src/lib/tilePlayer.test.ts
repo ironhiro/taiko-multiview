@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { applyTileAudio, joinsPlaybackSlots, nextPlayerAction, startReadyPlayer, type TilePlayerState } from './tilePlayer';
+import {
+  applyTileAudio,
+  joinsPlaybackSlots,
+  nextPlayerAction,
+  SOUND_SETTLE_MS,
+  soundSetInPlayer,
+  soundTileAfterPlayer,
+  startReadyPlayer,
+  type TilePlayerState,
+} from './tilePlayer';
 
 const phoneTile: TilePlayerState = {
   lazy: true,
@@ -140,5 +149,61 @@ describe('startReadyPlayer', () => {
     const { calls, player } = recorder();
     startReadyPlayer(player, { shouldPlay: false, holdsSound: true });
     expect(calls).toEqual(['mute', 'pause', 'unMute', 'volume 100']);
+  });
+});
+
+describe('soundSetInPlayer', () => {
+  const settled = SOUND_SETTLE_MS;
+
+  it('hears nothing while the player does what the tile last sent', () => {
+    expect(soundSetInPlayer({ holdsSound: true, at: 0 }, false, settled)).toBeNull();
+    expect(soundSetInPlayer({ holdsSound: false, at: 0 }, true, settled)).toBeNull();
+  });
+
+  it('takes the mute button in the frame of the tile holding the sound as the sound turned off', () => {
+    expect(soundSetInPlayer({ holdsSound: true, at: 0 }, true, settled)).toBe(false);
+  });
+
+  it('takes unmuting a muted tile in its frame as the sound taken to that tile', () => {
+    expect(soundSetInPlayer({ holdsSound: false, at: 0 }, false, settled)).toBe(true);
+  });
+
+  // The player's answer trails the tile's own mute or unMute: the old value read straight after
+  // a click on the tile's sound button would take the sound back off the tile just chosen.
+  it('does not believe the player until a change the tile made has had time to settle', () => {
+    expect(soundSetInPlayer({ holdsSound: true, at: 1_000 }, true, 1_000 + settled - 1)).toBeNull();
+    expect(soundSetInPlayer({ holdsSound: false, at: 1_000 }, false, 1_000 + settled - 1)).toBeNull();
+    expect(soundSetInPlayer({ holdsSound: true, at: 1_000 }, true, 1_000 + settled)).toBe(false);
+  });
+
+  it('hears nothing from a player the tile has not set yet', () => {
+    expect(soundSetInPlayer(null, false, 60_000)).toBeNull();
+  });
+
+  // A browser that holds the sound back leaves the player muted. Its answer is taken once and
+  // recorded as sent, so the next reading agrees and the button does not flip back and forth.
+  it('takes a refused unmute once, and then agrees with it', () => {
+    const sent = { holdsSound: true, at: 0 };
+    const heard = soundSetInPlayer(sent, true, settled);
+    expect(heard).toBe(false);
+    const recorded = { holdsSound: heard!, at: settled };
+    expect(soundSetInPlayer(recorded, true, settled + 500)).toBeNull();
+    expect(soundSetInPlayer(recorded, true, settled + 5_000)).toBeNull();
+  });
+});
+
+describe('soundTileAfterPlayer', () => {
+  it('moves the sound to a tile unmuted in its own player', () => {
+    expect(soundTileAfterPlayer('a', 'b', true)).toBe('b');
+    expect(soundTileAfterPlayer(null, 'b', true)).toBe('b');
+  });
+
+  it('leaves no tile with sound when the tile holding it is muted in its player', () => {
+    expect(soundTileAfterPlayer('a', 'a', false)).toBeNull();
+  });
+
+  it('keeps the sound where it is when some other tile is muted', () => {
+    expect(soundTileAfterPlayer('a', 'b', false)).toBe('a');
+    expect(soundTileAfterPlayer(null, 'b', false)).toBeNull();
   });
 });
