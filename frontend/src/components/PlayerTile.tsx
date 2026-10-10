@@ -7,7 +7,14 @@ import { usePageAway } from '../lib/pageAway';
 import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib/playbackSlots';
 import { compactPlayerBudget } from '../lib/playerBudget';
 import { scheduleEmbedFailure } from '../lib/embedFailureDrill';
-import { applyTileAudio, joinsPlaybackSlots, nextPlayerAction, startReadyPlayer } from '../lib/tilePlayer';
+import {
+  applyTileAudio,
+  joinsPlaybackSlots,
+  nextPlayerAction,
+  soundSetInPlayer,
+  startReadyPlayer,
+  type SoundSent,
+} from '../lib/tilePlayer';
 import { useCoveredTop } from '../lib/stickyCover';
 import { ArcadeButton } from './ArcadeButton';
 import { ChatLink } from './ChatLink';
@@ -25,6 +32,12 @@ interface PlayerTileProps {
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
   onRequestAudio: () => void;
+  /**
+   * The viewer muted or unmuted this tile's player with YouTube's own controls: `hasSound`
+   * is what the player does now. The tile holding the sound follows it, so the tile's button
+   * and the other tiles' players agree with what the frame plays (lib/tilePlayer.ts).
+   */
+  onPlayerSound: (hasSound: boolean) => void;
   /** Rendered small inside the floor plan, larger in the plain grid. */
   compact?: boolean;
   /**
@@ -66,6 +79,7 @@ export function PlayerTile({
   stream,
   isAudioActive,
   onRequestAudio,
+  onPlayerSound,
   compact,
   lazy,
   pausesWhenAway,
@@ -111,6 +125,11 @@ export function PlayerTile({
   shouldPlayRef.current = shouldPlay;
   const holdsSoundRef = useRef(isAudioActive);
   holdsSoundRef.current = isAudioActive;
+  const onPlayerSoundRef = useRef(onPlayerSound);
+  onPlayerSoundRef.current = onPlayerSound;
+  // The sound this tile last gave its player, which the player's own controls are told apart
+  // from. Belongs to one player: a new one has been told nothing until it is ready.
+  const soundSentRef = useRef<SoundSent | null>(null);
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
@@ -226,6 +245,8 @@ export function PlayerTile({
     let disposed = false;
     let watchdog: Watchdog | undefined;
     let stopResync: (() => void) | undefined;
+    let stopSoundWatch: (() => void) | undefined;
+    soundSentRef.current = null;
     const where = { station: label, videoId: mountedId };
     setIsPictureUp(false);
 
@@ -276,6 +297,11 @@ export function PlayerTile({
               // loaded; and the sound back if this tile already holds it - chosen before this
               // player was built, the effect below found no player to give it to.
               startReadyPlayer(event.target, { shouldPlay: shouldPlayRef.current, holdsSound: holdsSoundRef.current });
+              soundSentRef.current = { holdsSound: holdsSoundRef.current, at: Date.now() };
+              // A shielded tile's player has no controls of its own to change the sound with.
+              if (!shielded) {
+                stopSoundWatch = watchPlayerSound(event.target, soundSentRef, onPlayerSoundRef);
+              }
               watchdog = watchPlayback(event.target, where, isLiveRef, startedAtRef, shouldPlayRef);
               stopResync = resyncWhenShownAgain(event.target, tileRef.current, where, startedAtRef, shouldPlayRef);
             },
@@ -303,6 +329,7 @@ export function PlayerTile({
       // The timers go at once: a tile that has lost its player must not keep polling it.
       watchdog?.stop();
       stopResync?.();
+      stopSoundWatch?.();
 
       const player = playerRef.current;
       playerRef.current = null;
@@ -334,14 +361,17 @@ export function PlayerTile({
     };
   }, [mountedId, failed]);
 
-  // A player still loading takes its sound when ready (startReadyPlayer above).
+  // A player still loading takes its sound when ready (startReadyPlayer above). A player whose
+  // sound the viewer set in its own controls already has what the tile now asks for, and is
+  // left alone: applying it again would put the volume back to full.
   useEffect(() => {
     const player = playerRef.current;
-    if (!player) {
+    if (!player || soundSentRef.current?.holdsSound === isAudioActive) {
       return;
     }
 
     applyTileAudio(player, isAudioActive);
+    soundSentRef.current = { holdsSound: isAudioActive, at: Date.now() };
   }, [isAudioActive, mountedId]);
 
   // A tap on a lazy tile's thumbnail asks for a slot, taking one from the least visible
@@ -652,6 +682,44 @@ function watchPlayback(
 
   const timer = window.setInterval(tick, WATCH_INTERVAL_MS);
   return { check: tick, stop: () => window.clearInterval(timer) };
+}
+
+/**
+ * How often a player is asked whether it is muted. The answer is cached in the page, so the
+ * question costs nothing to speak of; often enough that the tile's button follows a click in
+ * the frame well within a second.
+ */
+const SOUND_WATCH_INTERVAL_MS = 500;
+
+/**
+ * Follows the mute button in a player's own controls, which the IFrame API sends no event for.
+ * What the player says is weighed against what the tile last sent it (lib/tilePlayer.ts); a
+ * change the viewer made is recorded as sent - it is what the player does now - and handed up,
+ * so the tile holding the sound moves with it.
+ */
+function watchPlayerSound(
+  player: YTPlayer,
+  soundSentRef: { current: SoundSent | null },
+  onPlayerSoundRef: { current: (hasSound: boolean) => void },
+): () => void {
+  const timer = window.setInterval(() => {
+    let muted: boolean;
+    try {
+      muted = player.isMuted();
+    } catch {
+      return; // Torn down between ticks.
+    }
+
+    const now = Date.now();
+    const hasSound = soundSetInPlayer(soundSentRef.current, muted, now);
+    if (hasSound === null) {
+      return;
+    }
+    soundSentRef.current = { holdsSound: hasSound, at: now };
+    onPlayerSoundRef.current(hasSound);
+  }, SOUND_WATCH_INTERVAL_MS);
+
+  return () => window.clearInterval(timer);
 }
 
 /** Normal live latency is well under this; anything more was built up while hidden. */

@@ -137,3 +137,50 @@ export function startReadyPlayer(
     applyTileAudio(player, true);
   }
 }
+
+/** The sound a tile last gave its player, and when: what the player should be doing now. */
+export interface SoundSent {
+  holdsSound: boolean;
+  at: number;
+}
+
+/**
+ * How long after the tile sets a player's sound the player's own report is not believed. The
+ * IFrame API answers isMuted() from the last state the frame posted back, which follows a
+ * mute or unMute within about 100ms in Chrome; a second is room enough for a busy frame, and
+ * still short next to a viewer's next click.
+ */
+export const SOUND_SETTLE_MS = 1_000;
+
+/**
+ * The sound a viewer gave a player with YouTube's own controls - the mute button in the frame
+ * - or null when the player is doing what the tile last told it. The IFrame API sends no event
+ * for this, so the tile asks isMuted() every so often and brings the answer here.
+ *
+ * Only a difference from what the tile itself last sent counts, and only once that has had
+ * time to settle: a tile's own mute or unMute is not in the player's answer at once, and
+ * reading the old value as the viewer's would take the sound straight back off a tile just
+ * chosen. A player that refuses the sound (autoplay held back) is not toggled either: its
+ * answer is taken once, the caller records it as sent, and the next reading agrees with it.
+ */
+export function soundSetInPlayer(sent: SoundSent | null, muted: boolean, now: number): boolean | null {
+  // Nothing sent yet: the player is still starting, muted for autoplay's sake.
+  if (!sent || now - sent.at < SOUND_SETTLE_MS) {
+    return null;
+  }
+  const hasSound = !muted;
+  return hasSound === sent.holdsSound ? null : hasSound;
+}
+
+/**
+ * Which tile holds the sound after a viewer sets it in a tile's own player. Unmuting a tile
+ * takes the sound to it - the tile that had it is muted by the usual path, so only one plays.
+ * Muting the tile that holds it leaves no tile with sound. Muting any other tile changes
+ * nothing: it should already have been muted.
+ */
+export function soundTileAfterPlayer(current: string | null, tileId: string, hasSound: boolean): string | null {
+  if (hasSound) {
+    return tileId;
+  }
+  return current === tileId ? null : current;
+}

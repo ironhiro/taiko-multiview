@@ -11,6 +11,7 @@ import { liveCountOf } from './lib/venueRow';
 import { wallTilesFor } from './lib/wallTiles';
 import { chatPlacement, chatTileOf, useWideEnoughForChatSidebar, type OpenChat } from './lib/chatSidebar';
 import { isDesktopShell } from './lib/shell';
+import { soundTileAfterPlayer } from './lib/tilePlayer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
@@ -390,6 +391,13 @@ export default function App() {
     setAudioTileId((current) => (current === tileId ? null : tileId));
   }, []);
 
+  // Not a toggle like the button above: the player says what it does now, and the sound
+  // follows it - unmuting a tile in its frame takes the sound there, muting the tile that
+  // holds it leaves none (lib/tilePlayer.ts).
+  const handlePlayerSound = useCallback((tileId: string, hasSound: boolean) => {
+    setAudioTileId((current) => soundTileAfterPlayer(current, tileId, hasSound));
+  }, []);
+
   const handleManualRefresh = useCallback(async () => {
     // No venues yet: ask for them again first - refreshing the streams alone would still
     // leave nothing to show them in.
@@ -470,6 +478,7 @@ export default function App() {
               tiles={tiles}
               audioTileId={audioTileId}
               onRequestAudio={handleRequestAudio}
+              onPlayerSound={handlePlayerSound}
               gridSize={gridSize}
               lazy={isCompactDevice}
               onOpenChat={chatGoesInSidebar ? handleOpenChat : undefined}

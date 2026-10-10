@@ -12,6 +12,8 @@ interface GridViewProps {
   /** The id of the tile holding the sound. */
   audioTileId: string | null;
   onRequestAudio: (tileId: string) => void;
+  /** The viewer set a tile's sound in its player's own controls (PlayerTile). */
+  onPlayerSound: (tileId: string, hasSound: boolean) => void;
   /** The chosen N×N layout; fewer columns are used when fewer cabinets are on air. */
   gridSize: number;
   lazy?: boolean;
@@ -38,6 +40,7 @@ export function GridView({
   tiles,
   audioTileId,
   onRequestAudio,
+  onPlayerSound,
   gridSize,
   lazy,
   onOpenChat,
@@ -66,6 +69,7 @@ export function GridView({
           stream={tile.stream}
           isAudioActive={audioTileId === tile.id}
           onRequestAudio={() => onRequestAudio(tile.id)}
+          onPlayerSound={(hasSound) => onPlayerSound(tile.id, hasSound)}
           lazy={lazy}
           shielded={lazy}
           pausesWhenAway={lazy}
