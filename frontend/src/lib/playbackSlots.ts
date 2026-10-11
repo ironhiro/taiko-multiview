@@ -29,26 +29,38 @@ export const SIGHTING_THRESHOLDS = [0, 0.25, 0.5, 0.75, 1];
 /** Less than half on screen never starts on its own, as before the slots existed. */
 export const AUTOPLAY_MIN_RATIO = 0.5;
 
+/** The selected tile (lib/selectedTile.ts), as the slots know it. */
+export interface SelectedSlot {
+  key: string;
+  /** Tapped by the viewer rather than picked on opening the screen. */
+  tapped: boolean;
+}
+
 export interface SlotChoice {
   sightings: ReadonlyMap<string, Sighting>;
-  /** Tiles the viewer tapped, most recent first. */
-  taps: readonly string[];
+  selected: SelectedSlot | null;
   slots: number;
-  /** False on a data-saving connection: only tapped tiles play. */
+  /** False on a data-saving connection: only a tapped tile plays. */
   autoplay: boolean;
   /** Playing now; they keep their slot against an equally visible tile, so it does not flap. */
   playing: ReadonlySet<string>;
 }
 
 /**
- * Tapped tiles still on screen come first, newest tap first: a tap is the viewer saying
- * which one they want, so it takes a slot from the least visible tile playing. Then the
- * most visible tiles, by quarter of their area on screen.
+ * The selected tile comes first whenever any of it is on screen: it is the one the viewer
+ * follows, so it takes a slot from the least visible tile playing. It keeps that claim
+ * off screen too, and has it back on returning. Then the most visible tiles, by quarter
+ * of their area on screen.
+ *
+ * Without autoplay a selected tile plays only once tapped: opening a screen selects its
+ * first broadcast, and that alone must not spend a data-saving connection.
  */
-export function choosePlaying({ sightings, taps, slots, autoplay, playing }: SlotChoice): Set<string> {
+export function choosePlaying({ sightings, selected, slots, autoplay, playing }: SlotChoice): Set<string> {
   const ratioOf = (key: string) => sightings.get(key)?.ratio ?? 0;
-  const tapped = taps.filter((key) => ratioOf(key) > 0);
-  const chosen = [...new Set(tapped)];
+  const chosen: string[] = [];
+  if (selected && ratioOf(selected.key) > 0 && (autoplay || selected.tapped)) {
+    chosen.push(selected.key);
+  }
 
   if (autoplay) {
     const quarter = (key: string) => Math.floor(ratioOf(key) * 4 + 1e-6);
@@ -70,10 +82,15 @@ export function choosePlaying({ sightings, taps, slots, autoplay, playing }: Slo
 export interface PlaybackSlots {
   /** The tile can play; `onChange` hears whether it holds a slot from now on. */
   join: (key: string, onChange: (hasSlot: boolean) => void) => void;
-  /** How much of the tile is on screen now. Off screen also drops its tap. */
+  /** How much of the tile is on screen now. */
   sight: (key: string, sighting: Sighting) => void;
-  /** The viewer tapped the tile to play it. */
-  tap: (key: string, sighting?: Sighting) => void;
+  /**
+   * The tile is the selected one now, in place of any other. The sighting, when given,
+   * is the tile's latest, so a tap counts before its sighting has settled.
+   */
+  select: (key: string, options: { tapped: boolean; sighting?: Sighting }) => void;
+  /** The tile is no longer selected; nothing, if another has been selected since. */
+  deselect: (key: string) => void;
   /** The tile cannot play any more (unmounted, or no stream). */
   leave: (key: string) => void;
   /** Tiles holding a slot, for tests. */
@@ -88,7 +105,7 @@ export function createPlaybackSlots(options: {
 }): PlaybackSlots {
   const listeners = new Map<string, (hasSlot: boolean) => void>();
   const sightings = new Map<string, Sighting>();
-  let taps: string[] = [];
+  let selected: SelectedSlot | null = null;
   let playing = new Set<string>();
   let paused = false;
   let stopListening: (() => void) | undefined;
@@ -96,7 +113,7 @@ export function createPlaybackSlots(options: {
   const settle = () => {
     const next = paused
       ? new Set<string>()
-      : choosePlaying({ sightings, taps, slots: options.slots, autoplay: options.autoplay, playing });
+      : choosePlaying({ sightings, selected, slots: options.slots, autoplay: options.autoplay, playing });
     const before = playing;
     playing = next;
     // Everyone affected hears in the same task, so the pause of the tile losing a slot
@@ -140,25 +157,25 @@ export function createPlaybackSlots(options: {
         return;
       }
       sightings.set(key, sighting);
-      if (sighting.ratio <= 0) {
-        taps = taps.filter((tapped) => tapped !== key);
-      }
       settle();
     },
-    tap(key, sighting) {
-      if (!listeners.has(key)) {
-        return;
-      }
-      if (sighting) {
+    select(key, { tapped, sighting }) {
+      if (sighting && listeners.has(key)) {
         sightings.set(key, sighting);
       }
-      taps = [key, ...taps.filter((tapped) => tapped !== key)];
+      selected = { key, tapped };
+      settle();
+    },
+    deselect(key) {
+      if (selected?.key !== key) {
+        return;
+      }
+      selected = null;
       settle();
     },
     leave(key) {
       listeners.delete(key);
       sightings.delete(key);
-      taps = taps.filter((tapped) => tapped !== key);
       if (playing.has(key)) {
         playing = new Set([...playing].filter((held) => held !== key));
       }

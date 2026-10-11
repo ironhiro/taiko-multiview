@@ -22,7 +22,7 @@
   --color-ink-3: oklch(66% 0.025 270);
 
   /* 카 — the drum's rim, blue: what the viewer chose. Chosen view and layout, the tile
-     with sound, focus. */
+     with sound (on a phone, the selected tile instead), focus. */
   --color-ka: oklch(74% 0.14 230);
   --color-ka-deep: oklch(52% 0.13 235);
   --color-accent: var(--color-ka);

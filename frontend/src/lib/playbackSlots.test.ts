@@ -7,12 +7,12 @@ const seen = (entries: Record<string, number>): Map<string, Sighting> =>
 
 const choose = (
   entries: Record<string, number>,
-  more: { taps?: string[]; slots?: number; autoplay?: boolean; playing?: string[] } = {},
+  more: { selected?: string; tapped?: boolean; slots?: number; autoplay?: boolean; playing?: string[] } = {},
 ) =>
   [
     ...choosePlaying({
       sightings: seen(entries),
-      taps: more.taps ?? [],
+      selected: more.selected ? { key: more.selected, tapped: more.tapped ?? true } : null,
       slots: more.slots ?? 2,
       autoplay: more.autoplay ?? true,
       playing: new Set(more.playing ?? []),
@@ -37,27 +37,32 @@ describe('choosePlaying', () => {
     expect(choose({ a: 0.76, b: 1, c: 0.99 }, { playing: ['a', 'b'] })).toEqual(['a', 'b']);
   });
 
-  it('gives a tapped tile a slot, taken from the least visible one playing', () => {
-    expect(choose({ a: 1, b: 0.75, c: 0.3 }, { taps: ['c'] })).toEqual(['a', 'c']);
+  it('gives the selected tile a slot, taken from the least visible one playing', () => {
+    expect(choose({ a: 1, b: 0.75, c: 0.3 }, { selected: 'c' })).toEqual(['a', 'c']);
   });
 
-  it('gives the tapped slot up from a tile mostly under the sticky bar, not one in plain view', () => {
+  it('gives the selected slot up from a tile mostly under the sticky bar, not one in plain view', () => {
     // QA's case at scrollY 250: A1 almost hidden under the marquee (its ratio already
-    // measured below the bar), A2 whole, A3 partly shown and tapped.
-    expect(choose({ a1: 0.2, a2: 1, a3: 0.35 }, { taps: ['a3'], playing: ['a1', 'a2'] })).toEqual(['a2', 'a3']);
+    // measured below the bar), A2 whole, A3 partly shown and selected.
+    expect(choose({ a1: 0.2, a2: 1, a3: 0.35 }, { selected: 'a3', playing: ['a1', 'a2'] })).toEqual(['a2', 'a3']);
   });
 
-  it('drops a tapped tile that has left the screen', () => {
-    expect(choose({ a: 1, b: 0.75, c: 0 }, { taps: ['c'] })).toEqual(['a', 'b']);
+  it('plays the most visible tiles while the selected one is off screen', () => {
+    expect(choose({ a: 1, b: 0.75, c: 0 }, { selected: 'c' })).toEqual(['a', 'b']);
   });
 
-  it('with one slot, the newest tap wins', () => {
-    expect(choose({ a: 1, b: 1 }, { taps: ['b', 'a'], slots: 1 })).toEqual(['b']);
+  it('with one slot, the selected tile wins over a more visible one', () => {
+    expect(choose({ a: 1, b: 0.25 }, { selected: 'b', slots: 1 })).toEqual(['b']);
   });
 
-  it('plays only tapped tiles without autoplay', () => {
+  it('plays only a tapped selection without autoplay', () => {
     expect(choose({ a: 1, b: 1 }, { autoplay: false })).toEqual([]);
-    expect(choose({ a: 1, b: 1 }, { autoplay: false, taps: ['b'] })).toEqual(['b']);
+    expect(choose({ a: 1, b: 1 }, { autoplay: false, selected: 'b', tapped: false })).toEqual([]);
+    expect(choose({ a: 1, b: 1 }, { autoplay: false, selected: 'b', tapped: true })).toEqual(['b']);
+  });
+
+  it('with autoplay, a selection picked on opening the screen plays like a tapped one', () => {
+    expect(choose({ a: 1, b: 1, c: 0.25 }, { selected: 'c', tapped: false })).toEqual(['a', 'c']);
   });
 });
 
@@ -100,24 +105,42 @@ describe('createPlaybackSlots', () => {
     expect(slots.playing().sort()).toEqual(['b', 'c']);
   });
 
-  it('keeps a tap while the tile is on screen, and forgets it once it leaves', () => {
+  it('keeps the selection off screen, and gives it the first slot again on return', () => {
     const { slots, has, join, sight } = setUp();
     ['a', 'b', 'c'].forEach(join);
     sight('a', 1, 0);
     sight('b', 1, 100);
     sight('c', 0.25, 200);
-    slots.tap('c');
+    slots.select('c', { tapped: true });
     expect(has).toEqual({ a: true, b: false, c: true });
 
     sight('c', 0);
-    sight('c', 0.25, 200);
     expect(has).toEqual({ a: true, b: true, c: false });
+    sight('c', 0.25, 200);
+    expect(has).toEqual({ a: true, b: false, c: true });
+  });
+
+  it('moves the first slot with the selection, and frees it on deselecting', () => {
+    const { slots, has, join, sight } = setUp(1);
+    ['a', 'b'].forEach(join);
+    sight('a', 1, 0);
+    sight('b', 0.5, 100);
+    slots.select('b', { tapped: true });
+    expect(has).toEqual({ a: false, b: true });
+
+    // Deselecting a tile that is no longer the selected one changes nothing.
+    slots.select('a', { tapped: true });
+    slots.deselect('b');
+    expect(has).toEqual({ a: true, b: false });
+    slots.select('b', { tapped: true });
+    slots.deselect('b');
+    expect(has).toEqual({ a: true, b: false });
   });
 
   it('counts a tap on a tile whose sighting has not settled yet', () => {
     const { slots, has, join } = setUp(2, false);
     join('a');
-    slots.tap('a', { ratio: 1, pageTop: 0 });
+    slots.select('a', { tapped: true, sighting: { ratio: 1, pageTop: 0 } });
     expect(has.a).toBe(true);
   });
 

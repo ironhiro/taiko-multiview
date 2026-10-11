@@ -625,6 +625,21 @@ input {
   border-color: var(--color-ka);
 }
 
+/* On a phone the viewer selects a tile to follow (lib/selectedTile.ts), and the 카 edge
+   marks that instead: two blue edges on one wall would not say which is which. The sound
+   still shows, on the tile's button. */
+.tile--selectable {
+  cursor: pointer;
+}
+
+.tile--selectable.tile--audio {
+  border-color: var(--color-rule);
+}
+
+.tile--selectable.tile--selected {
+  border-color: var(--color-ka);
+}
+
 .tile--idle {
   background: var(--color-paper-2);
   border-style: dashed;
@@ -1310,6 +1325,69 @@ input {
 .replay-player__blocked-text {
   color: var(--color-ink-2);
   word-break: keep-all;
+}
+
+/* ------------------------------------------------- selected tile (mobile) */
+
+/* The way back to the selected tile, laid over the wall at its bottom, where a thumb is.
+   SelectedTileJump places it (lib/selectedTile.ts placeJump) clear of the marquee, the
+   credit strip and every tile's label and buttons. An arcade button in the chosen state:
+   it leads to what the viewer chose. A long cabinet name is cut short, never wider than
+   the screen. */
+.selected-jump {
+  position: fixed;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--space-xs));
+  min-height: 2.25rem;
+  padding: 0 var(--space-xs);
+  background: var(--color-button-chosen);
+  border: var(--rule-hair) solid var(--color-ka);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 var(--press-depth) 0 var(--color-button-chosen-base);
+  color: var(--color-ka);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+
+.selected-jump:active {
+  transform: translateY(var(--press-depth));
+  box-shadow: 0 0 0 var(--color-button-chosen-base);
+}
+
+.selected-jump__label {
+  min-width: 0;
+  max-width: 6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-data);
+  letter-spacing: 0.04em;
+  color: var(--color-ink);
+}
+
+.selected-jump__text,
+.selected-jump__arrow {
+  flex: none;
+}
+
+/* Measures the home indicator's safe area, which the button keeps above. */
+.selected-jump-safe-area {
+  position: fixed;
+  bottom: 0;
+  width: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.selected-jump__arrow {
+  font-family: var(--font-data);
 }
 
 /* --------------------------------------------------------- poster (mobile) */
