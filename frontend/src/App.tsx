@@ -4,6 +4,7 @@ import type { LiveResponse, Venue, VenueLive } from './lib/types';
 import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
 import { setDiagnosticsContext, report } from './lib/diagnostics';
 import { retryUntilDone, type RetryHandle } from './lib/retry';
+import { defaultSelection, keptSelection, type Selection } from './lib/selectedTile';
 import { onVenuesSaved } from './lib/settingsChannel';
 import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './lib/venue';
 import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
@@ -366,6 +367,52 @@ export default function App() {
 
   const idle = useMemo(() => (live ? idleMessageFor(activeLive?.venue) : LOADING_MESSAGE), [live, activeLive]);
 
+  // --- the selected tile (phones) ---------------------------------------------
+
+  // The tile the viewer follows on a phone (lib/selectedTile.ts). Each screen - a venue
+  // and a view - opens at its top with its first broadcast selected: at the start, from
+  // a link, and on switching either. The desktop plays every tile and selects none.
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const screenKey = activeVenueId && view ? `${activeVenueId}|${view}` : null;
+  const openedScreen = useRef<string | null>(null);
+  const hasLive = activeLive !== undefined;
+
+  useEffect(() => {
+    if (!isCompactDevice) {
+      setSelection(null);
+      openedScreen.current = null;
+      return;
+    }
+    if (screenKey === null || openedScreen.current === screenKey) {
+      // The same screen with new live data: an ended broadcast gives up the selection.
+      setSelection((current) => keptSelection(current, tiles));
+      return;
+    }
+    // A new screen. Its default waits for the live data, which may still be on its way.
+    if (!hasLive) {
+      setSelection(null);
+      return;
+    }
+    openedScreen.current = screenKey;
+    setSelection(defaultSelection(tiles));
+  }, [isCompactDevice, screenKey, hasLive, tiles]);
+
+  // Switching venue or view starts the page from the top, where the new wall begins.
+  const lastScreen = useRef<string | null>(null);
+  useEffect(() => {
+    if (screenKey === null) {
+      return;
+    }
+    if (isCompactDevice && lastScreen.current !== null && lastScreen.current !== screenKey) {
+      window.scrollTo(0, 0);
+    }
+    lastScreen.current = screenKey;
+  }, [isCompactDevice, screenKey]);
+
+  const handleSelect = useCallback((tileId: string) => {
+    setSelection({ tileId, tapped: true });
+  }, []);
+
   const closedSummary = venueSummary(activeLive?.venue);
   const liveCount = liveCountOf(activeVenue, activeLive);
 
@@ -485,6 +532,8 @@ export default function App() {
               chatTileId={chatTile?.id ?? null}
               idle={idle}
               onOpenReplay={openCabinetReplay}
+              selection={selection}
+              onSelect={isCompactDevice ? handleSelect : undefined}
             />
           )}
         </main>

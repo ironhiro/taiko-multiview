@@ -235,6 +235,12 @@ strip moves under it. One tile to a row; only on-screen tiles play.
 The tile's row under the picture is taller there (`--tile-bar` 3.25rem, 2.25rem buttons)
 so a thumb has room; the "방송 없음" strip wraps its chips.
 
+On a phone the viewer selects one tile to follow: a tap selects it, and each venue or
+view opens with its first broadcast selected. The 카 edge marks the selected tile there,
+not the tile with sound, whose sound shows on its own button. While the selected tile is
+out of view, a chosen-state button at the bottom of the wall leads back to it, stepping
+clear of the marquee, the credit strip and every tile's label and buttons.
+
 ## Figma 대응
 The Figma file (`시안`, `Components` pages) and the code use the same names and units, in
 place of Code Connect. Figma set its type in Noto Sans KR because Pretendard would not

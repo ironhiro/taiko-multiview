@@ -71,6 +71,13 @@ interface PlayerTileProps {
   chatSidebar?: { isOpen: boolean; onOpen: () => void };
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
   idle: IdleMessage;
+  /**
+   * On a phone, the one tile the viewer follows (lib/selectedTile.ts): the 카 edge, and
+   * the first playing slot while on screen. Undefined where tiles are not selected.
+   */
+  selected?: { tapped: boolean } | null;
+  /** The viewer tapped the tile. Only a tile with something to play is offered this. */
+  onSelect?: () => void;
 }
 
 export function PlayerTile({
@@ -87,6 +94,8 @@ export function PlayerTile({
   opensChatInTab,
   chatSidebar,
   idle,
+  selected,
+  onSelect,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -145,6 +154,19 @@ export function PlayerTile({
       setHasSlot(false);
     };
   }, [joinsSlots, tileKey]);
+
+  // The selected tile holds the first slot while on screen, and keeps its claim off it.
+  // Selecting another tile deselects this one in the same commit, so the slots hear the
+  // cleanup before the new selection.
+  const isSelected = Boolean(selected);
+  const isTapped = Boolean(selected?.tapped);
+  useEffect(() => {
+    if (!joinsSlots || !isSelected) {
+      return;
+    }
+    compactPlaybackSlots.select(tileKey, { tapped: isTapped, sighting: sightingRef.current });
+    return () => compactPlaybackSlots.deselect(tileKey);
+  }, [joinsSlots, isSelected, isTapped, tileKey]);
 
   // The part of the screen under the sticky marquee does not count as seen. The observer
   // is rebuilt when the marquee changes height; the tile keeps its slot meanwhile, since
@@ -374,23 +396,35 @@ export function PlayerTile({
     soundSentRef.current = { holdsSound: isAudioActive, at: Date.now() };
   }, [isAudioActive, mountedId]);
 
-  // A tap on a lazy tile's thumbnail asks for a slot, taking one from the least visible
-  // tile playing.
-  const activate = lazy
-    ? () => compactPlaybackSlots.tap(tileKey, sightingRef.current)
-    : () => setIsActivated(true);
+  // A lazy tile's thumbnail plays by selecting the tile, which the tap on the tile itself
+  // does as the click bubbles up.
+  const selectable = Boolean(onSelect && playableId);
+  const activate = lazy ? () => {} : () => setIsActivated(true);
+  // The picture, the thumbnail and the bar's empty part select; the sound button and the
+  // link out do their own thing.
+  const selectOnTap = selectable
+    ? (event: React.MouseEvent) => {
+        if (!(event.target as Element).closest('a, .tile__control')) {
+          onSelect!();
+        }
+      }
+    : undefined;
 
+  // Where tiles are selected, the 카 edge marks the selection and the sound shows on its
+  // button alone: two 카 edges on a phone's wall would not say which is which.
   const className = [
     'tile',
     compact ? 'tile--compact' : '',
     isAudioActive ? 'tile--audio' : '',
+    selectable ? 'tile--selectable' : '',
+    isSelected ? 'tile--selected' : '',
     stream ? '' : 'tile--idle',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <div className={className} ref={tileRef}>
+    <div className={className} ref={tileRef} onClick={selectOnTap} aria-current={isSelected ? 'true' : undefined}>
       <div className="tile__body">
         {/* The player's host is part of the tile, not of the player: React removing it
             would detach the iframe before the effect above could destroy it, and every

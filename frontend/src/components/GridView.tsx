@@ -5,6 +5,8 @@ import type { WallTile } from '../lib/wallTiles';
 import { IdleStrip } from './IdleStrip';
 import { gridColumns } from './LayoutPicker';
 import { PlayerTile } from './PlayerTile';
+import { SelectedTileJump } from './SelectedTileJump';
+import type { Selection } from '../lib/selectedTile';
 
 interface GridViewProps {
   /** The cabinets in order, and what each has on air (lib/wallTiles.ts). */
@@ -27,8 +29,13 @@ interface GridViewProps {
   idle: IdleMessage;
   /** Opens a cabinet with nothing on air in 다시보기, at its newest finished broadcast. */
   onOpenReplay?: (cabinetId: string) => void;
+  /**
+   * The tile the viewer follows on a phone (lib/selectedTile.ts). Tiles are selectable
+   * only when `onSelect` is given.
+   */
+  selection?: Selection | null;
+  onSelect?: (tileId: string) => void;
 }
-
 
 /**
  * The multiview: the cabinets on air as equal tiles, N to a row and N rows to a screen,
@@ -47,6 +54,8 @@ export function GridView({
   chatTileId,
   idle,
   onOpenReplay,
+  selection,
+  onSelect,
 }: GridViewProps) {
   const wall = splitWall(tiles, Boolean(idle.loading));
   const hasStrip = wall.idle.length > 0;
@@ -54,36 +63,42 @@ export function GridView({
   // layout's width rather than one tile's; with nothing at all (no venues yet) it stays one.
   const columns = wall.tiles.length === 0 && hasStrip ? gridSize : gridColumns(gridSize, wall.tiles.length);
   const gridRef = useGlideOnRelayout(columns);
+  const selectedLabel = selection && wall.tiles.find((tile) => tile.id === selection.tileId)?.label;
 
   return (
-    <div
-      ref={gridRef}
-      className={hasStrip ? 'grid-view grid-view--idle-strip' : 'grid-view'}
-      style={{ '--grid-columns': columns } as React.CSSProperties}
-    >
-      {wall.tiles.map((tile) => (
-        <PlayerTile
-          key={tile.id}
-          label={tile.label}
-          unregistered={tile.unregistered}
-          stream={tile.stream}
-          isAudioActive={audioTileId === tile.id}
-          onRequestAudio={() => onRequestAudio(tile.id)}
-          onPlayerSound={(hasSound) => onPlayerSound(tile.id, hasSound)}
-          lazy={lazy}
-          shielded={lazy}
-          pausesWhenAway={lazy}
-          opensChatInTab={lazy}
-          chatSidebar={
-            onOpenChat && tile.stream
-              ? { isOpen: tile.id === chatTileId, onOpen: openChatOf(tile.id, tile.stream.videoId, onOpenChat) }
-              : undefined
-          }
-          idle={idle}
-        />
-      ))}
-      <IdleStrip cabinets={wall.idle.map((tile) => ({ id: tile.id, label: tile.label }))} onOpenReplay={onOpenReplay} />
-    </div>
+    <>
+      <div
+        ref={gridRef}
+        className={hasStrip ? 'grid-view grid-view--idle-strip' : 'grid-view'}
+        style={{ '--grid-columns': columns } as React.CSSProperties}
+      >
+        {wall.tiles.map((tile) => (
+          <PlayerTile
+            key={tile.id}
+            label={tile.label}
+            unregistered={tile.unregistered}
+            stream={tile.stream}
+            isAudioActive={audioTileId === tile.id}
+            onRequestAudio={() => onRequestAudio(tile.id)}
+            onPlayerSound={(hasSound) => onPlayerSound(tile.id, hasSound)}
+            lazy={lazy}
+            shielded={lazy}
+            pausesWhenAway={lazy}
+            opensChatInTab={lazy}
+            chatSidebar={
+              onOpenChat && tile.stream
+                ? { isOpen: tile.id === chatTileId, onOpen: openChatOf(tile.id, tile.stream.videoId, onOpenChat) }
+                : undefined
+            }
+            idle={idle}
+            selected={onSelect ? (selection?.tileId === tile.id ? selection : null) : undefined}
+            onSelect={onSelect && (() => onSelect(tile.id))}
+          />
+        ))}
+        <IdleStrip cabinets={wall.idle.map((tile) => ({ id: tile.id, label: tile.label }))} onOpenReplay={onOpenReplay} />
+      </div>
+      {onSelect && selectedLabel && <SelectedTileJump gridRef={gridRef} label={selectedLabel} />}
+    </>
   );
 }
 

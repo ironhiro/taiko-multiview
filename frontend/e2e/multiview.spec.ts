@@ -597,6 +597,191 @@ test.describe('phone', () => {
   });
 });
 
+// The selected tile. The e2e backend's broadcasts cannot be embedded, so these tests
+// serve them as embeddable; with YouTube out of reach the players fail to load, which
+// leaves selecting, the way back and the defaults to test - playing is not.
+test.describe('phone: the selected tile', () => {
+  test.skip(({ isMobile }) => !isMobile, 'phone layout');
+
+  const tiles = (page: Page) => page.locator('.grid-view .tile');
+  const liveTiles = (page: Page) => tiles(page).filter({ has: page.locator('.tile__badge') });
+  const selected = (page: Page) => page.locator('.grid-view .tile[aria-current="true"]');
+
+  test('a screen opens with its first broadcast selected, and a tap moves the selection', async ({ page }) => {
+    await withPlayableStreams(page);
+    await page.goto('/?venue=taikolabs');
+    await expect(selected(page)).toHaveCount(1);
+    const firstLabel = await liveTiles(page).first().locator('.tile__label').textContent();
+    await expect(selected(page).locator('.tile__label')).toHaveText(firstLabel!);
+
+    // The 카 edge, as the chosen view wears it, on the selected tile alone.
+    const edge = (tile: ReturnType<typeof tiles>) => tile.evaluate((el) => getComputedStyle(el).borderTopColor);
+    const kaColour = await page
+      .locator('.choice[aria-pressed="true"]')
+      .evaluate((el) => getComputedStyle(el).borderTopColor);
+    expect(await edge(selected(page))).toBe(kaColour);
+
+    // A tap on the bar under the picture, clear of the sound button.
+    const second = liveTiles(page).nth(1);
+    const secondLabel = await second.locator('.tile__label').textContent();
+    await second.locator('.tile__label').scrollIntoViewIfNeeded();
+    const label = (await second.locator('.tile__label').boundingBox())!;
+    await page.touchscreen.tap(label.x + label.width + 40, label.y + label.height / 2);
+    await expect(selected(page)).toHaveCount(1);
+    await expect(selected(page).locator('.tile__label')).toHaveText(secondLabel!);
+    await expect(liveTiles(page).first()).not.toHaveAttribute('aria-current', 'true');
+    expect(await edge(liveTiles(page).first())).not.toBe(kaColour);
+
+    // A cabinet with nothing on air is no tile but a chip in the 방송 없음 strip, and the
+    // strip cannot be selected.
+    await expect(tiles(page).filter({ hasNot: page.locator('.tile__badge') })).toHaveCount(0);
+    const strip = page.locator('.idle-strip__title');
+    await strip.scrollIntoViewIfNeeded();
+    const stripBox = (await strip.boundingBox())!;
+    await page.touchscreen.tap(stripBox.x + stripBox.width / 2, stripBox.y + stripBox.height / 2);
+    await expect(selected(page)).toHaveCount(1);
+    await expect(selected(page).locator('.tile__label')).toHaveText(secondLabel!);
+  });
+
+  test('a button leads back to the selected tile once it is out of view', async ({ page }) => {
+    await withPlayableStreams(page);
+    await page.goto('/?venue=taikolabs');
+    await expect(selected(page)).toHaveCount(1);
+    const label = await selected(page).locator('.tile__label').textContent();
+    const jump = page.getByRole('button', { name: `선택한 영상(${label})으로 이동` });
+    await expect(jump).toHaveCount(0);
+
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(jump).toBeVisible();
+    await expect(jump).toContainText('↑');
+
+    // At the bottom of the screen, where a thumb is, over no control.
+    const button = (await jump.boundingBox())!;
+    expect(button.y + button.height).toBeGreaterThan(page.viewportSize()!.height * 0.6);
+    expect(await coveredBy(page, jump)).toEqual([]);
+
+    await jump.tap();
+    await expect(jump).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const tile = (await selected(page).boundingBox())!;
+        const marquee = (await page.locator('.marquee').boundingBox())!;
+        return Math.round(tile.y - (marquee.y + marquee.height));
+      })
+      .toBeGreaterThanOrEqual(8);
+    const tile = (await selected(page).boundingBox())!;
+    const marquee = (await page.locator('.marquee').boundingBox())!;
+    expect(tile.y - (marquee.y + marquee.height)).toBeLessThanOrEqual(16);
+
+    // Selected further down the page, it points down from the top.
+    const last = liveTiles(page).last();
+    const lastLabel = (await last.locator('.tile__label').textContent())!;
+    await last.locator('.tile__label').scrollIntoViewIfNeeded();
+    const box = (await last.locator('.tile__label').boundingBox())!;
+    await page.touchscreen.tap(box.x + box.width + 40, box.y + box.height / 2);
+    await expect(selected(page).locator('.tile__label')).toHaveText(lastLabel);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const down = page.getByRole('button', { name: `선택한 영상(${lastLabel})으로 이동` });
+    await expect(down).toContainText('↓');
+    // The credit strip sits right under the marquee at the top of the page: both stay clear.
+    expect(await coveredBy(page, down)).toEqual([]);
+  });
+
+  test.describe('on the narrowest phone, with a long cabinet name', () => {
+    test.use({ viewport: { width: 320, height: 568 } });
+
+    test('the button is cut short and covers no control, at the top or midway', async ({ page }) => {
+      await withPlayableStreams(page, { label: 'THE BASE LOUNGE' });
+      await page.goto('/?venue=taikolabs');
+      await expect(selected(page)).toHaveCount(1);
+      const last = liveTiles(page).last();
+      await last.locator('.tile__label').scrollIntoViewIfNeeded();
+      const box = (await last.locator('.tile__label').boundingBox())!;
+      await page.touchscreen.tap(box.x + box.width + 30, box.y + box.height / 2);
+      await expect(last).toHaveAttribute('aria-current', 'true');
+
+      const jump = page.locator('.selected-jump');
+      for (const scrollY of [0, 180, 420]) {
+        await page.evaluate((y) => window.scrollTo(0, y), scrollY);
+        await expect(jump).toBeVisible();
+        await expect.poll(() => coveredBy(page, jump), { message: `scrollY ${scrollY}` }).toEqual([]);
+        const button = (await jump.boundingBox())!;
+        expect(button.x).toBeGreaterThanOrEqual(0);
+        expect(button.x + button.width).toBeLessThanOrEqual(320);
+      }
+    });
+  });
+
+  test.describe('on a tablet, where the wall scrolls inside the page', () => {
+    test.use({ viewport: { width: 1024, height: 768 } });
+
+    test('the button sits inside the wall, clear of the marquee and the credit strip', async ({ page }) => {
+      await withPlayableStreams(page);
+      await page.goto('/?venue=taikolabs');
+      await expect(selected(page)).toHaveCount(1);
+      await page.getByRole('button', { name: '1×1' }).tap();
+      await page.locator('.stage__main').evaluate((wall) => wall.scrollTo(0, wall.scrollHeight));
+
+      const jump = page.locator('.selected-jump');
+      await expect(jump).toBeVisible();
+      await expect(jump).toContainText('↑');
+      const wall = (await page.locator('.stage__main').boundingBox())!;
+      const button = (await jump.boundingBox())!;
+      expect(button.y).toBeGreaterThanOrEqual(wall.y);
+      expect(button.y + button.height).toBeLessThanOrEqual(wall.y + wall.height);
+      expect(await coveredBy(page, jump)).toEqual([]);
+
+      await jump.tap();
+      await expect(jump).toHaveCount(0);
+    });
+  });
+
+  test('switching venue or view selects the first broadcast there, from the top', async ({ page }) => {
+    await withPlayableStreams(page);
+    const names = await venueNames(page);
+    await page.goto('/?venue=taikolabs');
+    await expect(selected(page)).toHaveCount(1);
+
+    // A view: its own first broadcast.
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await page.locator('.choice').nth(1).tap();
+    await expect(page.locator('.choice').nth(1)).toHaveAttribute('aria-pressed', 'true');
+    await expect(selected(page)).toHaveCount(1);
+    const firstLabel = await liveTiles(page).first().locator('.tile__label').textContent();
+    await expect(selected(page).locator('.tile__label')).toHaveText(firstLabel!);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    // Another venue, as a tab or from the list.
+    await page.evaluate(() => window.scrollTo(0, 400));
+    const other = names[1];
+    const tab = page.getByRole('tab', { name: new RegExp(other) });
+    if (await tab.count()) {
+      await tab.tap();
+    } else {
+      await page.getByRole('button', { name: /전체 매장/ }).tap();
+      await page.getByRole('option', { name: new RegExp(other) }).tap();
+    }
+    await expect(page.locator('.tile').first()).toBeVisible();
+    await expect(selected(page)).toHaveCount(1);
+    await expect(selected(page).locator('.tile__label')).toHaveText(
+      (await liveTiles(page).first().locator('.tile__label').textContent())!,
+    );
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  test('a venue with nothing on air selects nothing and offers no way back', async ({ page }) => {
+    await withPlayableStreams(page, { offAir: ['taikolabs'] });
+    await page.goto('/?venue=taikolabs');
+    // The wall is the 방송 없음 strip alone.
+    await expect(page.locator('.idle-strip')).toBeVisible();
+    await expect(tiles(page)).toHaveCount(0);
+    await expect(page.locator('.credit__updated')).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect(selected(page)).toHaveCount(0);
+    await expect(page.locator('.selected-jump')).toHaveCount(0);
+  });
+});
+
 // The venue list is all the wall is built from: a first fetch that fails or hangs must be
 // tried again rather than leave the page empty. Desktop only - the path is the same on a
 // phone, and the hang costs each run fifteen seconds.
@@ -1457,4 +1642,57 @@ async function withManyVenues(page: Page, total: number): Promise<string[]> {
     await route.fulfill({ response, json: body });
   });
   return names;
+}
+
+/**
+ * What the element lies over among the controls it must keep clear of: the marquee, the
+ * credit strip, and every tile's label and buttons.
+ */
+async function coveredBy(page: Page, element: ReturnType<Page['locator']>): Promise<string[]> {
+  const box = (await element.boundingBox())!;
+  return page.evaluate((over) => {
+    const controls = [...document.querySelectorAll<HTMLElement>('.marquee, .credit, .tile__header, .tile__controls')];
+    return controls
+      .filter((control) => {
+        const r = control.getBoundingClientRect();
+        return (
+          r.width > 0 &&
+          r.left < over.x + over.width &&
+          r.right > over.x &&
+          r.top < over.y + over.height &&
+          r.bottom > over.y
+        );
+      })
+      .map((control) => `${control.className} ${control.textContent?.trim().slice(0, 20)}`);
+  }, box);
+}
+
+/**
+ * Serves `/api/live` with every broadcast embeddable, as real ones mostly are, and none
+ * at all for the venues in `offAir`. With `label`, the last configured cabinet of each
+ * venue is renamed to it, to try a long name.
+ */
+async function withPlayableStreams(page: Page, { offAir = [], label }: { offAir?: string[]; label?: string } = {}) {
+  if (label) {
+    await page.route('**/api/venues', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { venues: { stations: { label: string }[] }[] };
+      for (const venue of body.venues) {
+        venue.stations[venue.stations.length - 1].label = label;
+      }
+      await route.fulfill({ response, json: body });
+    });
+  }
+  await page.route('**/api/live', async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      venues: { venueId: string; streams: { embeddable: boolean }[] }[];
+    };
+    for (const venue of body.venues) {
+      venue.streams = offAir.includes(venue.venueId)
+        ? []
+        : venue.streams.map((stream) => ({ ...stream, embeddable: true }));
+    }
+    await route.fulfill({ response, json: body });
+  });
 }
