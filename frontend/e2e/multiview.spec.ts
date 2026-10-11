@@ -632,13 +632,14 @@ test.describe('phone: the selected tile', () => {
     await expect(liveTiles(page).first()).not.toHaveAttribute('aria-current', 'true');
     expect(await edge(liveTiles(page).first())).not.toBe(kaColour);
 
-    // A cabinet with nothing on air cannot be selected.
-    const idle = tiles(page)
-      .filter({ hasNot: page.locator('.tile__badge') })
-      .first();
-    await idle.scrollIntoViewIfNeeded();
-    const idleBox = (await idle.boundingBox())!;
-    await page.touchscreen.tap(idleBox.x + idleBox.width / 2, idleBox.y + idleBox.height / 2);
+    // A cabinet with nothing on air is no tile but a chip in the 방송 없음 strip, and the
+    // strip cannot be selected.
+    await expect(tiles(page).filter({ hasNot: page.locator('.tile__badge') })).toHaveCount(0);
+    const strip = page.locator('.idle-strip__title');
+    await strip.scrollIntoViewIfNeeded();
+    const stripBox = (await strip.boundingBox())!;
+    await page.touchscreen.tap(stripBox.x + stripBox.width / 2, stripBox.y + stripBox.height / 2);
+    await expect(selected(page)).toHaveCount(1);
     await expect(selected(page).locator('.tile__label')).toHaveText(secondLabel!);
   });
 
@@ -771,7 +772,9 @@ test.describe('phone: the selected tile', () => {
   test('a venue with nothing on air selects nothing and offers no way back', async ({ page }) => {
     await withPlayableStreams(page, { offAir: ['taikolabs'] });
     await page.goto('/?venue=taikolabs');
-    await expect(tiles(page).first()).toBeVisible();
+    // The wall is the 방송 없음 strip alone.
+    await expect(page.locator('.idle-strip')).toBeVisible();
+    await expect(tiles(page)).toHaveCount(0);
     await expect(page.locator('.credit__updated')).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect(selected(page)).toHaveCount(0);
