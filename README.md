@@ -249,6 +249,7 @@ docker run -p 8080:8080 -e YouTube__Mode=Mock taiko-multiview   # http://localho
 | `Diagnostics__ClientReports` | `true` 면 프론트엔드 오류 보고를 받음 (기본 꺼짐) |
 | `Diagnostics__InfoSampleRate` | 정보성 보고를 받는 세션 비율 0~1 (기본 0) |
 | `Diagnostics__PerClientPerMinute` · `Diagnostics__TotalPerMinute` | 보고 제한: 주소당 분당 (기본 30) · 서버 전체 분당 (기본 300) |
+| `Analytics__CloudflareBeaconToken` | Cloudflare Web Analytics 사이트 토큰. 있으면 페이지에 비컨을 넣음 (기본 없음, [방문 통계](#방문-통계)) |
 
 이미지를 직접 빌드할 때는 `--build-arg BUILD_VERSION=$(git rev-parse --short HEAD)` 를 붙임. 페이지가 오류를 보고할 때 이 값을 빌드 버전으로 보냄 (없으면 `unknown`). CI는 자동으로 넣음.
 
@@ -294,6 +295,18 @@ az containerapp update -n taiko-multiview -g rg-taiko-multiview --image ghcr.io/
 ```
 
 유튜브 키 위치는 컨테이너 앱 시크릿 `youtube-api-key`, 연결은 `YouTube__ApiKey=secretref:youtube-api-key`. 키 교체 시 시크릿만 변경.
+
+### 방문 통계
+
+실서버 도메인은 Cloudflare 프록시가 꺼져 있어(DNS only) Cloudflare에 트래픽이 잡히지 않고, Azure `Requests` 메트릭에는 국가가 없음. 그래서 Cloudflare Web Analytics JS 비컨을 씀. 이미지는 개발 서버와 실서버가 같으므로 토큰은 빌드가 아니라 환경 변수로 넣음. 있으면 서버가 내보내는 `index.html` 의 `</body>` 앞에 비컨 스크립트를 넣고 CSP `script-src` 에 `https://static.cloudflareinsights.com` 을 더함. 없으면 페이지·CSP 모두 그대로.
+
+토큰: Cloudflare 대시보드 → Analytics & Logs → Web Analytics → 사이트 추가(호스트 이름 `multiview-dev.ironhiro.dev` / `multiview.ironhiro.dev`, 환경마다 따로) → JS 스니펫의 `"token"` 값. 형식이 이상하면(영숫자·`-`·`_` 16~128자가 아님) 비컨을 끄고 시작 로그에 경고.
+
+```bash
+az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview --set-env-vars Analytics__CloudflareBeaconToken=<토큰>
+# 끄기
+az containerapp update -n taiko-multiview-dev -g rg-taiko-multiview --remove-env-vars Analytics__CloudflareBeaconToken
+```
 
 ### 프론트엔드 오류 수집
 
