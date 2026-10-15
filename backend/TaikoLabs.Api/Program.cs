@@ -41,6 +41,7 @@ builder.Configuration.AddJsonFile(builder.Configuration["Venues:File"] ?? "venue
 
 builder.Services.Configure<YouTubeOptions>(builder.Configuration.GetSection(YouTubeOptions.SectionName));
 builder.Services.Configure<VenuesOptions>(builder.Configuration.GetSection(VenuesOptions.SectionName));
+builder.Services.Configure<WebAnalyticsOptions>(builder.Configuration.GetSection(WebAnalyticsOptions.SectionName));
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -125,10 +126,20 @@ var startedAt = DateTimeOffset.UtcNow;
 var frontendIndex = app.Environment.WebRootPath is { } webRoot ? Path.Combine(webRoot, "index.html") : null;
 var hasFrontend = frontendIndex is not null && File.Exists(frontendIndex);
 
+// Cloudflare Web Analytics, when Analytics:CloudflareBeaconToken is set (README "방문 통계").
+// Null otherwise, and then the page, its CSP and the way it is served are as before.
+var beacon = hasFrontend
+    ? WebAnalyticsBeacon.Create(
+        app.Services.GetRequiredService<IOptions<WebAnalyticsOptions>>().Value.CloudflareBeaconToken,
+        app.Environment.WebRootFileProvider,
+        app.Logger)
+    : null;
+var contentSecurityPolicy = ContentSecurityPolicy(beacon is null ? null : WebAnalyticsBeacon.ScriptOrigin);
+
 app.UseForwardedHeaders();
 app.Use((context, next) =>
 {
-    SetSecurityHeaders(context, app.Environment);
+    SetSecurityHeaders(context, app.Environment, contentSecurityPolicy);
     return next(context);
 });
 app.UseCors(CorsPolicy);
@@ -136,6 +147,15 @@ app.UseRateLimiter();
 
 if (hasFrontend)
 {
+    // "/" and client-side routes reach the fallback endpoint below, which routing picks
+    // before any of these run; the static file middleware then stands aside. "/index.html"
+    // names a file, so no endpoint takes it and the static files would hand out the page as
+    // built (or its .br/.gz twin). This answers it first, while the beacon is on.
+    if (beacon is not null)
+    {
+        app.Use((context, next) => beacon.ServeIndexFileOr(context, () => next(context)));
+    }
+
     app.UseDefaultFiles();
     // The build leaves a .br/.gz twin beside each asset; this hands one out when the client
     // takes it, so the page's 355 kB stylesheet does not cross a phone's link uncompressed.
@@ -278,7 +298,17 @@ if (hasFrontend)
 {
     // An unknown /api path is an error, not a page; anything else is a client-side route.
     app.MapFallback("/api/{**rest}", () => Results.NotFound()).ExcludeFromDescription();
-    app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = context => SetCacheHeaders(context.Context) });
+    if (beacon is null)
+    {
+        app.MapFallbackToFile("index.html", new StaticFileOptions { OnPrepareResponse = context => SetCacheHeaders(context.Context) });
+    }
+    else
+    {
+        // The same pattern and methods MapFallbackToFile uses: a path that names a file is
+        // still a 404, and a POST to a page is still a 405.
+        app.MapFallback("{*path:nonfile}", beacon.WriteAsync)
+            .WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
+    }
 }
 
 app.Run();
@@ -296,15 +326,17 @@ static void SetCacheHeaders(HttpContext context)
 // shows thumbnails and logos from wherever a venue keeps them. connect-src is left open
 // on purpose: the desktop shell can load this page and point it at an API elsewhere.
 // Swagger UI and /status run inline script of their own, so they go without a CSP.
-const string ContentSecurityPolicy =
-    "script-src 'self' https://www.youtube.com https://s.ytimg.com; " +
+// With the analytics beacon on, script-src also takes its origin (see above); the beacon
+// reports to cloudflareinsights.com, which the open connect-src already allows.
+static string ContentSecurityPolicy(string? analyticsScriptOrigin) =>
+    $"script-src 'self' {(analyticsScriptOrigin is null ? "" : analyticsScriptOrigin + " ")}https://www.youtube.com https://s.ytimg.com; " +
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com; " +
     "img-src 'self' data: https:; " +
     "style-src 'self' 'unsafe-inline'; " +
     "font-src 'self' data:; " +
     "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
-static void SetSecurityHeaders(HttpContext context, IWebHostEnvironment env)
+static void SetSecurityHeaders(HttpContext context, IWebHostEnvironment env, string contentSecurityPolicy)
 {
     var headers = context.Response.Headers;
     headers.XContentTypeOptions = "nosniff";
@@ -314,7 +346,7 @@ static void SetSecurityHeaders(HttpContext context, IWebHostEnvironment env)
 
     if (!context.Request.Path.StartsWithSegments("/swagger") && !context.Request.Path.StartsWithSegments("/status"))
     {
-        headers.ContentSecurityPolicy = ContentSecurityPolicy;
+        headers.ContentSecurityPolicy = contentSecurityPolicy;
     }
 
     // Only over HTTPS, and never on a developer's localhost, which HSTS would pin for a year.
