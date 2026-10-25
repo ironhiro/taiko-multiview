@@ -26,8 +26,6 @@ interface ChatRoomProps {
   onSignOut: () => void;
   /** The server says the session is gone: a read or a send came back 401. */
   onSignedOut: () => void;
-  /** YouTube's framed chat instead, as the sidebar was before signing in. */
-  onShowYouTube: () => void;
 }
 
 const ROLE_NAMES: Record<NonNullable<ChatMessage['role']>, string> = {
@@ -38,13 +36,13 @@ const ROLE_NAMES: Record<NonNullable<ChatMessage['role']>, string> = {
 /**
  * Our own chat, the whole sidebar under its header, for a viewer signed in to this page
  * (design.md, "Chat sidebar"): who is signed in, the broadcast's chat read with that sign-in,
- * a box to write in, and the way to YouTube's framed chat. Keyed by broadcast where it is
- * used: another tile's chat starts its own list.
+ * and a box to write in. Keyed by broadcast where it is used: another tile's chat starts its
+ * own list.
  *
  * The list follows new messages while the viewer is at its bottom. Scrolled up to read, it
  * stays where it is, and "새 메시지 N" counts what came since, a press away from the bottom.
  */
-export function ChatRoom({ videoId, status, onSignOut, onSignedOut, onShowYouTube }: ChatRoomProps) {
+export function ChatRoom({ videoId, status, onSignOut, onSignedOut }: ChatRoomProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [notLive, setNotLive] = useState(false);
   // The latest, without restarting the polling: it belongs to the broadcast alone.
@@ -241,10 +239,6 @@ export function ChatRoom({ videoId, status, onSignOut, onSignedOut, onShowYouTub
           </span>
         </div>
       </form>
-
-      <div className="chat-room__footer">
-        <ArcadeButton className="chat-room__youtube" label="유튜브 채팅으로 보기" onClick={onShowYouTube} data-testid="chat-room-youtube" />
-      </div>
     </section>
   );
 }

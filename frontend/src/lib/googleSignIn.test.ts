@@ -193,6 +193,37 @@ describe('appendChatMessages', () => {
   });
 });
 
+describe('primeAuthStatus', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('window', {});
+    signIn.forgetAuthStatus();
+  });
+
+  it('asks the server once for the page, and keeps the answer for every sidebar after', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ enabled: false, signedIn: false }), { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+
+    expect(signIn.knownAuthStatus()).toBeNull();
+    await Promise.all([signIn.primeAuthStatus(), signIn.primeAuthStatus()]);
+    await signIn.primeAuthStatus();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(signIn.knownAuthStatus()).toEqual({ enabled: false, signedIn: false });
+  });
+
+  it('leaves a newer answer a sidebar has had as it is', async () => {
+    let answer: (response: Response) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => (answer = resolve))));
+
+    const priming = signIn.primeAuthStatus();
+    signIn.rememberAuthStatus({ enabled: true, signedIn: true, name: '홍길동' });
+    answer(new Response(JSON.stringify({ enabled: true, signedIn: false }), { status: 200 }));
+
+    expect(await priming).toEqual({ enabled: true, signedIn: true, name: '홍길동' });
+  });
+});
+
 describe('fetchAuthStatus', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

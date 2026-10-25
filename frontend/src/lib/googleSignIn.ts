@@ -69,6 +69,41 @@ export async function fetchAuthStatus(signal?: AbortSignal): Promise<AuthStatus>
   }
 }
 
+/**
+ * What the server last said, for this page: kept so the chat sidebar can open straight to the
+ * right thing - the framed chat where there is no sign-in, our own where there is - without
+ * putting up the frame first and taking it away again. The page asks once as it loads
+ * (`primeAuthStatus`), long before anyone opens a chat; each sidebar asks again as it opens.
+ */
+let knownStatus: AuthStatus | null = null;
+let priming: Promise<AuthStatus> | null = null;
+
+export function knownAuthStatus(): AuthStatus | null {
+  return knownStatus;
+}
+
+export function rememberAuthStatus(status: AuthStatus): void {
+  knownStatus = status;
+}
+
+/** Asks who is signed in, once for the page, unless it is known already. */
+export function primeAuthStatus(): Promise<AuthStatus> {
+  if (knownStatus) {
+    return Promise.resolve(knownStatus);
+  }
+  priming ??= fetchAuthStatus().then((status) => {
+    knownStatus ??= status;
+    return knownStatus;
+  });
+  return priming;
+}
+
+/** For the unit tests: a page that has asked nothing yet. */
+export function forgetAuthStatus(): void {
+  knownStatus = null;
+  priming = null;
+}
+
 export async function signOut(): Promise<void> {
   await fetch(endpoint('/api/auth/logout'), { method: 'POST' });
 }
