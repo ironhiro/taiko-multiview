@@ -12,7 +12,7 @@
 
 **목표:** 아키텍처·보안·성능·코드 스타일을 병렬로 감사하고, 중복을 묶고 심각한 지적을 반박 검증해 하나의 리포트(`_review/REPORT.md`)로 만든다.
 
-**트리거:** 여러 영역을 함께 보는 리뷰·감사 요청(종합 코드 리뷰, PR 전 전반 점검, 보안·성능·아키텍처·스타일 리뷰)과 그 후속(재실행, 영역만 다시, 이전 리뷰 대비)은 `code-review-harness` 스킬을 사용하라. 단일 diff의 빠른 버그 찾기는 내장 `/code-review`, 리뷰 결과 수정은 `multiview-harness`.
+**트리거:** 여러 영역을 함께 보는 리뷰·감사 요청(종합 코드 리뷰, PR 전 전반 점검, 보안·성능·아키텍처·스타일 리뷰)과 그 후속(재실행, 영역만 다시, 이전 리뷰 대비)은 `code-review-harness` 스킬을 사용하라. 단일 diff의 빠른 버그 찾기는 내장 `/code-review`, 리뷰 결과 수정은 `multiview-harness`. 실서버에 올릴 태그의 배포 전 점검(딸려 가는 커밋, 환경 변수, 롤백 호환, GO/NO-GO)은 `release-reviewer` 에이전트.
 
 **변경 이력:**
 | 날짜 | 변경 내용 | 대상 | 사유 |
@@ -29,3 +29,4 @@
 | 2026-09-30 | 디자인 우선순위 추가: 멀티뷰·매장 등록기는 `design.md`가 우선, 로컬 `hallmark` 스킬은 새 별도 페이지에만. hallmark 설치물(`.agents/`, `.claude/skills/hallmark`, `skills-lock.json`)은 git 제외 | CLAUDE.md, .gitignore | 사용자가 hallmark를 프로젝트에 설치. redesign·audit 요청에 자동으로 붙어 잠긴 색 역할을 바꿀 수 있음 |
 | 2026-10-01 | e2e용 5190 수동 기동 명령을 playwright.config.ts webServer와 같은 환경 변수(Development + `YouTube__Mode=Mock` + 빈 키 + 캐시 경로)로 정정, `ASPNETCORE_ENVIRONMENT=Mock` 금지와 확인법 추가 | skills/multiview-local-env | 미등록 기체 QA에서 문서대로 띄운 5190이 venues.mock.json을 읽어 e2e 10개가 환경 때문에 실패(같은 코드를 올바른 환경으로 돌리면 34/0) |
 | 2026-10-01 | 기준선 worktree 정리 순서 추가: node_modules 링크를 먼저 끊고 확인한 뒤 worktree 삭제, 정리 후 `npm ls` 확인과 복구법 | skills/perf-check | 기준선 worktree를 링크 확인 없이 지우는 과정(성능 에이전트의 `cmd rmdir` 직후 삭제, 이어진 리더의 `git worktree remove --force`)에서 Windows가 링크를 따라가 원본 frontend/node_modules 일부(.bin, @babel/*)를 지웠다. 개발 에이전트가 npm install로 복구(package 파일 변화 없음) |
+| 2026-10-17 | 실서버 배포 전 리뷰어 추가(release-reviewer): 실서버 이미지..후보 태그 범위의 딸려 가는 커밋, 설정·환경 변수, CSP·엔드포인트, 상태 파일 롤백 호환, 쿼터, 옛 탭·데스크톱 호환, CI·이미지를 점검해 `_review/RELEASE_<태그>.md`에 GO/조건부 GO/NO-GO와 배포·롤백 명령 | agents/release-reviewer, CLAUDE.md | 사용자 요청. 비컨을 실서버에 올릴 때 후보 이미지에 실서버에 없던 커밋 6개가 딸려 가는 것을 손으로 찾아 백포트했다 |
