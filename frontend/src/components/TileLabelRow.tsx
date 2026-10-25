@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react';
+import { formatLag } from '../lib/liveLag';
 import { useRowFit } from '../lib/rowFit';
 import { ArcadeButton } from './ArcadeButton';
 import { LiveBadge } from './LiveBadge';
@@ -19,6 +20,11 @@ interface TileLabelRowProps {
   tag?: boolean;
   /** Something is on air here: the LIVE badge. */
   live: boolean;
+  /**
+   * The picture is this many whole seconds behind the live edge (lib/liveLag.ts): in LIVE's
+   * place, a button that takes the player back to it. Left out while the picture is live.
+   */
+  behindLive?: { seconds: number; onBackToLive: () => void };
   viewers?: number;
   sound: 'on' | 'off';
   /** No player to take the sound yet; the stylesheet hides the button meanwhile. */
@@ -29,16 +35,18 @@ interface TileLabelRowProps {
 }
 
 /**
- * The line under a tile's picture (design.md, "Tile labels"): cabinet, [tag], LIVE,
- * viewers, then the sound button and the chat. Under the picture on every device, so
- * nothing of ours covers YouTube's own controls. The Figma component's `width=narrow`
- * is not a prop: the row measures what it holds and gives way on its own (lib/rowFit.ts,
- * `data-fit`), and a phone held upright keeps the icons alone (the stylesheet).
+ * The line under a tile's picture (design.md, "Tile labels"): cabinet, [tag], LIVE - or how
+ * far behind live the picture is, as a button back to it - viewers, then the sound button
+ * and the chat. Under the picture on every device, so nothing of ours is laid over the
+ * video. The Figma component's `width=narrow` is not a prop: the row measures what it holds
+ * and gives way on its own (lib/rowFit.ts, `data-fit`), and a phone held upright keeps the
+ * icons alone (the stylesheet).
  */
 export function TileLabelRow({
   cabinet,
   tag,
   live,
+  behindLive,
   viewers,
   sound,
   soundDisabled,
@@ -48,7 +56,7 @@ export function TileLabelRow({
   const on = sound === 'on';
   const rowRef = useRef<HTMLDivElement>(null);
   // Everything that changes what the row has to hold; its size is watched separately.
-  useRowFit(rowRef, [cabinet, tag, live, viewers, sound, soundDisabled, Boolean(chat)].join('|'));
+  useRowFit(rowRef, [cabinet, tag, live, behindLive?.seconds, viewers, sound, soundDisabled, Boolean(chat)].join('|'));
 
   return (
     <div className="tile__row" ref={rowRef}>
@@ -57,7 +65,24 @@ export function TileLabelRow({
           {cabinet}
         </span>
         {tag && <TagChip />}
-        {live && <LiveBadge />}
+        {live &&
+          (behindLive ? (
+            <ArcadeButton
+              className="tile__control tile__control--lag"
+              label="늦음 · 실시간으로"
+              icon={
+                <>
+                  <ToLiveIcon />
+                  <span className="tile__lag">{formatLag(behindLive.seconds)}</span>
+                </>
+              }
+              onClick={behindLive.onBackToLive}
+              aria-label={`${cabinet} ${formatLag(behindLive.seconds)} 늦음, 실시간으로 돌아가기`}
+              data-testid="tile-to-live"
+            />
+          ) : (
+            <LiveBadge />
+          ))}
         {typeof viewers === 'number' && <span className="tile__viewers">{formatViewers(viewers)}</span>}
       </div>
 
@@ -87,6 +112,23 @@ export function ChatIcon() {
         strokeWidth="1.4"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+/** Two chevrons to the end of a bar: forward, all the way to the live edge. */
+function ToLiveIcon() {
+  return (
+    <svg className="tile__control-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path
+        d="M2.5 3.5 7 8l-4.5 4.5M7.5 3.5 12 8l-4.5 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M14 3v10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
