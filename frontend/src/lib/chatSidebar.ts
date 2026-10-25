@@ -12,8 +12,9 @@ import type { WallTile } from './wallTiles';
  * Chrome in a private window - the framed chat can only be read, and the page cannot tell
  * which case it is in: the frame is another origin's, and in the messages it sends this
  * page (signed out, one `!_{"h":""}` handshake in ten seconds) nothing names the viewer. So
- * the sidebar always offers Google's sign-in in a window of its own, arriving at YouTube's
- * pop-out chat.
+ * wherever the sidebar frames the chat it offers Google's sign-in in a window of its own,
+ * arriving at YouTube's pop-out chat. A viewer signed in to this page (lib/googleSignIn.ts)
+ * gets our own chat instead, written to through the server, with the frame a choice away.
  */
 
 /**
@@ -79,6 +80,104 @@ export function chatTileOf(tiles: readonly WallTile[], chat: OpenChat | null): W
     return undefined;
   }
   return tiles.find((tile) => tile.id === chat.tileId && tile.stream?.videoId === chat.videoId);
+}
+
+// --------------------------------------------------------------- across the sign-in
+
+/**
+ * The sessionStorage the sidebar keeps its two notes in, or none where the browser will not
+ * give it (storage turned off, some private windows): the notes are a convenience, and the
+ * sidebar works the same without them.
+ */
+export function sessionNotes(): Storage | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Signed in, the sidebar shows our own chat - the list and a box to write in - or, chosen
+ * from under it, YouTube's framed chat as before. The choice lasts the browser tab's session.
+ */
+export type ChatView = 'ours' | 'youtube';
+
+export const CHAT_VIEW_KEY = 'taiko.chat.view';
+
+export function readChatView(storage: Storage | undefined): ChatView {
+  try {
+    return storage?.getItem(CHAT_VIEW_KEY) === 'youtube' ? 'youtube' : 'ours';
+  } catch {
+    return 'ours';
+  }
+}
+
+export function storeChatView(storage: Storage | undefined, view: ChatView): void {
+  try {
+    storage?.setItem(CHAT_VIEW_KEY, view);
+  } catch {
+    // Not kept: the next sidebar starts at ours again.
+  }
+}
+
+/**
+ * The sidebar a sign-in started from. The sign-in is a whole-page visit to Google, and the
+ * page comes back to the wall with no sidebar open; noted before it leaves, the same tile's
+ * chat opens again once its broadcast is back on the wall. A note older than the sign-in's
+ * own ten minutes (the server's correlation cookie) is from a sign-in long given up, and
+ * not followed.
+ */
+export const CHAT_AFTER_SIGN_IN_KEY = 'taiko.chat.afterSignIn';
+export const CHAT_AFTER_SIGN_IN_MS = 10 * 60_000;
+
+export function rememberChatForSignIn(storage: Storage | undefined, chat: OpenChat, now: number): void {
+  try {
+    storage?.setItem(CHAT_AFTER_SIGN_IN_KEY, JSON.stringify({ tileId: chat.tileId, videoId: chat.videoId, at: now }));
+  } catch {
+    // Not kept: back from the sign-in, the viewer opens the chat again.
+  }
+}
+
+/** The chat to open again after a sign-in, if this page load is the way back from one. Reads only. */
+export function chatAfterSignIn(storage: Storage | undefined, now: number): OpenChat | null {
+  try {
+    const note = JSON.parse(storage?.getItem(CHAT_AFTER_SIGN_IN_KEY) ?? 'null') as Partial<OpenChat & { at: number }> | null;
+    if (
+      typeof note?.tileId !== 'string' ||
+      typeof note.videoId !== 'string' ||
+      typeof note.at !== 'number' ||
+      now - note.at < 0 ||
+      now - note.at > CHAT_AFTER_SIGN_IN_MS
+    ) {
+      return null;
+    }
+    return { tileId: note.tileId, videoId: note.videoId };
+  } catch {
+    return null;
+  }
+}
+
+export function forgetChatAfterSignIn(storage: Storage | undefined): void {
+  try {
+    storage?.removeItem(CHAT_AFTER_SIGN_IN_KEY);
+  } catch {
+    // Nothing to forget.
+  }
+}
+
+/** The server's word for a sign-in that did not go through, on the page it came back to. */
+export const SIGN_IN_FAILED_PARAM = 'signin';
+
+export function signInFailedIn(search: string): boolean {
+  return new URLSearchParams(search).get(SIGN_IN_FAILED_PARAM) === 'failed';
+}
+
+/** The address without it, so a reload or a shared link does not say so again. */
+export function withoutSignInFailed(href: string): string {
+  const url = new URL(href);
+  url.searchParams.delete(SIGN_IN_FAILED_PARAM);
+  return url.toString();
 }
 
 /** Whether the window is wide enough for the sidebar now; follows resizes. */

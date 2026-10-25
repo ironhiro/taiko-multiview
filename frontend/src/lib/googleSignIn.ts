@@ -1,9 +1,9 @@
 import { endpoint, REQUEST_TIMEOUT_MS } from './api';
 
 /**
- * Google sign-in, and the broadcast's chat read as the viewer who signed in (the server's
- * GoogleSignInEndpoints). The server keeps the tokens in its own HttpOnly cookie: this page
- * never holds one, it only asks who is signed in and for the chat.
+ * Google sign-in, and the broadcast's chat read and written as the viewer who signed in (the
+ * server's GoogleSignInEndpoints). The server keeps the tokens in its own HttpOnly cookie:
+ * this page never holds one, it only asks who is signed in, for the chat, and to send.
  *
  * This is apart from the YouTube chat framed in the sidebar, which has youtube.com's own
  * sign-in or none (lib/chatSidebar.ts): signing in here does not sign that frame in.
@@ -23,6 +23,8 @@ export interface ChatMessage {
   author: string;
   text: string;
   publishedAt?: string;
+  /** The author's standing in the chat, when it is one the list shows. */
+  role?: 'owner' | 'moderator';
 }
 
 /** GET /api/chat/{videoId}/messages. */
@@ -226,9 +228,200 @@ export function startChatPolling({ read, onPage, onEnd, doc }: ChatPolling): () 
 /** The most messages the list keeps; older ones fall off its top. */
 export const MAX_CHAT_MESSAGES = 200;
 
-/** The list with a page's messages added after it, each message once, the newest kept. */
+/**
+ * The list with a page's messages added after it, each message once, the newest kept. A
+ * message already there stays where it is, as the page tells it: the one the viewer sent
+ * is in the list from the send's answer, under the author's sign-in name, and the next
+ * read brings it again under the same id with YouTube's name for the channel.
+ */
 export function appendChatMessages(list: readonly ChatMessage[], page: readonly ChatMessage[]): ChatMessage[] {
-  const seen = new Set(list.map((message) => message.id));
-  const added = page.filter((message) => !seen.has(message.id) && seen.add(message.id));
-  return added.length === 0 ? (list as ChatMessage[]) : [...list, ...added].slice(-MAX_CHAT_MESSAGES);
+  const at = new Map(list.map((message, index) => [message.id, index]));
+  let next: ChatMessage[] | undefined;
+  const added: ChatMessage[] = [];
+  for (const message of page) {
+    const index = at.get(message.id);
+    if (index === undefined) {
+      at.set(message.id, -1);
+      added.push(message);
+    } else if (index >= 0 && !sameMessage(list[index], message)) {
+      next ??= [...list];
+      next[index] = message;
+    }
+  }
+  if (added.length === 0) {
+    return next ?? (list as ChatMessage[]);
+  }
+  return [...(next ?? list), ...added].slice(-MAX_CHAT_MESSAGES);
+}
+
+function sameMessage(a: ChatMessage, b: ChatMessage): boolean {
+  return a.author === b.author && a.text === b.text && a.role === b.role;
+}
+
+/**
+ * How many messages came after the newest one the viewer has seen: the count on "새 메시지 N"
+ * while they read further up. A newest-seen that has fallen off the top counts everything.
+ */
+export function unseenCount(list: readonly ChatMessage[], newestSeenId: string | undefined): number {
+  if (newestSeenId === undefined) {
+    return list.length;
+  }
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    if (list[index].id === newestSeenId) {
+      return list.length - 1 - index;
+    }
+  }
+  return list.length;
+}
+
+/**
+ * Whether the list follows the newest message, and the newest one the viewer has had in view.
+ * The list keeps to its bottom while `atBottom`; scrolled up, it stays where it is, and
+ * "새 메시지 N" counts what came after `newestSeenId`.
+ */
+export interface ChatFollow {
+  atBottom: boolean;
+  newestSeenId?: string;
+}
+
+export type ChatFollowEvent =
+  /** The list changed: what is newest now. */
+  | { kind: 'messages'; newestId?: string }
+  /** The viewer scrolled: whether that left the list at its bottom. */
+  | { kind: 'scrolled'; atBottom: boolean; newestId?: string }
+  /** To the bottom on purpose: "새 메시지 N" pressed, or a message of their own sent. */
+  | { kind: 'toBottom'; newestId?: string };
+
+export const CHAT_FOLLOW_START: ChatFollow = { atBottom: true };
+
+export function followChat(state: ChatFollow, event: ChatFollowEvent): ChatFollow {
+  switch (event.kind) {
+    case 'messages':
+      return state.atBottom ? seen(event.newestId, state) : state;
+    case 'scrolled':
+      return event.atBottom ? seen(event.newestId, state) : state.atBottom ? { ...state, atBottom: false } : state;
+    case 'toBottom':
+      return seen(event.newestId, state);
+  }
+}
+
+function seen(newestId: string | undefined, state: ChatFollow): ChatFollow {
+  return state.atBottom && state.newestSeenId === newestId ? state : { atBottom: true, newestSeenId: newestId };
+}
+
+/** The count on "새 메시지 N": none while the list follows the newest. */
+export function unseenWhileReading(state: ChatFollow, list: readonly ChatMessage[]): number {
+  return state.atBottom ? 0 : unseenCount(list, state.newestSeenId);
+}
+
+/**
+ * Close enough to the bottom of the list to count as there, and so follow new messages: a
+ * few pixels of give, since a zoomed page scrolls in fractions.
+ */
+export const CHAT_BOTTOM_SLACK_PX = 16;
+
+export function isScrolledToBottom(
+  list: { scrollTop: number; scrollHeight: number; clientHeight: number },
+  slack: number = CHAT_BOTTOM_SLACK_PX,
+): boolean {
+  return list.scrollHeight - list.scrollTop - list.clientHeight <= slack;
+}
+
+// --------------------------------------------------------------- writing
+
+/** The longest message YouTube's chat takes. */
+export const MAX_CHAT_MESSAGE_LENGTH = 200;
+
+/**
+ * A message's length as the server counts it (GoogleSignInEndpoints.MessageLength): by code
+ * point, so an emoji made of two UTF-16 halves is one, with the spaces around it left off,
+ * as they are when it is sent.
+ */
+export function chatMessageLength(text: string): number {
+  return Array.from(text.trim()).length;
+}
+
+/** Why a message cannot be sent as it is, or null when it can. */
+export function chatMessageProblem(text: string): 'empty' | 'tooLong' | null {
+  const length = chatMessageLength(text);
+  if (length === 0) {
+    return 'empty';
+  }
+  return length > MAX_CHAT_MESSAGE_LENGTH ? 'tooLong' : null;
+}
+
+/**
+ * Whether a key press in the message box sends it: Enter, but not Shift+Enter (a new line),
+ * and not the Enter that ends a Korean or Japanese input method's word - the browser marks
+ * that one `isComposing`, and Safari, which does not always, with key code 229.
+ */
+export function isSendKey(event: { key: string; shiftKey: boolean; isComposing?: boolean; keyCode?: number }): boolean {
+  return event.key === 'Enter' && !event.shiftKey && event.isComposing !== true && event.keyCode !== 229;
+}
+
+/** Why the server turned a message down, in the words it uses. */
+export type ChatSendRefusal =
+  | 'empty'
+  | 'tooLong'
+  | 'invalid'
+  | 'notLive'
+  | 'forbidden'
+  | 'tooFast'
+  | 'quotaExceeded'
+  | 'failed';
+
+export type ChatSend = { kind: 'sent'; message: ChatMessage } | { kind: 'signedOut' } | { kind: 'refused'; reason: ChatSendRefusal };
+
+/** What the viewer is told when a message does not go; kept short, under the box. */
+export const CHAT_SEND_REFUSALS: Record<ChatSendRefusal, string> = {
+  empty: '메시지를 입력하세요.',
+  tooLong: `${MAX_CHAT_MESSAGE_LENGTH}자까지 보낼 수 있습니다.`,
+  invalid: '유튜브가 이 메시지를 받지 않았습니다.',
+  notLive: '라이브가 끝났거나 채팅이 꺼져 있습니다.',
+  forbidden: '이 채팅에는 쓸 수 없습니다. 채팅 금지나 구독자·멤버 전용일 수 있습니다.',
+  tooFast: '너무 빨리 보내고 있습니다. 잠시 후 다시 보내세요.',
+  quotaExceeded: '오늘 채팅 사용량이 다 찼습니다. 유튜브 채팅으로 보기를 쓰세요.',
+  failed: '보내지 못했습니다. 다시 보내 보세요.',
+};
+
+const SEND_REFUSALS = new Set<string>(Object.keys(CHAT_SEND_REFUSALS));
+
+/**
+ * Writes a message to the broadcast's chat as the viewer. JSON, which is what the server
+ * takes as the sign that this page and not another site sent it. Given up after the same
+ * time as a read.
+ */
+export async function sendChat(videoId: string, text: string, signal?: AbortSignal): Promise<ChatSend> {
+  const controller = new AbortController();
+  const abortWithCaller = () => controller.abort();
+  signal?.addEventListener('abort', abortWithCaller);
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint(`/api/chat/${encodeURIComponent(videoId)}/messages`), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text.trim() }),
+    });
+    if (response.status === 401) {
+      return { kind: 'signedOut' };
+    }
+    if (response.ok) {
+      return { kind: 'sent', message: (await response.json()) as ChatMessage };
+    }
+    // The address's own limit answers 429 without a word: that too is sending too fast.
+    if (response.status === 429) {
+      return { kind: 'refused', reason: 'tooFast' };
+    }
+    const error = ((await response.json().catch(() => null)) as { error?: unknown } | null)?.error;
+    return { kind: 'refused', reason: typeof error === 'string' && SEND_REFUSALS.has(error) ? (error as ChatSendRefusal) : 'failed' };
+  } catch (cause) {
+    if (signal?.aborted) {
+      throw cause;
+    }
+    return { kind: 'refused', reason: 'failed' };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abortWithCaller);
+  }
 }
