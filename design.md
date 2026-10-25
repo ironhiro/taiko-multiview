@@ -70,6 +70,21 @@ bounces, glows or lifts.
   video, hovered or not: over it, the label and buttons covered YouTube's progress bar,
   its share and channel links, and the thumbnail. A tile is a 16:9 picture plus this
   row; the grid sizes tiles so that N rows of both fit the screen.
+- **A clear shield lies over every player, on every device**, and the player is built
+  without YouTube's controls (`controls=0`, no keys, no fullscreen, no annotations). A
+  click or a tap on the picture lands on the shield: it pauses nothing, brings up nothing
+  and leaves for YouTube through nothing. The shield has no action of its own - what a
+  tile does is in its row - and a thumb on it scrolls or pinches the page as anywhere.
+- **Behind live, LIVE gives its place to a way back.** When the picture has fallen more
+  than 10 seconds behind the live edge (lib/liveLag.ts: measured against the least delay
+  the player has shown, only while it plays on screen), the badge becomes an arcade button
+  reading "12초 늦음 · 실시간으로" (`>>|` icon, the seconds in the data face, `--color-ink`).
+  How far behind is seconds, then minutes and seconds ("3분 5초"), then from an hour on
+  hours and minutes ("11시간 58분").
+  Pressing it loads the broadcast afresh at the live edge and LIVE comes back. A plain
+  button: falling behind is neither on air nor a choice, so no 돈 and no 카. Where a row
+  drops its words, the icon and the seconds stay ("12초"); its name keeps the whole
+  sentence. Like LIVE, it never goes.
 - The row is one line. Viewers never wrap ("12,345명" stays whole), and nothing spills
   under the buttons.
 - **The label keeps at least three letters and its ellipsis** ("THE…"), or its whole name
@@ -288,7 +303,7 @@ load there; this file and `tokens.css` win wherever the two differ.
 | ReplayCard | `frontend/src/components/ReplayView.tsx` (`ReplayCard`, `.replay-card`) | Cabinet = `label`, hours = `time`, 미등록 = no `stationId` (TagChip); state default/hover/focus = CSS |
 | ReplayPlayer | `frontend/src/components/ReplayPlayer.tsx` (`.replay-player`, `data-testid="replay-player"`) | Cabinet = `label`, when = `when`, embeddable/blocked = `broadcast.embeddable`; 목록 = `ArcadeButton` icon+text, YouTube = `ArcadeLink` (icon-only on phones) |
 | ReplayLink (credit) | `frontend/src/App.tsx` (`.credit__replay`) | none |
-| TileLabelRow | `frontend/src/components/TileLabelRow.tsx` (`.tile__row`) | sound off/on = `sound`; width regular/narrow = not a prop: each row measures itself (`data-fit` words/icons/no-count/tight/snug, `lib/rowFit.ts`), and phones upright (row ≤390px) keep the icons alone; Cabinet = `cabinet`, Viewers = `viewers`, Tag = `tag` |
+| TileLabelRow | `frontend/src/components/TileLabelRow.tsx` (`.tile__row`) | sound off/on = `sound`; LIVE / behind live = `behindLive` (`{ seconds, onBackToLive }`, `.tile__control--lag`, `data-testid="tile-to-live"`); width regular/narrow = not a prop: each row measures itself (`data-fit` words/icons/no-count/tight/snug, `lib/rowFit.ts`), and phones upright (row ≤390px) keep the icons alone; Cabinet = `cabinet`, Viewers = `viewers`, Tag = `tag` |
 | Tile | `frontend/src/components/PlayerTile.tsx` (`.grid-view .tile`) | device desktop/phone = the phone media block in `styles.css`, not a prop |
 | ChatLink | `frontend/src/components/ChatLink.tsx` (`ChatLink`, an `ArcadeLink`) | in tab (the broadcast's page) / popup (YouTube's pop-out chat) = `inTab`; popup starting at the sign-in = `signIn`; Label = `label`, Icon = `icon`, accessible name = `name` |
 | TileChatButton (sidebar) | `frontend/src/components/PlayerTile.tsx` (`SidebarChatButton`, `.tile__control--chat`, `data-testid="tile-chat"`) | chosen = sidebar shows this tile's chat (`aria-pressed`, 카) |

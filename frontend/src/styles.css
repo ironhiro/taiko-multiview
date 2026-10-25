@@ -644,8 +644,9 @@ input {
   pointer-events: none;
 }
 
-/* Over the player on touch screens: YouTube's controls stay out of reach, and a thumb
-   on the picture scrolls the page instead of the player. Above the loading cover too
+/* Over every player, on every device: YouTube's controls, title and logo stay out of reach
+   (the player is built without controls), a click no longer pauses a desktop tile, and a
+   thumb on the picture scrolls the page instead of the player. Above the loading cover too
    (the cover has no z-index), which does not show: the shield is clear, and the cover
    catches no clicks either way. The thumbnail laid over a parked player sits above both. */
 .tile__shield {
@@ -900,6 +901,32 @@ input {
 
 .grid-view .tile__row[data-fit='snug'] .tile__controls {
   padding-right: var(--space-3xs);
+}
+
+/* How far behind live the picture is, in LIVE's place, as a button back to the live edge
+   (design.md, "Tile labels"). A plain arcade button: neither on air (돈) nor a choice the
+   wall keeps (카). The seconds stay when a narrow row drops the words, and keep a little
+   room either side where the other buttons go square. The bottom margin is the base the
+   buttons in the controls stand on, so the faces line up. */
+.tile__control--lag {
+  flex: none;
+  pointer-events: auto;
+  margin-bottom: var(--press-depth);
+}
+
+.tile__lag {
+  color: var(--color-ink);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.grid-view .tile__row .tile__control.tile__control--lag {
+  min-width: 0;
+  padding: 0 var(--space-2xs);
+}
+
+.grid-view .tile__row:not([data-fit='words']) .tile__control.tile__control--lag {
+  padding: 0 var(--space-3xs);
 }
 
 /* No header over the picture to clear any more. */
@@ -2121,6 +2148,11 @@ input {
       justify-content: center;
       min-width: var(--tile-control);
       padding: 0;
+    }
+
+    /* Except how far behind live: its seconds stay, with a little room either side. */
+    .grid-view .tile__row .tile__control.tile__control--lag {
+      padding: 0 var(--space-3xs);
     }
   }
 }

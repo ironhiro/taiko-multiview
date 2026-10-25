@@ -3,6 +3,7 @@ import type { IdleMessage } from '../lib/venue';
 import type { LiveStream } from '../lib/types';
 import { describePlayerError, report } from '../lib/diagnostics';
 import { liveEdgeSeek, secondsBehindLive } from '../lib/liveClock';
+import { lagToShow, nextLiveLag, pageLiveEdges, pictureDelay } from '../lib/liveLag';
 import { usePageAway } from '../lib/pageAway';
 import { compactPlaybackSlots, SIGHTING_THRESHOLDS, type Sighting } from '../lib/playbackSlots';
 import { compactPlayerBudget } from '../lib/playerBudget';
@@ -11,9 +12,7 @@ import {
   applyTileAudio,
   joinsPlaybackSlots,
   nextPlayerAction,
-  soundSetInPlayer,
   startReadyPlayer,
-  type SoundSent,
 } from '../lib/tilePlayer';
 import { useCoveredTop } from '../lib/stickyCover';
 import { ArcadeButton } from './ArcadeButton';
@@ -32,12 +31,6 @@ interface PlayerTileProps {
   /** True when this tile owns the audio. Every other tile stays muted. */
   isAudioActive: boolean;
   onRequestAudio: () => void;
-  /**
-   * The viewer muted or unmuted this tile's player with YouTube's own controls: `hasSound`
-   * is what the player does now. The tile holding the sound follows it, so the tile's button
-   * and the other tiles' players agree with what the frame plays (lib/tilePlayer.ts).
-   */
-  onPlayerSound: (hasSound: boolean) => void;
   /** Rendered small inside the floor plan, larger in the plain grid. */
   compact?: boolean;
   /**
@@ -51,12 +44,6 @@ interface PlayerTileProps {
    * (lib/pageAway.ts). Phones and tablets.
    */
   pausesWhenAway?: boolean;
-  /**
-   * Lay a sheet over the player so YouTube's own controls cannot be touched. On a phone a
-   * scrolling thumb kept catching the seek bar and the channel link; the tile's own
-   * button covers sound.
-   */
-  shielded?: boolean;
   /**
    * Open the chat as the broadcast's own YouTube page in a new tab rather than a popup
    * window. Phones and tablets: a popup is a tab there anyway, and a plain link to the
@@ -79,11 +66,9 @@ export function PlayerTile({
   stream,
   isAudioActive,
   onRequestAudio,
-  onPlayerSound,
   compact,
   lazy,
   pausesWhenAway,
-  shielded,
   opensChatInTab,
   chatSidebar,
   idle,
@@ -125,11 +110,15 @@ export function PlayerTile({
   shouldPlayRef.current = shouldPlay;
   const holdsSoundRef = useRef(isAudioActive);
   holdsSoundRef.current = isAudioActive;
-  const onPlayerSoundRef = useRef(onPlayerSound);
-  onPlayerSoundRef.current = onPlayerSound;
-  // The sound this tile last gave its player, which the player's own controls are told apart
-  // from. Belongs to one player: a new one has been told nothing until it is ready.
-  const soundSentRef = useRef<SoundSent | null>(null);
+  // The sound this tile last gave its player. Belongs to one player: a new one has been told
+  // nothing until it is ready.
+  const soundGivenRef = useRef<boolean | null>(null);
+  // Whole seconds the picture is behind the live edge, or null while it is close enough to
+  // be LIVE (lib/liveLag.ts). Set by the watchdog, which measures it only while the player
+  // plays in sight.
+  const [lagSeconds, setLagSeconds] = useState<number | null>(null);
+  // The watchdog of the player now mounted, for "실시간으로" to tell it the edge is measured afresh.
+  const watchdogRef = useRef<Watchdog | null>(null);
   // What IntersectionObserver said last, undelayed, so a tap can pass it on at once.
   const sightingRef = useRef<Sighting>({ ratio: 0, pageTop: 0 });
 
@@ -245,8 +234,7 @@ export function PlayerTile({
     let disposed = false;
     let watchdog: Watchdog | undefined;
     let stopResync: (() => void) | undefined;
-    let stopSoundWatch: (() => void) | undefined;
-    soundSentRef.current = null;
+    soundGivenRef.current = null;
     const where = { station: label, videoId: mountedId };
     setIsPictureUp(false);
 
@@ -279,7 +267,13 @@ export function PlayerTile({
           playerVars: {
             autoplay: shouldPlayRef.current ? 1 : 0,
             mute: 1,
-            controls: shielded ? 0 : 1,
+            // The tile's shield takes every tap and click (below), so YouTube's controls
+            // would only be drawn for nothing; the keys, fullscreen and annotations go with
+            // them. rel=0 keeps an end screen to the broadcast's own channel.
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3,
             playsinline: 1,
             rel: 0,
             modestbranding: 1,
@@ -297,13 +291,13 @@ export function PlayerTile({
               // loaded; and the sound back if this tile already holds it - chosen before this
               // player was built, the effect below found no player to give it to.
               startReadyPlayer(event.target, { shouldPlay: shouldPlayRef.current, holdsSound: holdsSoundRef.current });
-              soundSentRef.current = { holdsSound: holdsSoundRef.current, at: Date.now() };
-              // A shielded tile's player has no controls of its own to change the sound with.
-              if (!shielded) {
-                stopSoundWatch = watchPlayerSound(event.target, soundSentRef, onPlayerSoundRef);
-              }
-              watchdog = watchPlayback(event.target, where, isLiveRef, startedAtRef, shouldPlayRef);
-              stopResync = resyncWhenShownAgain(event.target, tileRef.current, where, startedAtRef, shouldPlayRef);
+              soundGivenRef.current = holdsSoundRef.current;
+              const sight = { inView: true };
+              watchdog = watchPlayback(event.target, where, isLiveRef, startedAtRef, shouldPlayRef, sight, setLagSeconds);
+              watchdogRef.current = watchdog;
+              stopResync = resyncWhenShownAgain(event.target, tileRef.current, where, startedAtRef, shouldPlayRef, sight, () =>
+                watchdog?.check(),
+              );
             },
             // Checked at once rather than on the next tick, so a start far behind live is
             // corrected before much old footage is on screen.
@@ -328,8 +322,11 @@ export function PlayerTile({
       cancelDrill();
       // The timers go at once: a tile that has lost its player must not keep polling it.
       watchdog?.stop();
+      if (watchdogRef.current === watchdog) {
+        watchdogRef.current = null;
+      }
       stopResync?.();
-      stopSoundWatch?.();
+      setLagSeconds(null);
 
       const player = playerRef.current;
       playerRef.current = null;
@@ -361,18 +358,37 @@ export function PlayerTile({
     };
   }, [mountedId, failed]);
 
-  // A player still loading takes its sound when ready (startReadyPlayer above). A player whose
-  // sound the viewer set in its own controls already has what the tile now asks for, and is
-  // left alone: applying it again would put the volume back to full.
+  // A player still loading takes its sound when ready (startReadyPlayer above), and one that
+  // already has what the tile asks for is left alone.
   useEffect(() => {
     const player = playerRef.current;
-    if (!player || soundSentRef.current?.holdsSound === isAudioActive) {
+    if (!player || soundGivenRef.current === isAudioActive) {
       return;
     }
 
     applyTileAudio(player, isAudioActive);
-    soundSentRef.current = { holdsSound: isAudioActive, at: Date.now() };
+    soundGivenRef.current = isAudioActive;
   }, [isAudioActive, mountedId]);
+
+  // "실시간으로": a fresh load of the broadcast, which starts at the live edge. Seeking there
+  // does not get all the way: a player that has been behind for a while seeks to the end it
+  // last knew of, and was measured landing 12-16s short of the edge it had before (liveLag.ts).
+  // The load keeps the player's sound and plays again within a second. The badge comes back at
+  // once; the watchdog measures again when the player is playing (onStateChange), and takes the
+  // edge afresh from there, so a wrong edge goes with the press that doubts it.
+  const backToLive = () => {
+    const player = playerRef.current;
+    if (!player || !mountedId) {
+      return;
+    }
+    try {
+      player.loadVideoById(mountedId);
+    } catch {
+      return; // Torn down meanwhile.
+    }
+    watchdogRef.current?.forgetEdge();
+    setLagSeconds(null);
+  };
 
   // A tap on a lazy tile's thumbnail asks for a slot, taking one from the least visible
   // tile playing.
@@ -421,7 +437,11 @@ export function PlayerTile({
           <ThumbnailPoster stream={stream} onActivate={activate} />
         )}
 
-        {showsPlayer && shielded && <div className="tile__shield" aria-hidden="true" />}
+        {/* Over every player, on every device: taps and clicks land here, never in the frame,
+            so none can pause the player, bring up its controls or leave for YouTube through
+            its title and logo. It has nothing of its own to do on a click - the tile's buttons
+            are in the row below - and a thumb on it scrolls the page or pinches as anywhere. */}
+        {showsPlayer && <div className="tile__shield" aria-hidden="true" />}
         {showsPlayer && stream && <LoadingCover stream={stream} gone={isPictureUp} />}
         {/* A kept player without a slot sits paused under its thumbnail, which a tap plays. */}
         {showsPlayer && stream && lazy && !hasSlot && (
@@ -433,6 +453,7 @@ export function PlayerTile({
         cabinet={label}
         tag={unregistered}
         live={Boolean(stream)}
+        behindLive={showsPlayer && lagSeconds !== null ? { seconds: lagSeconds, onBackToLive: backToLive } : undefined}
         viewers={stream?.concurrentViewers}
         sound={isAudioActive ? 'on' : 'off'}
         soundDisabled={!mountedId}
@@ -514,6 +535,9 @@ const ENDED_RELOAD_MS = 15_000;
  * broadcast as live. Each episode is reported when it crosses its limit and again when
  * it clears, with how long it lasted.
  *
+ * The same tick measures how far behind the live edge the picture is, for the tile's label
+ * row (lib/liveLag.ts) - no timer of its own, and only while the player plays in sight.
+ *
  * Two of these are also repaired, because they put a non-live picture on a live tile:
  * the player wandering off to another video (the end screen can start an older upload
  * from the channel), and a player stuck on "ended" while the broadcast is still live.
@@ -523,6 +547,8 @@ const ENDED_RELOAD_MS = 15_000;
 interface Watchdog {
   check: () => void;
   stop: () => void;
+  /** For a player loaded afresh, which starts at the live edge: measure where that is again. */
+  forgetEdge: () => void;
 }
 
 /**
@@ -548,6 +574,8 @@ function watchPlayback(
   isLiveRef: { current: boolean },
   startedAtRef: { current: string | undefined },
   shouldPlayRef: { current: boolean },
+  sight: { inView: boolean },
+  onLag: (seconds: number | null) => void,
 ): Watchdog {
   // The autoplay grace counts only while the tile wants the player playing: on a phone a
   // player can be built and then paused on purpose (it lost its slot before it started),
@@ -564,25 +592,37 @@ function watchPlayback(
   let bufferingSince: number | null = null;
   let endedSince: number | null = null;
   const open = { autoplay: false, buffering: false, stall: false, ended: false, behind: false };
+  // The least delay this player has shown: where its live edge is (lib/liveLag.ts). Shared
+  // with the page's other players under this key, which caps an edge measured while behind.
+  let edgeDelay: number | null = null;
+  const edgeKey = {};
+  const forgetEdge = () => {
+    edgeDelay = null;
+    pageLiveEdges.forget(edgeKey);
+  };
 
   // Loading starts playback; a player paused on purpose (no slot on a phone, or the page
   // away) only gets the broadcast cued, and starts it when it is asked to play again.
+  // Either way the edge is measured afresh.
   const reload = () => {
     if (shouldPlayRef.current) {
       player.loadVideoById(where.videoId);
     } else {
       player.cueVideoById(where.videoId);
     }
+    forgetEdge();
   };
 
   const tick = () => {
     let state: number;
     let time: number;
     let loadedId: string | null;
+    let mediaReferenceTime: number | undefined;
     try {
       state = player.getPlayerState();
       time = player.getCurrentTime();
       loadedId = videoIdFromUrl(player.getVideoUrl());
+      mediaReferenceTime = player.getMediaReferenceTime?.();
     } catch {
       return; // Torn down between ticks.
     }
@@ -662,6 +702,22 @@ function watchPlayback(
       }
     }
 
+    // Measured only while playing in sight: nobody reads a row off screen, and a paused or
+    // ended player is not falling behind - it is not showing the broadcast at all, so its row
+    // goes back to LIVE. Buffering keeps what was there, so the row does not flicker.
+    if (state === PlayerState.Playing && sight.inView && document.visibilityState === 'visible') {
+      // Against the steady clock, not `now`: a clock put right mid-session must not move it.
+      const delay = pictureDelay(mediaReferenceTime);
+      if (delay !== null) {
+        const lag = nextLiveLag(edgeDelay, delay, pageLiveEdges.ceiling());
+        edgeDelay = lag.edgeDelay;
+        pageLiveEdges.set(edgeKey, lag.edgeDelay);
+        onLag(lagToShow(lag.behind));
+      }
+    } else if (state !== PlayerState.Playing && state !== PlayerState.Buffering) {
+      onLag(null);
+    }
+
     if (state === PlayerState.Ended && isLiveRef.current) {
       endedSince ??= now;
       if (!open.ended) {
@@ -681,45 +737,14 @@ function watchPlayback(
   };
 
   const timer = window.setInterval(tick, WATCH_INTERVAL_MS);
-  return { check: tick, stop: () => window.clearInterval(timer) };
-}
-
-/**
- * How often a player is asked whether it is muted. The answer is cached in the page, so the
- * question costs nothing to speak of; often enough that the tile's button follows a click in
- * the frame well within a second.
- */
-const SOUND_WATCH_INTERVAL_MS = 500;
-
-/**
- * Follows the mute button in a player's own controls, which the IFrame API sends no event for.
- * What the player says is weighed against what the tile last sent it (lib/tilePlayer.ts); a
- * change the viewer made is recorded as sent - it is what the player does now - and handed up,
- * so the tile holding the sound moves with it.
- */
-function watchPlayerSound(
-  player: YTPlayer,
-  soundSentRef: { current: SoundSent | null },
-  onPlayerSoundRef: { current: (hasSound: boolean) => void },
-): () => void {
-  const timer = window.setInterval(() => {
-    let muted: boolean;
-    try {
-      muted = player.isMuted();
-    } catch {
-      return; // Torn down between ticks.
-    }
-
-    const now = Date.now();
-    const hasSound = soundSetInPlayer(soundSentRef.current, muted, now);
-    if (hasSound === null) {
-      return;
-    }
-    soundSentRef.current = { holdsSound: hasSound, at: now };
-    onPlayerSoundRef.current(hasSound);
-  }, SOUND_WATCH_INTERVAL_MS);
-
-  return () => window.clearInterval(timer);
+  return {
+    check: tick,
+    stop: () => {
+      window.clearInterval(timer);
+      pageLiveEdges.forget(edgeKey);
+    },
+    forgetEdge,
+  };
 }
 
 /** Normal live latency is well under this; anything more was built up while hidden. */
@@ -732,6 +757,10 @@ const RESYNC_BEHIND_S = 30;
  * screen or sits in a hidden window, and resumes from the same spot when it returns, so
  * a zoomed floor plan kept showing minutes-old footage after scrolling back. Only the
  * return from hiding triggers this: a viewer scrubbing a visible tile keeps their spot.
+ *
+ * What it sees goes in `sight` for the watchdog, which measures the lag only in view, and
+ * `onShown` runs on a return that needed no jump, so the label row is measured again at once
+ * (after a jump the player's own state changes do that, once it plays from the new spot).
  */
 function resyncWhenShownAgain(
   player: YTPlayer,
@@ -739,14 +768,17 @@ function resyncWhenShownAgain(
   where: { station: string; videoId: string },
   startedAtRef: { current: string | undefined },
   shouldPlayRef: { current: boolean },
+  sight: { inView: boolean },
+  onShown: () => void,
 ): () => void {
   let isVisible = true;
   let hiddenSince: number | null = null;
 
-  const resync = (reason: string) => {
+  // Says whether it jumped, in which case the player's state changes measure the lag again.
+  const resync = (reason: string): boolean => {
     // A paused player (no slot on a phone) stays paused; it jumps to live when it plays.
     if (!shouldPlayRef.current) {
-      return;
+      return false;
     }
     const hiddenSeconds = hiddenSince === null ? 0 : Math.round((Date.now() - hiddenSince) / 1000);
     hiddenSince = null;
@@ -755,29 +787,31 @@ function resyncWhenShownAgain(
     try {
       behindSeconds = jumpToLive(player, startedAtRef);
     } catch {
-      return; // Torn down.
+      return false; // Torn down.
     }
 
     if (behindSeconds !== null) {
       report('resynced', { ...where, reason, hiddenSeconds, behindSeconds });
     }
+    return behindSeconds !== null;
   };
 
   const onVisibilityChange = () => {
     if (document.visibilityState === 'hidden') {
       hiddenSince ??= Date.now();
-    } else if (isVisible) {
-      resync('window');
+    } else if (isVisible && !resync('window')) {
+      onShown();
     }
   };
 
   const observer = tile
     ? new IntersectionObserver(([entry]) => {
         const nowVisible = entry.isIntersecting;
+        sight.inView = nowVisible;
         if (!nowVisible && isVisible) {
           hiddenSince ??= Date.now();
-        } else if (nowVisible && !isVisible && document.visibilityState === 'visible') {
-          resync('scroll');
+        } else if (nowVisible && !isVisible && document.visibilityState === 'visible' && !resync('scroll')) {
+          onShown();
         }
         isVisible = nowVisible;
       })

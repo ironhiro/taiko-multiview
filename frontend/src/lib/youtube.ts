@@ -10,16 +10,17 @@ export interface YTPlayer {
   destroy(): void;
   mute(): void;
   unMute(): void;
-  /**
-   * Whether the player is muted now - including by the mute button in its own controls, for
-   * which the API sends no event.
-   */
-  isMuted(): boolean;
   setVolume(volume: number): void;
   playVideo(): void;
   pauseVideo(): void;
   getPlayerState(): number;
   getCurrentTime(): number;
+  /**
+   * On a live embed, when the frame on screen was taken in by YouTube, in Unix seconds; 0 while
+   * the player loads (lib/liveLag.ts). Offered by the API without being in its reference, so
+   * typed as possibly missing.
+   */
+  getMediaReferenceTime?(): number;
   /** The watch URL of whatever is loaded now - which can drift from the video asked for. */
   getVideoUrl(): string;
   loadVideoById(videoId: string): void;

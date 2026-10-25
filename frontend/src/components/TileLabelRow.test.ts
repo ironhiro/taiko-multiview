@@ -68,4 +68,23 @@ describe('TileLabelRow', () => {
   it('disables the sound button while there is no player', () => {
     expect(row({ soundDisabled: true })).toMatch(/<button[^>]*disabled=""/);
   });
+
+  it('puts how far behind live the picture is in LIVE’s place, as a plain button back to it', () => {
+    const html = row({ viewers: 10, behindLive: { seconds: 12, onBackToLive: () => {} } });
+    expect(html).not.toContain('tile__badge');
+    expect(html).toContain('data-testid="tile-to-live"');
+    expect(html).toContain('>12초</span>');
+    expect(html).toContain('>늦음 · 실시간으로</span>');
+    expect(html).toContain('aria-label="THE BASE 2 12초 늦음, 실시간으로 돌아가기"');
+    // Not a toggle: neither 카 nor anything the wall remembers.
+    expect(html).not.toMatch(/tile-to-live[^>]*aria-pressed|aria-pressed[^>]*tile-to-live/);
+    const order = ['tile__label', 'tile-to-live', 'tile__viewers', 'tile__controls'].map((part) => html.indexOf(part));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('shows neither LIVE nor the button with nothing on air', () => {
+    const html = row({ live: false, behindLive: { seconds: 12, onBackToLive: () => {} } });
+    expect(html).not.toContain('tile__badge');
+    expect(html).not.toContain('tile-to-live');
+  });
 });
