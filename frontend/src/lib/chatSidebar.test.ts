@@ -1,7 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LiveStream } from './types';
 import type { WallTile } from './wallTiles';
-import { chatPlacement, chatTileOf, embeddedChatUrl, watchReturn } from './chatSidebar';
+import {
+  CHAT_AFTER_SIGN_IN_KEY,
+  CHAT_AFTER_SIGN_IN_MS,
+  chatAfterSignIn,
+  chatPlacement,
+  chatTileOf,
+  embeddedChatUrl,
+  forgetChatAfterSignIn,
+  readChatView,
+  rememberChatForSignIn,
+  signInFailedIn,
+  storeChatView,
+  watchReturn,
+  withoutSignInFailed,
+} from './chatSidebar';
 
 const onAir = (id: string, videoId = `v-${id}`): WallTile => ({
   id,
@@ -141,5 +155,98 @@ describe('watchReturn', () => {
     page.blur();
     page.focus();
     expect(onReturn).not.toHaveBeenCalled();
+  });
+});
+
+function memoryStorage(): Storage {
+  const items = new Map<string, string>();
+  return {
+    get length() {
+      return items.size;
+    },
+    clear: () => items.clear(),
+    getItem: (key) => items.get(key) ?? null,
+    key: (index) => [...items.keys()][index] ?? null,
+    removeItem: (key) => void items.delete(key),
+    setItem: (key, value) => void items.set(key, String(value)),
+  };
+}
+
+// A browser that will not keep anything: storage off, or a private window's.
+const refusing: Storage = {
+  length: 0,
+  clear: () => {},
+  getItem: () => {
+    throw new Error('SecurityError');
+  },
+  key: () => null,
+  removeItem: () => {
+    throw new Error('SecurityError');
+  },
+  setItem: () => {
+    throw new Error('QuotaExceededError');
+  },
+};
+
+describe('the chat view', () => {
+  it('is ours until YouTube is chosen, and kept for the session', () => {
+    const storage = memoryStorage();
+    expect(readChatView(storage)).toBe('ours');
+    storeChatView(storage, 'youtube');
+    expect(readChatView(storage)).toBe('youtube');
+    storeChatView(storage, 'ours');
+    expect(readChatView(storage)).toBe('ours');
+  });
+
+  it('is ours where there is no storage to keep it in', () => {
+    expect(readChatView(undefined)).toBe('ours');
+    expect(() => storeChatView(refusing, 'youtube')).not.toThrow();
+    expect(readChatView(refusing)).toBe('ours');
+  });
+});
+
+describe('the chat after a sign-in', () => {
+  const chat = { tileId: 'a1', videoId: 'v-a1' };
+
+  it('is the chat noted before the sign-in left, until forgotten', () => {
+    const storage = memoryStorage();
+    expect(chatAfterSignIn(storage, 1_000)).toBeNull();
+    rememberChatForSignIn(storage, chat, 1_000);
+    expect(chatAfterSignIn(storage, 61_000)).toEqual(chat);
+    forgetChatAfterSignIn(storage);
+    expect(chatAfterSignIn(storage, 61_000)).toBeNull();
+  });
+
+  it("is none once the sign-in's ten minutes are up, or from a clock gone back", () => {
+    const storage = memoryStorage();
+    rememberChatForSignIn(storage, chat, 1_000);
+    expect(chatAfterSignIn(storage, 1_000 + CHAT_AFTER_SIGN_IN_MS)).toEqual(chat);
+    expect(chatAfterSignIn(storage, 1_001 + CHAT_AFTER_SIGN_IN_MS)).toBeNull();
+    expect(chatAfterSignIn(storage, 999)).toBeNull();
+  });
+
+  it('is none for a note it cannot read, or no storage', () => {
+    const storage = memoryStorage();
+    storage.setItem(CHAT_AFTER_SIGN_IN_KEY, '{not json');
+    expect(chatAfterSignIn(storage, 0)).toBeNull();
+    storage.setItem(CHAT_AFTER_SIGN_IN_KEY, JSON.stringify({ tileId: 1, videoId: 'v', at: 0 }));
+    expect(chatAfterSignIn(storage, 0)).toBeNull();
+    expect(chatAfterSignIn(refusing, 0)).toBeNull();
+    expect(() => rememberChatForSignIn(refusing, chat, 0)).not.toThrow();
+    expect(() => forgetChatAfterSignIn(refusing)).not.toThrow();
+  });
+});
+
+describe('a sign-in that came back failed', () => {
+  it('is the server saying so in the address', () => {
+    expect(signInFailedIn('?venue=taikolabs&signin=failed')).toBe(true);
+    expect(signInFailedIn('?venue=taikolabs')).toBe(false);
+    expect(signInFailedIn('?signin=ok')).toBe(false);
+  });
+
+  it('comes off the address, the rest left as it was', () => {
+    expect(withoutSignInFailed('http://localhost:5173/?venue=taikolabs&signin=failed&view=all-grid')).toBe(
+      'http://localhost:5173/?venue=taikolabs&view=all-grid',
+    );
   });
 });

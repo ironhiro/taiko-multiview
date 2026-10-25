@@ -255,45 +255,131 @@ test.describe('the chat sidebar', () => {
     expect(chatRequests).toHaveLength(2);
   });
 
-  // Google sign-in in the sidebar (components/ChatAccount.tsx). The e2e server runs in Mock
-  // mode, whose stand-in signs a test user in without Google and serves made-up chat: three
-  // messages, then one more a read, every 5 seconds (GoogleSignInEndpoints.MockChatPage).
-  test('signs in, lists the chat read with the sign-in no faster than the server asks, stops when closed, and signs out', async ({
+  // Google sign-in in the sidebar (components/ChatAccount.tsx, ChatRoom.tsx). The e2e server
+  // runs in Mock mode, whose stand-in signs a test user in without Google and serves made-up
+  // chat: three messages, then one more a read, every 5 seconds, and what was sent to the
+  // video's chat since the last read (GoogleSignInEndpoints.MockChatPage).
+  test('signs in to our own chat in place of the framed one, writes to it, goes to YouTube and back, and signs out', async ({
     page,
-  }) => {
-    // Two 5-second reads are waited for.
+  }, testInfo) => {
+    // Three 5-second reads are waited for.
     test.setTimeout(60_000);
     const chatReads: number[] = [];
     // Reads answered, not asked: in development React mounts the sidebar twice, and the first
     // mount's read is dropped as it starts.
     page.on('requestfinished', (request) => {
-      if (new URL(request.url()).pathname.startsWith('/api/chat/')) chatReads.push(Date.now());
+      const url = new URL(request.url());
+      if (request.method() === 'GET' && url.pathname.startsWith('/api/chat/')) chatReads.push(Date.now());
     });
     await page.goto('/?venue=taikolabs');
+    const sidebar = page.getByTestId('chat-sidebar');
     const chatA1 = page.getByRole('button', { name: 'A1 유튜브 채팅 열기' });
     const signIn = page.getByTestId('chat-account-signin');
+    const frame = page.getByTestId('chat-sidebar-frame');
     await chatA1.click();
     await expect(signIn).toHaveText('Google로 로그인');
     await expect(signIn).toHaveAttribute('href', '/api/auth/login');
-    // Signed out, nothing reads the chat.
+    // Signed out, the sidebar is as it was before the sign-in: the header with 로그인하고 채팅,
+    // the hint, the sign-in, the framed chat - and nothing reads the chat.
+    expect(
+      await sidebar.evaluate((aside) => [...aside.children].map((child) => child.className)),
+    ).toEqual(['chat-sidebar__header', 'chat-sidebar__hint', 'chat-account', 'chat-sidebar__frame']);
+    await expect(page.getByTestId('chat-sidebar-signin')).toBeVisible();
     expect(chatReads).toHaveLength(0);
 
-    // A whole-page visit, and back to the page it started from - with the sidebar closed, as
-    // after any reload.
+    // A whole-page visit, and back to the page it started from, with the same tile's chat open.
     await signIn.click();
     await expect(page).toHaveURL(/\/\?venue=taikolabs$/);
-    await chatA1.click();
-    await expect(page.getByTestId('chat-account-name')).toHaveText('테스트 사용자');
-    const messages = page.getByTestId('chat-account-messages').locator('li');
-    await expect(messages).toHaveCount(3);
-    await expect(messages.first()).toHaveText('동카 연습생 안녕하세요!');
-    // The framed YouTube chat stays as it was beside it.
-    await expect(page.getByTestId('chat-sidebar-frame')).toHaveCount(1);
+    await expect(sidebar).toHaveAttribute('aria-label', 'A1 채팅');
+    await expect(chatA1).toHaveAttribute('aria-pressed', 'true');
 
-    // The next read waits out the server's pollingIntervalMillis (5000), and adds to the list.
-    await expect(messages).toHaveCount(4, { timeout: 10_000 });
+    // Our own chat, the whole sidebar under the header, in place of the framed one.
+    const room = page.getByTestId('chat-room');
+    await expect(page.getByTestId('chat-account-name')).toHaveText('테스트 사용자');
+    await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar-signin')).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar-hint')).toHaveCount(0);
+    // The server's copy of the broadcast's chat, shared with every viewer of it - the other
+    // browser's run of this test among them - so what else is in it is not this test's to say.
+    const messages = page.getByTestId('chat-room-messages').locator('li');
+    await expect(messages.filter({ hasText: '안녕하세요!' })).toHaveText(['동카 연습생 안녕하세요!']);
+    // The channel's owner and its moderators are marked.
+    await expect(messages.filter({ hasText: '이 곡 풀콤 가나요' }).locator('.chat-room__role')).toHaveText('운영자');
+    await expect(messages.filter({ hasText: '곧 다음 곡 갑니다' }).locator('.chat-room__role')).toHaveText('소유자');
+    for (const id of ['chat-room-input', 'chat-room-send', 'chat-room-youtube']) {
+      await expect(page.getByTestId(id)).toBeVisible();
+    }
+    const [sidebarBox, roomBox] = [await sidebar.boundingBox(), await room.boundingBox()];
+    expect(Math.abs(roomBox!.y + roomBox!.height - (sidebarBox!.y + sidebarBox!.height))).toBeLessThanOrEqual(1);
+    expect(await sidebar.evaluate((aside) => aside.scrollWidth - aside.clientWidth)).toBe(0);
+    expect(await page.getByTestId('chat-room-messages').evaluate((list) => list.scrollWidth - list.clientWidth)).toBe(0);
+
+    // The next read waits out the server's pollingIntervalMillis (5000), and adds to the list:
+    // the server's copy has moved on by one made-up message since.
+    const madeUp = messages.filter({ hasText: /새 메시지 \d+/ });
+    const madeUpAtFirst = await madeUp.count();
+    await expect.poll(() => madeUp.count(), { timeout: 12_000 }).toBeGreaterThan(madeUpAtFirst);
     expect(chatReads.length).toBeGreaterThanOrEqual(2);
     expect(chatReads[1] - chatReads[0]).toBeGreaterThanOrEqual(4_900);
+
+    // Writing: Enter sends; the message is in the list from the send's answer, and the next
+    // read, which brings it again under the same id, leaves it there once.
+    const input = page.getByTestId('chat-room-input');
+    const words = `e2e ${testInfo.project.name} ${Date.now()}`;
+    await input.fill(words);
+    await expect(page.getByTestId('chat-room-count')).toHaveText(`${words.length}/200`);
+    const readsBeforeSend = chatReads.length;
+    await input.press('Enter');
+    await expect(input).toHaveValue('');
+    const mine = messages.filter({ hasText: words });
+    await expect(mine).toHaveCount(1);
+    await expect(mine).toHaveText(`테스트 사용자 ${words}`);
+    await expect.poll(() => chatReads.length, { timeout: 10_000 }).toBeGreaterThan(readsBeforeSend);
+    await page.waitForTimeout(500);
+    await expect(mine).toHaveCount(1);
+    // Following the newest at the bottom.
+    const list = page.getByTestId('chat-room-messages');
+    expect(await list.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThanOrEqual(2);
+
+    // Past 200 characters it does not go, and the words stay to be cut down.
+    await input.fill('가'.repeat(201));
+    await expect(page.getByTestId('chat-room-send')).toBeDisabled();
+    await input.press('Enter');
+    await expect(page.getByTestId('chat-room-refusal')).toHaveText('200자까지 보낼 수 있습니다.');
+    await expect(input).toHaveValue('가'.repeat(201));
+    await expect(mine).toHaveCount(1);
+    // Cut down, the words say nothing of before.
+    await input.fill('가'.repeat(20));
+    await expect(page.getByTestId('chat-room-refusal')).toHaveText('');
+
+    // A send turned down because the chat seemed over says so, and locks nothing: the next may go.
+    await page.route('**/api/chat/*/messages', (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 404, json: { error: 'notLive' } })
+        : route.fallback(),
+    );
+    await input.press('Enter');
+    await expect(page.getByTestId('chat-room-refusal')).toHaveText('라이브가 끝났거나 채팅이 꺼져 있습니다.');
+    await expect(input).toBeEnabled();
+    await expect(input).toHaveValue('가'.repeat(20));
+    await page.unroute('**/api/chat/*/messages');
+    await expect(page.getByTestId('chat-room-send')).toBeEnabled();
+
+    // YouTube's framed chat, as before the sign-in, still signed in - and kept for the session.
+    await page.getByTestId('chat-room-youtube').click();
+    await expect(frame).toHaveCount(1);
+    await expect(room).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar-signin')).toBeVisible();
+    await expect(page.getByTestId('chat-account-name')).toHaveText('테스트 사용자');
+    await page.getByTestId('chat-sidebar-close').click();
+    await chatA1.click();
+    await expect(frame).toHaveCount(1);
+    await expect(page.getByTestId('chat-account-ours')).toBeVisible();
+
+    // And back to ours.
+    await page.getByTestId('chat-account-ours').click();
+    await expect(room).toBeVisible();
+    await expect(frame).toHaveCount(0);
 
     // Closed, it reads no more.
     await page.getByTestId('chat-sidebar-close').click();
@@ -304,8 +390,99 @@ test.describe('the chat sidebar', () => {
     await chatA1.click();
     await page.getByTestId('chat-account-signout').click();
     await expect(signIn).toBeVisible();
+    await expect(frame).toHaveCount(1);
+    await expect(page.getByTestId('chat-sidebar-hint')).toBeVisible();
     await expect(page.getByTestId('chat-account-name')).toHaveCount(0);
     expect((await (await page.request.get('/api/auth/me')).json()).signedIn).toBe(false);
+  });
+
+  test('follows new messages at the bottom, and counts them while the viewer reads further up', async ({ page }) => {
+    test.setTimeout(45_000);
+    // Signed in by the stand-in, the list answered here: forty messages to begin with, so it
+    // scrolls, then one more on each read, every two seconds (the page's least).
+    await page.request.get('/api/auth/login');
+    let reads = 0;
+    await page.route('**/api/chat/*/messages*', async (route) => {
+      if (route.request().method() !== 'GET') {
+        return route.fallback();
+      }
+      reads += 1;
+      // By the page token, not the count: in development React mounts the sidebar twice, and
+      // the first mount's read is dropped as it starts.
+      const messages = new URL(route.request().url()).searchParams.has('pageToken')
+        ? [{ id: `n${reads}`, author: '카레', text: `새 글 ${reads}` }]
+        : Array.from({ length: 40 }, (_, i) => ({ id: `m${i}`, author: '동카', text: `메시지 ${i}` }));
+      await route.fulfill({ json: { messages, nextPageToken: `t${reads}`, pollingIntervalMillis: 2000 } });
+    });
+    await page.goto('/?venue=taikolabs');
+    await page.getByRole('button', { name: 'A1 유튜브 채팅 열기' }).click();
+
+    const list = page.getByTestId('chat-room-messages');
+    const items = list.locator('li');
+    const fromBottom = () => list.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop);
+    const latest = page.getByTestId('chat-room-latest');
+    await expect(items).toHaveCount(40);
+    expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    expect(await fromBottom()).toBeLessThanOrEqual(2);
+
+    // At the bottom, a new message is followed.
+    await expect(items).toHaveCount(41, { timeout: 5_000 });
+    expect(await fromBottom()).toBeLessThanOrEqual(2);
+    await expect(latest).toHaveCount(0);
+
+    // Scrolled up to read, the list stays where it is and counts what came.
+    await list.evaluate((el) => el.scrollTo({ top: 0 }));
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(0);
+    const count = await items.count();
+    await expect(items).toHaveCount(count + 1, { timeout: 5_000 });
+    expect(await list.evaluate((el) => el.scrollTop)).toBe(0);
+    await expect(latest).toHaveText('새 메시지 1');
+    await expect(items).toHaveCount(count + 2, { timeout: 5_000 });
+    expect(await list.evaluate((el) => el.scrollTop)).toBe(0);
+    await expect(latest).toHaveText('새 메시지 2');
+
+    // Pressed, to the bottom, and following again.
+    await latest.click();
+    await expect(latest).toHaveCount(0);
+    expect(await fromBottom()).toBeLessThanOrEqual(2);
+    await expect(items).toHaveCount(count + 3, { timeout: 5_000 });
+    expect(await fromBottom()).toBeLessThanOrEqual(2);
+
+    // The keyboard reaches the list in both engines - just before the box to write in - with
+    // the system's focus ring, and its arrows and page keys scroll it.
+    await page.getByTestId('chat-room-input').focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(list).toBeFocused();
+    expect(await list.evaluate((el) => [getComputedStyle(el).outlineStyle, getComputedStyle(el).outlineWidth])).toEqual([
+      'solid',
+      '2px',
+    ]);
+    await page.keyboard.press('PageUp');
+    await expect.poll(fromBottom).toBeGreaterThan(2);
+  });
+
+  test('a sign-in that came back failed opens the same chat again and says so, once', async ({ page }) => {
+    // Google's way back with signin=failed, as the server sends it after a cancel or a code
+    // it turned down; the stand-in has no failure of its own. A page that goes on there, not a
+    // 302: WebKit's route cannot answer with a redirect.
+    await page.route('**/api/auth/login', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: "<script>location.replace('/?venue=taikolabs&signin=failed')</script>",
+      }),
+    );
+    await page.goto('/?venue=taikolabs');
+    await page.getByRole('button', { name: 'A3 유튜브 채팅 열기' }).click();
+    await expect(page.getByTestId('chat-account-failed')).toHaveCount(0);
+    await page.getByTestId('chat-account-signin').click();
+
+    await expect(page.getByTestId('chat-sidebar')).toHaveAttribute('aria-label', 'A3 채팅');
+    await expect(page.getByTestId('chat-account-failed')).toHaveText('Google 로그인을 마치지 못했습니다. 다시 눌러 보세요.');
+    // Taken off the address, so a reload is a page like any other.
+    await expect(page).toHaveURL(/\/\?venue=taikolabs$/);
+    await page.reload();
+    await expect(page.locator('.grid-view .tile').first()).toBeVisible();
+    await expect(page.getByTestId('chat-sidebar')).toHaveCount(0);
   });
 
   test("closes when its broadcast ends, and when another venue's wall comes up", async ({ page }) => {

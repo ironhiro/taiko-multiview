@@ -9,7 +9,17 @@ import { accentStyle, idleMessageFor, LOADING_MESSAGE, venueSummary } from './li
 import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
 import { liveCountOf } from './lib/venueRow';
 import { wallTilesFor } from './lib/wallTiles';
-import { chatPlacement, chatTileOf, useWideEnoughForChatSidebar, type OpenChat } from './lib/chatSidebar';
+import {
+  chatAfterSignIn,
+  chatPlacement,
+  chatTileOf,
+  forgetChatAfterSignIn,
+  sessionNotes,
+  signInFailedIn,
+  useWideEnoughForChatSidebar,
+  withoutSignInFailed,
+  type OpenChat,
+} from './lib/chatSidebar';
 import { isDesktopShell } from './lib/shell';
 import { soundTileAfterPlayer } from './lib/tilePlayer';
 import { ChatSidebar } from './components/ChatSidebar';
@@ -44,6 +54,18 @@ export default function App() {
 
   // The chat open in the sidebar beside the wall, if any.
   const [openChat, setOpenChat] = useState<OpenChat | null>(null);
+  // Back from Google's sign-in, the chat the sign-in started from, to open again once its
+  // tile is on the wall; and whether the sign-in came back failed. Read once as the page
+  // loads, and taken off the session and the address right after, so a reload is a page
+  // load like any other.
+  const [chatToReopen, setChatToReopen] = useState<OpenChat | null>(() => chatAfterSignIn(sessionNotes(), Date.now()));
+  const [signInFailed, setSignInFailed] = useState(() => signInFailedIn(window.location.search));
+  useEffect(() => {
+    forgetChatAfterSignIn(sessionNotes());
+    if (signInFailedIn(window.location.search)) {
+      window.history.replaceState(window.history.state, '', withoutSignInFailed(window.location.href));
+    }
+  }, []);
 
   // 라이브 or 다시보기, and where in 다시보기 - read from the address and written back to it,
   // never stored: without mode=replay the page is always the wall (lib/replayRoute.ts).
@@ -362,7 +384,26 @@ export default function App() {
       setOpenChat((current) => (current?.tileId === tileId && current.videoId === videoId ? current : { tileId, videoId })),
     [],
   );
-  const handleCloseChat = useCallback(() => setOpenChat(null), []);
+  const handleCloseChat = useCallback(() => {
+    setOpenChat(null);
+    setSignInFailed(false);
+  }, []);
+
+  // The chat a sign-in started from, open again as soon as its tile is on the wall - and
+  // given up once the wall is up without it, or where there is no sidebar to open.
+  useEffect(() => {
+    if (!chatToReopen) {
+      return;
+    }
+    if (!chatGoesInSidebar || isReplay) {
+      setChatToReopen(null);
+    } else if (chatTileOf(tiles, chatToReopen)) {
+      setOpenChat(chatToReopen);
+      setChatToReopen(null);
+    } else if (live && activeVenue && view) {
+      setChatToReopen(null);
+    }
+  }, [chatToReopen, chatGoesInSidebar, isReplay, tiles, live, activeVenue, view]);
 
   const idle = useMemo(() => (live ? idleMessageFor(activeLive?.venue) : LOADING_MESSAGE), [live, activeLive]);
 
@@ -490,7 +531,15 @@ export default function App() {
         </main>
       </div>
 
-      {chatTile && chatStream && <ChatSidebar label={chatTile.label} stream={chatStream} onClose={handleCloseChat} />}
+      {chatTile && chatStream && (
+        <ChatSidebar
+          tileId={chatTile.id}
+          label={chatTile.label}
+          stream={chatStream}
+          signInFailed={signInFailed}
+          onClose={handleCloseChat}
+        />
+      )}
 
       {/* The credit line: what an arcade screen keeps along its bottom edge. */}
       <footer className={viewOptions.length > 1 ? 'credit' : 'credit credit--mode-line'}>

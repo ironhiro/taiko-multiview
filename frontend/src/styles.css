@@ -1584,9 +1584,9 @@ input {
   white-space: nowrap;
 }
 
-/* Google sign-in and the chat read with it (ChatAccount), between the hint and the framed
-   chat. Only where the server offers the sign-in; plain for now, the list a first step
-   towards our own chat. It takes at most two fifths of the column, the framed chat the rest. */
+/* Google sign-in over the framed chat (ChatAccount), between the hint and the frame. Only
+   where the server offers the sign-in: signed out, the button; signed in with the framed
+   chat chosen, who is signed in and the way back to our own chat. */
 .chat-account {
   display: flex;
   flex: 0 1 auto;
@@ -1616,7 +1616,8 @@ input {
 }
 
 .chat-account__signin,
-.chat-account__signout {
+.chat-account__signout,
+.chat-account__ours {
   flex: none;
   min-height: 2rem;
   padding: 0 var(--space-2xs);
@@ -1627,31 +1628,181 @@ input {
   align-self: flex-start;
 }
 
-.chat-account__messages {
-  min-height: 0;
+/* A sign-in that came back failed (?signin=failed), under the button that tries again. */
+.chat-account__note {
   margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
   font-size: var(--text-xs);
   line-height: 1.4;
+  color: var(--color-warn);
+}
+
+/* Our own chat (ChatRoom), for a viewer signed in to this page: the whole column under the
+   header. Who is signed in, the list filling what is left, the box to write in, and the
+   way to YouTube's framed chat at the foot. Ink and rules of the panel alone - the list is
+   read, not chosen, so nothing in it is 카, and nothing but on air is 돈. */
+.chat-room {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chat-room__account {
+  padding: var(--space-2xs) var(--space-xs);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.chat-room__list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-room__messages {
+  height: 100%;
+  margin: 0;
+  padding: var(--space-2xs) var(--space-xs);
+  overflow-x: hidden;
+  overflow-y: auto;
+  list-style: none;
+  font-size: var(--text-sm);
+  line-height: 1.45;
   color: var(--color-ink-2);
+  /* A long word or address breaks rather than widen the column. */
   overflow-wrap: anywhere;
 }
 
-.chat-account__message + .chat-account__message {
+/* The list takes the Tab key, to scroll with the arrows: the system's focus ring (2px 카), drawn
+   inside, since the list runs to the panel's edges. */
+.chat-room__messages:focus-visible {
+  outline: var(--rule-mark) solid var(--color-focus);
+  outline-offset: calc(-1 * var(--rule-mark));
+}
+
+.chat-room__message + .chat-room__message {
   margin-top: var(--space-3xs);
 }
 
-.chat-account__author {
+.chat-room__author {
   font-weight: 700;
   color: var(--color-ink);
 }
 
-.chat-account__note {
+/* The channel's owner and its moderators: a word beside the name, in the panel's own ink. */
+.chat-room__role {
+  display: inline-block;
+  margin-left: var(--space-3xs);
+  padding: 0 var(--space-3xs);
+  border: var(--rule-hair) solid var(--color-rule-strong);
+  border-radius: 999px;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--color-ink-2);
+  vertical-align: 0.1em;
+}
+
+.chat-room__text {
+  color: var(--color-ink);
+}
+
+.chat-room__note {
   margin: 0;
+  padding: var(--space-2xs) var(--space-xs);
   font-size: var(--text-xs);
   color: var(--color-ink-2);
+}
+
+/* Over the bottom of the list while the viewer reads further up. */
+.chat-room__latest {
+  position: absolute;
+  right: var(--space-xs);
+  bottom: calc(var(--space-2xs) + var(--press-depth));
+  gap: var(--space-3xs);
+  min-height: 2rem;
+  padding: 0 var(--space-2xs);
+  font-size: var(--text-xs);
+}
+
+.chat-room__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding: var(--space-2xs) var(--space-xs);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.chat-room__entry {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2xs);
+}
+
+.chat-room__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3xs) var(--space-2xs);
+  border: var(--rule-hair) solid var(--color-rule-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  resize: none;
+}
+
+.chat-room__input::placeholder {
+  color: var(--color-ink-3);
+}
+
+.chat-room__input:disabled {
+  opacity: 0.5;
+}
+
+.chat-room__send {
+  flex: none;
+  min-height: 2rem;
+  margin-bottom: var(--press-depth);
+  padding: 0 var(--space-xs);
+  font-size: var(--text-xs);
+}
+
+.chat-room__status {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2xs);
+  min-height: 1.4em;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.chat-room__refusal {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--color-warn);
+}
+
+.chat-room__count {
+  flex: none;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-3);
+}
+
+.chat-room__count--over {
+  color: var(--color-warn);
+}
+
+.chat-room__footer {
+  padding: 0 var(--space-xs) calc(var(--space-2xs) + var(--press-depth));
+}
+
+.chat-room__youtube {
+  min-height: 2rem;
+  padding: 0 var(--space-2xs);
+  font-size: var(--text-xs);
 }
 
 /* ----------------------------------------------------------------- mobile */

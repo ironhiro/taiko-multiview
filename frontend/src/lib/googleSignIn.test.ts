@@ -245,3 +245,174 @@ describe('readChat', () => {
     expect(fetch.mock.calls[0][0]).toBe('/api/chat/abc%20def/messages?pageToken=tok%2F1');
   });
 });
+
+describe('appendChatMessages, with a message the viewer sent', () => {
+  it('keeps it once, where it was, as the next read tells it', () => {
+    const sent: ChatMessage = { id: 'sent-1', author: '홍길동', text: '안녕' };
+    const list = signIn.appendChatMessages([{ id: '1', author: 'a', text: 'x' }], [sent]);
+    const read = signIn.appendChatMessages(list, [
+      { id: 'sent-1', author: '홍길동 채널', text: '안녕' },
+      { id: '2', author: 'b', text: 'y' },
+    ]);
+    expect(read.map((m) => `${m.id}:${m.author}`)).toEqual(['1:a', 'sent-1:홍길동 채널', '2:b']);
+  });
+
+  it('takes the same message twice in one page once', () => {
+    const message: ChatMessage = { id: '1', author: 'a', text: 'x' };
+    expect(signIn.appendChatMessages([], [message, message])).toHaveLength(1);
+  });
+});
+
+describe('unseenCount', () => {
+  const list = ['1', '2', '3', '4'].map((id): ChatMessage => ({ id, author: 'a', text: id }));
+
+  it('counts what came after the newest seen', () => {
+    expect(signIn.unseenCount(list, '4')).toBe(0);
+    expect(signIn.unseenCount(list, '2')).toBe(2);
+  });
+
+  it('counts all when the newest seen has fallen off the top, or there was none', () => {
+    expect(signIn.unseenCount(list, 'gone')).toBe(4);
+    expect(signIn.unseenCount(list, undefined)).toBe(4);
+    expect(signIn.unseenCount([], undefined)).toBe(0);
+  });
+});
+
+describe('followChat', () => {
+  const list = (...ids: string[]) => ids.map((id): ChatMessage => ({ id, author: 'a', text: id }));
+  const follow = (events: Parameters<typeof signIn.followChat>[1][]) => events.reduce(signIn.followChat, signIn.CHAT_FOLLOW_START);
+
+  it('at the bottom, follows each new message and counts none', () => {
+    const state = follow([
+      { kind: 'messages', newestId: '1' },
+      { kind: 'messages', newestId: '2' },
+    ]);
+    expect(state).toEqual({ atBottom: true, newestSeenId: '2' });
+    expect(signIn.unseenWhileReading(state, list('1', '2'))).toBe(0);
+  });
+
+  it('scrolled up, stays and counts what came since', () => {
+    const state = follow([
+      { kind: 'messages', newestId: '1' },
+      { kind: 'scrolled', atBottom: false, newestId: '1' },
+      { kind: 'messages', newestId: '2' },
+      { kind: 'messages', newestId: '3' },
+    ]);
+    expect(state.atBottom).toBe(false);
+    expect(signIn.unseenWhileReading(state, list('1', '2', '3'))).toBe(2);
+  });
+
+  it('back at the bottom by scrolling, by "새 메시지 N", or by sending, follows again', () => {
+    const reading = follow([
+      { kind: 'messages', newestId: '1' },
+      { kind: 'scrolled', atBottom: false, newestId: '1' },
+      { kind: 'messages', newestId: '2' },
+    ]);
+    for (const event of [
+      { kind: 'scrolled', atBottom: true, newestId: '2' },
+      { kind: 'toBottom', newestId: '2' },
+    ] as const) {
+      const state = signIn.followChat(reading, event);
+      expect(state).toEqual({ atBottom: true, newestSeenId: '2' });
+      expect(signIn.unseenWhileReading(state, list('1', '2'))).toBe(0);
+    }
+  });
+
+  it('scrolling within the bottom changes nothing', () => {
+    const state = follow([{ kind: 'messages', newestId: '1' }]);
+    expect(signIn.followChat(state, { kind: 'scrolled', atBottom: true, newestId: '1' })).toBe(state);
+  });
+});
+
+describe('isScrolledToBottom', () => {
+  it('is at the bottom within a few pixels, and not further up', () => {
+    expect(signIn.isScrolledToBottom({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 })).toBe(true);
+    expect(signIn.isScrolledToBottom({ scrollTop: 590, scrollHeight: 1000, clientHeight: 400 })).toBe(true);
+    expect(signIn.isScrolledToBottom({ scrollTop: 500, scrollHeight: 1000, clientHeight: 400 })).toBe(false);
+    // A list that does not scroll at all is at its bottom.
+    expect(signIn.isScrolledToBottom({ scrollTop: 0, scrollHeight: 300, clientHeight: 400 })).toBe(true);
+  });
+});
+
+describe('chatMessageProblem', () => {
+  it('turns down an empty message, spaces alone included', () => {
+    expect(signIn.chatMessageProblem('')).toBe('empty');
+    expect(signIn.chatMessageProblem('  \n ')).toBe('empty');
+  });
+
+  it('takes 200 characters and turns down 201', () => {
+    expect(signIn.chatMessageProblem('가'.repeat(200))).toBeNull();
+    expect(signIn.chatMessageProblem('가'.repeat(201))).toBe('tooLong');
+  });
+
+  it('counts an emoji as one, as the server does, and leaves the spaces around it out', () => {
+    expect(signIn.chatMessageLength('🥁')).toBe(1);
+    expect(signIn.chatMessageProblem('🥁'.repeat(200))).toBeNull();
+    expect(signIn.chatMessageProblem('🥁'.repeat(201))).toBe('tooLong');
+    expect(signIn.chatMessageLength(`  ${'가'.repeat(200)}  `)).toBe(200);
+  });
+});
+
+describe('isSendKey', () => {
+  it('sends on Enter', () => {
+    expect(signIn.isSendKey({ key: 'Enter', shiftKey: false, isComposing: false, keyCode: 13 })).toBe(true);
+  });
+
+  it('leaves Shift+Enter for a new line', () => {
+    expect(signIn.isSendKey({ key: 'Enter', shiftKey: true, isComposing: false, keyCode: 13 })).toBe(false);
+  });
+
+  it('does not send on the Enter that ends a Korean word in the input method', () => {
+    expect(signIn.isSendKey({ key: 'Enter', shiftKey: false, isComposing: true, keyCode: 13 })).toBe(false);
+    // Safari, which marks that Enter by its key code alone.
+    expect(signIn.isSendKey({ key: 'Enter', shiftKey: false, isComposing: false, keyCode: 229 })).toBe(false);
+  });
+
+  it('sends on nothing else', () => {
+    expect(signIn.isSendKey({ key: 'a', shiftKey: false })).toBe(false);
+  });
+});
+
+describe('sendChat', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('window', {});
+  });
+
+  it('posts the words as JSON, without the spaces around them, and hands back the message', async () => {
+    const message = { id: 'sent-1', author: '홍길동', text: '안녕' };
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(message), { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+
+    expect(await signIn.sendChat('abc def', '  안녕 ')).toEqual({ kind: 'sent', message });
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('/api/chat/abc%20def/messages');
+    expect(init?.method).toBe('POST');
+    expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+    expect(init?.body).toBe(JSON.stringify({ text: '안녕' }));
+  });
+
+  it("tells a lost session apart, and passes on the server's reason or a failure", async () => {
+    const answer = (status: number, body: string) => vi.fn(async () => new Response(body, { status }));
+    vi.stubGlobal('fetch', answer(401, ''));
+    expect(await signIn.sendChat('v', 'x')).toEqual({ kind: 'signedOut' });
+
+    for (const [status, error] of [
+      [404, 'notLive'],
+      [403, 'forbidden'],
+      [503, 'quotaExceeded'],
+      [400, 'tooLong'],
+    ] as const) {
+      vi.stubGlobal('fetch', answer(status, JSON.stringify({ error })));
+      expect(await signIn.sendChat('v', 'x')).toEqual({ kind: 'refused', reason: error });
+    }
+
+    // The address's own limit, without a word; a word the page does not know; no answer.
+    vi.stubGlobal('fetch', answer(429, ''));
+    expect(await signIn.sendChat('v', 'x')).toEqual({ kind: 'refused', reason: 'tooFast' });
+    vi.stubGlobal('fetch', answer(502, JSON.stringify({ error: 'somethingNew' })));
+    expect(await signIn.sendChat('v', 'x')).toEqual({ kind: 'refused', reason: 'failed' });
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+    expect(await signIn.sendChat('v', 'x')).toEqual({ kind: 'refused', reason: 'failed' });
+  });
+});
