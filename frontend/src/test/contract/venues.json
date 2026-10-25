@@ -1,0 +1,25 @@
+{
+  "version": 3,
+  "venues": [
+    {
+      "id": "taikolabs",
+      "name": "TAIKO LABS",
+      "accent": "#E8B24A",
+      "logo": "/logos/taikolabs.png",
+      "channelId": "UC0tzRzxBMM1-riQVHHYoADw",
+      "channelUrl": "https://www.youtube.com/@TAIKO_LABS",
+      "zones": [{ "id": "sector-a", "code": "SECTOR A", "label": "A 사이트" }],
+      "stations": [
+        { "id": "a1", "label": "A1", "zoneId": "sector-a" },
+        { "id": "base", "label": "THE BASE" }
+      ]
+    },
+    {
+      "id": "p2zone",
+      "name": "부천 P2존",
+      "channelId": "UCp2zone",
+      "zones": [],
+      "stations": []
+    }
+  ]
+}

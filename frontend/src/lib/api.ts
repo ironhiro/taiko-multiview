@@ -1,4 +1,4 @@
-import type { LiveResponse, Venue } from './types';
+import type { LiveResponse, VenuesResponse } from './types';
 
 /**
  * Empty in the browser: the deployed container serves the site and /api from one origin,
@@ -64,12 +64,8 @@ async function getJson<T>(path: string, init?: RequestInit & { timeoutMs?: numbe
 }
 
 /** The venue list, and the settings version it was built from. */
-export async function fetchVenues(signal?: AbortSignal): Promise<{ venues: Venue[]; version: number }> {
-  const payload = await getJson<{ venues: Venue[]; version?: number }>('/api/venues', {
-    signal,
-    timeoutMs: REQUEST_TIMEOUT_MS,
-  });
-  return { venues: payload.venues, version: payload.version ?? 0 };
+export function fetchVenues(signal?: AbortSignal): Promise<VenuesResponse> {
+  return getJson<VenuesResponse>('/api/venues', { signal, timeoutMs: REQUEST_TIMEOUT_MS });
 }
 
 /** Every venue's streams in one call, so the venue tabs can show live counts. */

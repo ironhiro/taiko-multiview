@@ -84,6 +84,11 @@
   --rule-mark: 2px;
   --press-depth: 3px;
 
+  /* How tall a button is: the bar's own, and a thumb's on a phone (the mobile block). The
+     icon-only face is as wide as it is tall. */
+  --control-height: 2.25rem;
+  --control-height-touch: 2.5rem;
+
   --radius-tile: 12px;
   --radius-control: 10px;
   --radius-chip: 4px;

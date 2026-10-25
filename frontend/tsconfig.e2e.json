@@ -1,0 +1,12 @@
+{
+  // The end-to-end tests and the Playwright config, checked against the page's own types
+  // (e2e/api.ts imports them from src/lib/types.ts). Not part of the app build. Node's
+  // types are on here only: the specs read files with node:fs and the config reads
+  // process.env, while the app itself runs in a browser.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["e2e", "src/test/contract", "playwright.config.ts"]
+}

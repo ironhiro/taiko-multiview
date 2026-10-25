@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { gridColumns } from '../components/LayoutPicker';
 import type { Venue } from './types';
-import { defaultViewFor, isValidView, stationsForView, viewOptionsFor } from './views';
+import { isValidView, stationsForView, viewOptionsFor, WALL_VIEW } from './views';
 
 const venue = (zones: number): Venue => ({
   id: 'v',
@@ -18,28 +17,13 @@ describe('views', () => {
   it('no longer offers the floor plan', () => {
     const values = viewOptionsFor(venue(2)).map((option) => option.value);
     expect(values).not.toContain('all');
-    expect(values[0]).toBe('all-grid');
+    expect(values[0]).toBe(WALL_VIEW);
     expect(isValidView(venue(2), 'all')).toBe(false);
-    expect(defaultViewFor(venue(2), false)).toBe('all-grid');
   });
 
   it('lists zones only when there is more than one', () => {
     expect(viewOptionsFor(venue(1))).toHaveLength(1);
     expect(viewOptionsFor(venue(2))).toHaveLength(3);
     expect(stationsForView(venue(2), 'z1').map((s) => s.id)).toEqual(['b']);
-  });
-});
-
-describe('gridColumns', () => {
-  it('keeps the chosen layout when there are enough cabinets', () => {
-    // 4×4 on nine cabinets is four to a row, not quietly 3×3.
-    expect(gridColumns(4, 9)).toBe(4);
-    expect(gridColumns(3, 9)).toBe(3);
-  });
-
-  it('never has more columns than cabinets', () => {
-    expect(gridColumns(3, 1)).toBe(1);
-    expect(gridColumns(4, 2)).toBe(2);
-    expect(gridColumns(3, 0)).toBe(1);
   });
 });

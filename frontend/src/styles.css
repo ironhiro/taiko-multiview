@@ -183,7 +183,7 @@ input {
   align-items: center;
   justify-content: center;
   gap: var(--space-2xs);
-  min-height: 2.25rem;
+  min-height: var(--control-height);
   padding: 0 var(--space-xs);
   background: var(--color-button);
   border: var(--rule-hair) solid var(--color-rule);
@@ -259,7 +259,7 @@ input {
 
 /* The Figma component's content=icon-only: square, the words only in its name. */
 .arcade-button--icon-only {
-  min-width: 2.25rem;
+  min-width: var(--control-height);
   padding: 0;
 }
 
@@ -834,6 +834,8 @@ input {
   display: none;
 }
 
+/* Same declarations as the phone rule under @container (max-width: 390px) below - a rule
+   cannot be both inside and outside a container query. Change one, change the other. */
 .grid-view .tile__row:is([data-fit='icons'], [data-fit='no-count']) .tile__control {
   justify-content: center;
   min-width: var(--tile-control);
@@ -1103,7 +1105,7 @@ input {
   :root {
     /* The row under each tile's picture: a thumb-sized button and room around it. */
     --tile-bar: 3.25rem;
-    --tile-control: 2.25rem;
+    --tile-control: var(--control-height);
   }
 
   body {
@@ -1165,7 +1167,7 @@ input {
   }
 
   .venue-more {
-    min-height: 2.5rem;
+    min-height: var(--control-height-touch);
   }
 
   .control-group--venues,
@@ -1195,12 +1197,12 @@ input {
   .choice,
   .btn {
     flex: none;
-    min-height: 2.5rem;
+    min-height: var(--control-height-touch);
   }
 
   /* Views are the lesser row: a size down from the venue tabs, still a thumb's width. */
   .choice {
-    min-height: 2.25rem;
+    min-height: var(--control-height);
     font-size: var(--text-sm);
   }
 
@@ -1226,7 +1228,7 @@ input {
   }
 
   .credit__refresh {
-    min-height: 2.25rem;
+    min-height: var(--control-height);
     font-size: var(--text-sm);
   }
 
@@ -1246,14 +1248,16 @@ input {
     padding-inline: var(--space-xs);
   }
 
+  /* One tile per row: nine players on a phone is neither usable nor affordable. The gap
+     between them - with the row under each picture - is somewhere to put a thumb down and
+     scroll without touching a player. */
   .grid-view {
-    /* One tile per row: nine players on a phone is neither usable nor affordable. */
-    grid-template-columns: minmax(0, 1fr) !important;
+    --grid-gap: var(--space-sm);
+    grid-template-columns: minmax(0, 1fr);
     padding: var(--space-xs);
     padding-left: max(var(--space-xs), env(safe-area-inset-left));
     padding-right: max(var(--space-xs), env(safe-area-inset-right));
     padding-bottom: max(var(--space-xs), env(safe-area-inset-bottom));
-    gap: var(--space-xs);
   }
 
   .tile__label,
@@ -1269,12 +1273,6 @@ input {
   .tile__control {
     padding: 0 var(--space-xs);
     font-size: var(--text-xs);
-  }
-
-  /* The row under the picture is also somewhere to put a thumb down and scroll without
-     touching a player. */
-  .grid-view {
-    gap: var(--space-sm);
   }
 
   .idle-strip__title,
@@ -1293,7 +1291,8 @@ input {
       display: none;
     }
 
-    /* Square, as tall as before, so the thumb has as much to hit. */
+    /* Square, as tall as before, so the thumb has as much to hit. Same declarations as
+       the [data-fit='icons'] rule above; keep the two in step. */
     .grid-view .tile__control {
       justify-content: center;
       min-width: var(--tile-control);
@@ -1323,7 +1322,7 @@ input {
   }
 
   .grid-view {
-    grid-template-columns: minmax(0, calc((100dvh - 2 * var(--space-xs) - var(--tile-bar, 0px)) * 16 / 9)) !important;
+    grid-template-columns: minmax(0, calc((100dvh - 2 * var(--space-xs) - var(--tile-bar, 0px)) * 16 / 9));
   }
 }
 

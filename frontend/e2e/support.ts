@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { fetchVenues } from './api';
 
 /** Nothing leaves for YouTube or Google: tests must not depend on the network. */
 export async function offline(page: Page) {
@@ -7,7 +8,5 @@ export async function offline(page: Page) {
 
 /** The configured venues, in the order the backend serves them. */
 export async function venueNames(page: Page): Promise<string[]> {
-  const response = await page.request.get('/api/venues');
-  const body = (await response.json()) as { venues: { name: string }[] };
-  return body.venues.map((venue) => venue.name);
+  return (await fetchVenues(page)).venues.map((venue) => venue.name);
 }

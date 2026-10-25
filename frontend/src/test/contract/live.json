@@ -1,0 +1,59 @@
+{
+  "pollIntervalSeconds": 60,
+  "venuesVersion": 3,
+  "venues": [
+    {
+      "venueId": "taikolabs",
+      "updatedAt": "2026-10-02T12:00:00+09:00",
+      "streams": [
+        {
+          "stationId": "a1",
+          "videoId": "videoA1",
+          "title": "TAIKO LABS A1 Live Streaming 26.10.02 - 1부",
+          "name": "A1",
+          "streamDate": "26.10.02",
+          "part": 1,
+          "isLive": true,
+          "embeddable": true,
+          "concurrentViewers": 12,
+          "actualStartTime": "2026-10-02T10:00:00+09:00",
+          "publishedAt": "2026-10-02T10:00:00+09:00",
+          "thumbnailUrl": "https://i.ytimg.com/vi/videoA1/hqdefault_live.jpg",
+          "watchUrl": "https://www.youtube.com/watch?v=videoA1"
+        }
+      ],
+      "unmatched": [
+        {
+          "videoId": "videoBase2",
+          "title": "TAIKO LABS THE BASE 2 Live Streaming 26.10.02",
+          "name": "THE BASE 2",
+          "isLive": true,
+          "embeddable": false,
+          "watchUrl": "https://www.youtube.com/watch?v=videoBase2"
+        }
+      ],
+      "source": "Api",
+      "isFallbackSource": false,
+      "venue": {
+        "state": "Open",
+        "localTime": "2026-10-02T12:00:00+09:00",
+        "businessDate": "2026-10-02",
+        "todayHours": "10:00-24:00"
+      }
+    },
+    {
+      "venueId": "p2zone",
+      "streams": [],
+      "unmatched": [],
+      "source": "Auto",
+      "isFallbackSource": true,
+      "error": "채널 조회 실패",
+      "venue": {
+        "state": "ClosedForHoliday",
+        "localTime": "2026-10-02T12:00:00+09:00",
+        "opensAt": "2026-10-03T10:00:00+09:00",
+        "closureReason": "naver"
+      }
+    }
+  ]
+}

@@ -24,4 +24,9 @@
     <ProjectReference Include="..\TaikoLabs.Api\TaikoLabs.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Files the frontend's tests read too: the API contract and the cabinet-name vectors. -->
+    <None Include="..\..\frontend\src\test\contract\*.json" LinkBase="contract" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

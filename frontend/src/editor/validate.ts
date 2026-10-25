@@ -1,4 +1,5 @@
 import { DAY_LABEL, splitList, type VenueDraft } from './model';
+import { WALL_VIEW } from '../lib/views';
 import { compilePattern } from './pattern';
 
 /**
@@ -70,6 +71,14 @@ export function validateVenue(venue: VenueDraft, all: VenueDraft[]): Issue[] {
   }
 
   const zoneIds = new Set(venue.zones.map((zone) => zone.id.trim()).filter(Boolean));
+  // A zone's id is its view in the address bar, beside the whole wall's "all-grid" and the
+  // retired floor plan's "all", which old links still carry: by either name it would be
+  // taken for them.
+  for (const zoneId of zoneIds) {
+    if (zoneId === WALL_VIEW || zoneId === 'all') {
+      warn(`전체 보기 주소와 겹치는 구역 id입니다: '${zoneId}'. 다른 id를 쓰세요.`);
+    }
+  }
   for (const station of stations) {
     const zoneId = station.zoneId.trim();
     if (zoneId && !zoneIds.has(zoneId)) {

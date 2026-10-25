@@ -1,100 +1,57 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchLive, fetchVenues, requestRefresh } from './lib/api';
-import type { LiveResponse, Venue, VenueLive } from './lib/types';
-import { isCompactViewport, useCompactDevice } from './lib/useCompactDevice';
-import { setDiagnosticsContext, report } from './lib/diagnostics';
-import { retryUntilDone, type RetryHandle } from './lib/retry';
-import { onVenuesSaved } from './lib/settingsChannel';
+import type { Venue, VenueLive } from './lib/types';
+import { setDiagnosticsContext } from './lib/diagnostics';
+import { useGridSize } from './lib/useGridSize';
+import { useLiveFeed } from './lib/useLiveFeed';
+import { useVenueConfig } from './lib/useVenueConfig';
 import { accentStyle, venueSummary } from './lib/venue';
-import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './lib/views';
-import { liveCountOf } from './lib/venueRow';
-import { wallTilesFor } from './lib/wallTiles';
+import { useCompactDevice } from './lib/media';
+import { isValidView, viewOptionsFor, WALL_VIEW, type ViewMode } from './lib/views';
+import { liveCountOf, wallTilesFor, type WallTile } from './lib/wallTiles';
 import { GridView } from './components/GridView';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
-import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
-
-const GRID_STORAGE_KEY = 'taiko-multiview:grid';
+import { LayoutPicker } from './components/LayoutPicker';
 
 export default function App() {
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [live, setLive] = useState<LiveResponse | null>(null);
   const [activeVenueId, setActiveVenueId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode | null>(null);
-  const [gridSize, setGridSize] = useState<GridSize>(readStoredGridSize);
-  // Why the live data could not be fetched. A venue the server failed to poll says so in
-  // the live data itself, and is shown only while that venue is on screen (below).
-  const [liveFetchError, setLiveFetchError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Only one tile may hold the audio at a time.
   const [audioTileId, setAudioTileId] = useState<string | null>(null);
 
   const isCompactDevice = useCompactDevice();
-  const abortRef = useRef<AbortController | null>(null);
   const hasChosenView = useRef(false);
 
   // --- venue configuration ----------------------------------------------------
 
-  // Fetched at start and again whenever the API reports a new settings version - the
-  // venue editor saved - so a renamed cabinet or a new venue shows up without a reload.
-  // A failed fetch is tried again with growing waits until it succeeds: without the
-  // venues there is nothing to put on the wall.
-  const [venuesVersion, setVenuesVersion] = useState<number | null>(null);
-  // The last failure while the venues are being asked for again; null once they arrive.
-  const [venuesRetryError, setVenuesRetryError] = useState<string | null>(null);
-  const venuesRetry = useRef<RetryHandle | null>(null);
+  // The live feed's load. The venue list asks for it once it recovers, but its hook comes
+  // first - the live feed in turn wakes the list's retry - so it is handed over below.
   const loadRef = useRef<() => Promise<void>>(async () => {});
-  const hadVenuesFailure = useRef(false);
 
-  const applyVenues = useCallback((loaded: { venues: Venue[]; version: number }) => {
-    setVenues(loaded.venues);
-    setVenuesVersion(loaded.version);
-
-    // Keep the venue on screen if it is still there; otherwise fall back as at start.
+  // Keep the venue on screen if it is still there; otherwise fall back as at start.
+  const keepActiveVenue = useCallback((loaded: Venue[]) => {
     setActiveVenueId((current) => {
-      if (current && loaded.venues.some((venue) => venue.id === current)) {
+      if (current && loaded.some((venue) => venue.id === current)) {
         return current;
       }
       const requested = new URLSearchParams(window.location.search).get('venue');
-      return (loaded.venues.find((venue) => venue.id === requested) ?? loaded.venues[0])?.id ?? null;
+      return (loaded.find((venue) => venue.id === requested) ?? loaded[0])?.id ?? null;
     });
   }, []);
 
-  // Replaces any fetch still going or waiting, so only the newest answer lands.
-  const loadVenues = useCallback(() => {
-    venuesRetry.current?.stop();
-    venuesRetry.current = retryUntilDone(
-      async (signal) => {
-        const loaded = await fetchVenues(signal);
-        if (signal.aborted) {
-          return;
-        }
-        applyVenues(loaded);
-        setVenuesRetryError(null);
-        if (hadVenuesFailure.current) {
-          hadVenuesFailure.current = false;
-          // Whatever the live data said while the venues were missing is stale now.
-          void loadRef.current();
-        }
-      },
-      {
-        visibility: document,
-        onFailure: (cause, failures, delayMs) => {
-          const message = cause instanceof Error ? cause.message : '매장 정보를 불러오지 못했습니다';
-          hadVenuesFailure.current = true;
-          setVenuesRetryError(message);
-          report('venues-fetch-failed', { message, failures, retryInMs: delayMs });
-        },
-      },
-    );
-  }, [applyVenues]);
-
-  useEffect(() => {
-    loadVenues();
-    return () => venuesRetry.current?.stop();
-  }, [loadVenues]);
+  const {
+    venues,
+    version: venuesVersion,
+    retryError: venuesRetryError,
+    reload: loadVenues,
+    kick: kickVenues,
+  } = useVenueConfig({
+    onLoaded: keepActiveVenue,
+    // Whatever the live data said while the venues were missing is stale now.
+    onRecovered: () => void loadRef.current(),
+  });
 
   const activeVenue = useMemo(
     () => venues.find((venue) => venue.id === activeVenueId),
@@ -108,46 +65,26 @@ export default function App() {
     }
 
     const requested = new URLSearchParams(window.location.search).get('view');
-    const canUseUrl = !hasChosenView.current && isValidView(activeVenue, requested);
+    const fromUrl = !hasChosenView.current && isValidView(activeVenue, requested) ? requested : null;
 
-    setView((current) =>
-      canUseUrl
-        ? (requested as ViewMode)
-        : isValidView(activeVenue, current)
-          ? current
-          : defaultViewFor(activeVenue, isCompactViewport()),
-    );
+    setView((current) => fromUrl ?? (isValidView(activeVenue, current) ? current : WALL_VIEW));
   }, [activeVenue]);
 
   // --- live data ------------------------------------------------------------
 
-  // The poll and the refresh button land the same way.
-  const applyLive = useCallback((next: LiveResponse) => {
-    setLive(next);
-    setLiveFetchError(null);
-  }, []);
-
-  const load = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      applyLive(await fetchLive(controller.signal));
-      // The API answers, so the venue list may too: try it now rather than after the wait.
-      venuesRetry.current?.now();
-    } catch (cause) {
-      if (!controller.signal.aborted) {
-        setLiveFetchError(cause instanceof Error ? cause.message : '알 수 없는 오류');
-        report('live-fetch-failed', { message: cause instanceof Error ? cause.message : String(cause) });
-      }
-    }
-  }, [applyLive]);
+  const {
+    live,
+    error: liveFetchError,
+    isRefreshing,
+    load,
+    refresh,
+  } = useLiveFeed({
+    // The API answers, so the venue list may too: try it now rather than after the wait.
+    onAnswer: kickVenues,
+  });
 
   useEffect(() => {
     loadRef.current = load;
-    void load();
-    return () => abortRef.current?.abort();
   }, [load]);
 
   // The API rebuilt its venue list: fetch it again.
@@ -158,62 +95,7 @@ export default function App() {
     }
   }, [liveVenuesVersion, venuesVersion, loadVenues]);
 
-  // The editor in the other window just saved. The API notices the file a moment later,
-  // so the live data - which carries the new version - is asked for after a short wait.
-  useEffect(
-    () =>
-      onVenuesSaved(() => {
-        window.setTimeout(() => void load(), 1500);
-      }),
-    [load],
-  );
-
-  // Follow the backend's own cadence, and skip polling while the tab is hidden.
-  useEffect(() => {
-    const intervalMs = Math.max(15, live?.pollIntervalSeconds ?? 60) * 1000;
-
-    const tick = () => {
-      if (document.visibilityState === 'visible') {
-        void load();
-      }
-    };
-
-    const timer = window.setInterval(tick, intervalMs);
-    document.addEventListener('visibilitychange', tick);
-
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', tick);
-    };
-  }, [load, live?.pollIntervalSeconds]);
-
-  useEffect(() => {
-    window.localStorage.setItem(GRID_STORAGE_KEY, String(gridSize));
-  }, [gridSize]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!event.ctrlKey && !event.metaKey) {
-        return;
-      }
-
-      // "+" makes tiles bigger, which means fewer to a row.
-      if (event.key === '+' || event.key === '=') {
-        setGridSize((current) => stepGridSize(current, -1));
-      } else if (event.key === '-') {
-        setGridSize((current) => stepGridSize(current, 1));
-      } else if (event.key === '0') {
-        setGridSize(GRID_DEFAULT);
-      } else {
-        return;
-      }
-
-      event.preventDefault();
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  const [gridSize, setGridSize] = useGridSize();
 
   // Keep the address bar in step so a venue and view stay linkable. Only after the
   // user picks something, so a first visit keeps a clean URL and its defaults.
@@ -252,14 +134,32 @@ export default function App() {
   // Only the venue on screen: another venue's polling trouble says nothing about this wall.
   const error = liveFetchError ?? activeLive?.error ?? null;
 
+  // Every venue's whole wall, built once per answer: the tabs, the venue list and the
+  // credit line all count from these, and the open venue's wall is what the grid shows.
+  const walls = useMemo(() => {
+    const map = new Map<string, WallTile[]>();
+    for (const venue of venues) {
+      map.set(venue.id, wallTilesFor(venue, WALL_VIEW, liveByVenue.get(venue.id)));
+    }
+    return map;
+  }, [venues, liveByVenue]);
+  const liveCounts = useMemo(
+    () => new Map([...walls].map(([venueId, wall]) => [venueId, liveCountOf(wall)])),
+    [walls],
+  );
+
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
+  // A zone is built on its own: it leaves out the cabinets the venue does not list.
   const tiles = useMemo(
-    () => wallTilesFor(activeVenue, view ?? 'all-grid', activeLive),
-    [activeVenue, view, activeLive],
+    () =>
+      view !== null && view !== WALL_VIEW
+        ? wallTilesFor(activeVenue, view, activeLive)
+        : (activeVenueId && walls.get(activeVenueId)) || [],
+    [activeVenue, activeVenueId, view, activeLive, walls],
   );
 
   const closedSummary = venueSummary(activeLive?.venue);
-  const liveCount = liveCountOf(activeVenue, activeLive);
+  const liveCount = (activeVenueId && liveCounts.get(activeVenueId)) || 0;
 
   const selectVenue = useCallback((venueId: string) => {
     hasChosenView.current = true;
@@ -282,15 +182,8 @@ export default function App() {
     if (venuesVersion === null) {
       loadVenues();
     }
-    setIsRefreshing(true);
-    try {
-      applyLive(await requestRefresh());
-    } catch (cause) {
-      setLiveFetchError(cause instanceof Error ? cause.message : '새로고침 실패');
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [venuesVersion, loadVenues, applyLive]);
+    await refresh();
+  }, [venuesVersion, loadVenues, refresh]);
 
   // --- render ---------------------------------------------------------------
 
@@ -310,7 +203,7 @@ export default function App() {
 
         <VenueTabs
           venues={venues}
-          liveByVenue={liveByVenue}
+          liveCounts={liveCounts}
           activeVenueId={activeVenueId ?? ''}
           onSelect={selectVenue}
         />
@@ -395,14 +288,4 @@ export default function App() {
       </footer>
     </div>
   );
-}
-
-function readStoredGridSize(): GridSize {
-  const stored = Number(window.localStorage.getItem(GRID_STORAGE_KEY));
-  return (GRID_SIZES as readonly number[]).includes(stored) ? (stored as GridSize) : GRID_DEFAULT;
-}
-
-function stepGridSize(current: GridSize, step: number): GridSize {
-  const index = GRID_SIZES.indexOf(current) + step;
-  return GRID_SIZES[Math.min(GRID_SIZES.length - 1, Math.max(0, index))];
 }

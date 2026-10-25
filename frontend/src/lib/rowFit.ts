@@ -27,13 +27,16 @@ export interface RowFitState {
   tightenedAt: number | null;
 }
 
+/** What chooseRowFit leaves a row in: always a fit, since the tightest is kept when nothing holds. */
+export type ChosenRowFit = RowFitState & { fit: RowFit };
+
 /**
  * The loosest fit the row takes, trying each from the loosest: `fits` lays the row out as
  * that fit and says whether it holds. A fit looser than the current one is skipped until
  * the row is LOOSEN_SLACK_PX wider than where it last tightened. When nothing holds the
  * tightest is kept, which is as little as the row can show.
  */
-export function chooseRowFit(fits: (fit: RowFit) => boolean, state: RowFitState, width: number): RowFitState {
+export function chooseRowFit(fits: (fit: RowFit) => boolean, state: RowFitState, width: number): ChosenRowFit {
   const currentIndex = state.fit === null ? -1 : ROW_FITS.indexOf(state.fit);
   let chosen: RowFit = ROW_FITS[ROW_FITS.length - 1];
 
@@ -230,8 +233,9 @@ export function useRowFit(rowRef: RefObject<HTMLElement>, contentKey: string) {
     let measuredWidth = -1;
     const measure = (width: number) => {
       measuredWidth = width;
-      state = chooseRowFit((fit) => rowHoldsAs(row, fit), state, width);
-      row.dataset.fit = state.fit!;
+      const chosen = chooseRowFit((fit) => rowHoldsAs(row, fit), state, width);
+      state = chosen;
+      row.dataset.fit = chosen.fit;
     };
 
     measure(row.clientWidth);

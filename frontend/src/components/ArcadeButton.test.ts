@@ -55,4 +55,15 @@ describe('ArcadeLink', () => {
     expect(html).not.toContain('aria-pressed');
     expect(html).toContain('href="https://example.test/"');
   });
+
+  it('cuts a new tab off from the wall unless told otherwise', () => {
+    const tab = renderToStaticMarkup(createElement(ArcadeLink, { label: '채팅', href: 'https://example.test/', target: '_blank' }));
+    expect(tab).toContain('rel="noopener noreferrer"');
+    const told = renderToStaticMarkup(
+      createElement(ArcadeLink, { label: '채팅', href: 'https://example.test/', target: '_blank', rel: 'noopener' }),
+    );
+    expect(told).toContain('rel="noopener"');
+    const here = renderToStaticMarkup(createElement(ArcadeLink, { label: '채팅', href: 'https://example.test/' }));
+    expect(here).not.toContain('rel=');
+  });
 });
