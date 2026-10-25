@@ -24,7 +24,7 @@ public class WebAnalyticsTests
     private const string BeaconScript = "static.cloudflareinsights.com/beacon.min.js";
 
     // The policy as it stood before the beacon existed: with no token it must not move.
-    private const string PolicyWithoutBeacon =
+    internal const string PolicyWithoutBeacon =
         "script-src 'self' https://www.youtube.com https://s.ytimg.com; " +
         "frame-src https://www.youtube.com https://www.youtube-nocookie.com; " +
         "img-src 'self' data: https:; " +

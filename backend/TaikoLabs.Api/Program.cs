@@ -37,6 +37,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
 // cooldown already keeps YouTube calls down - this keeps the requests themselves down.
 const string RefreshLimit = "refresh";
 const string DiagnosticsLimit = "diagnostics";
+const string SignInLimit = "signin";
+const string SignInCallbackLimit = "signin-callback";
+const string ChatLimit = "chat";
 builder.Services.AddRateLimiter(limiter =>
 {
     limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -52,6 +55,27 @@ builder.Services.AddRateLimiter(limiter =>
             PermitLimit = Math.Max(1, context.RequestServices.GetRequiredService<IOptions<ClientDiagnosticsOptions>>().Value.PerClientPerMinute),
             Window = TimeSpan.FromMinutes(1),
         }));
+
+    // Google sign-in, per address: a person signs in a few times a day at most.
+    limiter.AddPolicy(SignInLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+
+    // Google's way back, in a window of its own. Every sign-in that reaches Google comes back
+    // here once, so sharing the starts' window would spend two of its ten on each sign-in, and
+    // a few viewers on one arcade's network would be turned away at the callback - after
+    // Google, with a blank page - not at the start. Twice the starts: a callback is only ever
+    // the end of a start, and an invalid one is answered 400 without calling Google.
+    limiter.AddPolicy(SignInCallbackLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
+
+    // Chat reads, per address. A sidebar reads no faster than YouTube's pollingIntervalMillis
+    // (about every 5 seconds, 12 a minute); this leaves room for a few viewers on one arcade's
+    // network, and stops a script spending the OAuth project's quota through someone's session.
+    limiter.AddPolicy(ChatLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1) }));
 });
 
 // The venue list lives in a file of its own, apart from the app's settings: it is data
@@ -66,6 +90,13 @@ builder.Services.Configure<YouTubeOptions>(builder.Configuration.GetSection(YouT
 builder.Services.Configure<VenuesOptions>(builder.Configuration.GetSection(VenuesOptions.SectionName));
 builder.Services.Configure<ClientDiagnosticsOptions>(builder.Configuration.GetSection(ClientDiagnosticsOptions.SectionName));
 builder.Services.Configure<WebAnalyticsOptions>(builder.Configuration.GetSection(WebAnalyticsOptions.SectionName));
+
+// Google sign-in and the chat read with it (GoogleSignInEndpoints): on with an OAuth client
+// configured (Google:ClientId, and Google:ClientSecret from user-secrets or a Container Apps
+// secret), the stand-in with YouTube:Mode set to Mock, off otherwise - and off, nothing is
+// registered, so the server is what it was before.
+var signInMode = GoogleSignInEndpoints.ResolveMode(builder.Configuration);
+builder.Services.AddGoogleSignIn(signInMode, builder.Configuration);
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -352,6 +383,9 @@ if (app.Configuration.GetValue<bool>($"{ClientDiagnosticsOptions.SectionName}:Cl
         .WithSummary("클라이언트 오류 보고")
         .WithDescription("페이지가 스크립트 오류·재생 문제를 서버 로그로 보냅니다. 알려진 종류와 필드만 기록, 본문 4KB, 주소당·서버 전체 분당 제한(초과 시 429).");
 }
+
+app.MapGoogleSignIn(signInMode, SignInLimit, SignInCallbackLimit, ChatLimit);
+app.Logger.LogInformation("Google sign-in: {SignInMode}", signInMode);
 
 if (hasFrontend)
 {
