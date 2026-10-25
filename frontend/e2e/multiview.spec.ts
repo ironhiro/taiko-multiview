@@ -255,6 +255,59 @@ test.describe('the chat sidebar', () => {
     expect(chatRequests).toHaveLength(2);
   });
 
+  // Google sign-in in the sidebar (components/ChatAccount.tsx). The e2e server runs in Mock
+  // mode, whose stand-in signs a test user in without Google and serves made-up chat: three
+  // messages, then one more a read, every 5 seconds (GoogleSignInEndpoints.MockChatPage).
+  test('signs in, lists the chat read with the sign-in no faster than the server asks, stops when closed, and signs out', async ({
+    page,
+  }) => {
+    // Two 5-second reads are waited for.
+    test.setTimeout(60_000);
+    const chatReads: number[] = [];
+    // Reads answered, not asked: in development React mounts the sidebar twice, and the first
+    // mount's read is dropped as it starts.
+    page.on('requestfinished', (request) => {
+      if (new URL(request.url()).pathname.startsWith('/api/chat/')) chatReads.push(Date.now());
+    });
+    await page.goto('/?venue=taikolabs');
+    const chatA1 = page.getByRole('button', { name: 'A1 유튜브 채팅 열기' });
+    const signIn = page.getByTestId('chat-account-signin');
+    await chatA1.click();
+    await expect(signIn).toHaveText('Google로 로그인');
+    await expect(signIn).toHaveAttribute('href', '/api/auth/login');
+    // Signed out, nothing reads the chat.
+    expect(chatReads).toHaveLength(0);
+
+    // A whole-page visit, and back to the page it started from - with the sidebar closed, as
+    // after any reload.
+    await signIn.click();
+    await expect(page).toHaveURL(/\/\?venue=taikolabs$/);
+    await chatA1.click();
+    await expect(page.getByTestId('chat-account-name')).toHaveText('테스트 사용자');
+    const messages = page.getByTestId('chat-account-messages').locator('li');
+    await expect(messages).toHaveCount(3);
+    await expect(messages.first()).toHaveText('동카 연습생 안녕하세요!');
+    // The framed YouTube chat stays as it was beside it.
+    await expect(page.getByTestId('chat-sidebar-frame')).toHaveCount(1);
+
+    // The next read waits out the server's pollingIntervalMillis (5000), and adds to the list.
+    await expect(messages).toHaveCount(4, { timeout: 10_000 });
+    expect(chatReads.length).toBeGreaterThanOrEqual(2);
+    expect(chatReads[1] - chatReads[0]).toBeGreaterThanOrEqual(4_900);
+
+    // Closed, it reads no more.
+    await page.getByTestId('chat-sidebar-close').click();
+    const readsAtClose = chatReads.length;
+    await page.waitForTimeout(6_000);
+    expect(chatReads).toHaveLength(readsAtClose);
+
+    await chatA1.click();
+    await page.getByTestId('chat-account-signout').click();
+    await expect(signIn).toBeVisible();
+    await expect(page.getByTestId('chat-account-name')).toHaveCount(0);
+    expect((await (await page.request.get('/api/auth/me')).json()).signedIn).toBe(false);
+  });
+
   test("closes when its broadcast ends, and when another venue's wall comes up", async ({ page }) => {
     const stations = await stationsOf(page, 'taikolabs');
     await withOnAir(page, 'taikolabs', stations.map((station) => station.id));

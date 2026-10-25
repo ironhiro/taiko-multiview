@@ -99,3 +99,36 @@ public sealed record VenueLive
     /// <summary>Open or closed right now, and when it opens next.</summary>
     public required VenueStatus Venue { get; init; }
 }
+
+/// <summary>
+/// GET /api/auth/me - whether the server offers Google sign-in, and who is signed in. The
+/// viewer's tokens stay in the session cookie; they are never part of an answer.
+/// </summary>
+public sealed record AuthStatusResponse
+{
+    /// <summary>False when the server has no OAuth client configured: the page offers no sign-in.</summary>
+    public required bool Enabled { get; init; }
+
+    public required bool SignedIn { get; init; }
+
+    public string? Name { get; init; }
+
+    public string? Email { get; init; }
+
+    /// <summary>The Google account's picture, when it has one.</summary>
+    public string? Picture { get; init; }
+}
+
+/// <summary>GET /api/chat/{videoId}/messages - one page of a broadcast's live chat.</summary>
+public sealed record ChatMessagesResponse
+{
+    public required IReadOnlyList<ChatMessageInfo> Messages { get; init; }
+
+    /// <summary>Where the next read picks up: passed back as pageToken, it returns only newer messages.</summary>
+    public string? NextPageToken { get; init; }
+
+    /// <summary>How long YouTube asks to wait before the next read. The page never reads sooner.</summary>
+    public int? PollingIntervalMillis { get; init; }
+}
+
+public sealed record ChatMessageInfo(string Id, string Author, string Text, DateTimeOffset? PublishedAt);

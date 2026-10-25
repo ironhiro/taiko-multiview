@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { embeddedChatUrl, watchReturn } from '../lib/chatSidebar';
 import type { LiveStream } from '../lib/types';
 import { ArcadeButton } from './ArcadeButton';
+import { ChatAccount } from './ChatAccount';
 import { ChatLink } from './ChatLink';
 
 interface ChatSidebarProps {
@@ -74,6 +75,9 @@ export function ChatSidebar({ label, stream, onClose }: ChatSidebarProps) {
         입력란이 없거나 채팅 안의 로그인 버튼이 반응하지 않으면{' '}
         <span className="chat-sidebar__hint-name">‘로그인하고 채팅’을</span> 누르세요.
       </p>
+
+      {/* Google sign-in and the chat read with it, where the server offers it; nothing otherwise. */}
+      <ChatAccount videoId={stream.videoId} />
 
       <div className="chat-sidebar__frame">
         {/* Keyed by broadcast: another tile's chat is a new frame, not this one sent
