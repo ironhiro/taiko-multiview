@@ -40,6 +40,7 @@ const string DiagnosticsLimit = "diagnostics";
 const string SignInLimit = "signin";
 const string SignInCallbackLimit = "signin-callback";
 const string ChatLimit = "chat";
+const string ChatWriteLimit = "chat-write";
 builder.Services.AddRateLimiter(limiter =>
 {
     limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -76,6 +77,14 @@ builder.Services.AddRateLimiter(limiter =>
     limiter.AddPolicy(ChatLimit, context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1) }));
+
+    // Chat writes, per address, in a window of their own: a person types a message every few
+    // seconds at the most, and YouTube itself turns away a viewer who writes faster than its
+    // chat takes. Each write is 20 units of the OAuth project's quota, four reads' worth, so
+    // a script with someone's session is held well below what the reads allow.
+    limiter.AddPolicy(ChatWriteLimit, context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
 });
 
 // The venue list lives in a file of its own, apart from the app's settings: it is data
@@ -384,7 +393,7 @@ if (app.Configuration.GetValue<bool>($"{ClientDiagnosticsOptions.SectionName}:Cl
         .WithDescription("페이지가 스크립트 오류·재생 문제를 서버 로그로 보냅니다. 알려진 종류와 필드만 기록, 본문 4KB, 주소당·서버 전체 분당 제한(초과 시 429).");
 }
 
-app.MapGoogleSignIn(signInMode, SignInLimit, SignInCallbackLimit, ChatLimit);
+app.MapGoogleSignIn(signInMode, SignInLimit, SignInCallbackLimit, ChatLimit, ChatWriteLimit);
 app.Logger.LogInformation("Google sign-in: {SignInMode}", signInMode);
 
 if (hasFrontend)

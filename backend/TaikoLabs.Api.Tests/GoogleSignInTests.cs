@@ -48,6 +48,7 @@ public class GoogleSignInTests
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/auth/callback?state=x&code=y")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync("/api/auth/logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/chat/abcdefghijk/messages")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync("/api/chat/abcdefghijk/messages", new { text = "안녕" })).StatusCode);
         Assert.Empty(app.Google.Requests);
     }
 
@@ -348,17 +349,19 @@ public class GoogleSignInTests
     }
 
     [Fact]
-    public async Task Signed_in_the_chat_is_read_with_the_viewers_token_and_the_chat_id_is_kept()
+    public async Task Without_an_api_key_the_chat_is_read_with_the_viewers_token_and_the_chat_id_is_kept()
     {
         await using var app = new SignInApp("Auto", ClientId, ClientSecret);
         using var client = app.CreateSignInClient();
         await SignIn(client);
 
         var first = await client.GetFromJsonAsync<JsonElement>("/api/chat/abcdefghijk/messages");
+        app.Clock.Advance(TimeSpan.FromSeconds(5));
         var second = await client.GetAsync($"/api/chat/abcdefghijk/messages?pageToken={first.GetProperty("nextPageToken").GetString()}");
 
+        // The page's place is the server's own count, not YouTube's page token.
         Assert.Equal(
-            """{"messages":[{"id":"m1","author":"동카","text":"안녕하세요","publishedAt":"2026-10-25T01:02:03+00:00"}],"nextPageToken":"page-2","pollingIntervalMillis":5000}""",
+            """{"messages":[{"id":"m1","author":"동카","text":"안녕하세요","publishedAt":"2026-10-25T01:02:03+00:00"}],"nextPageToken":"1.1","pollingIntervalMillis":5000}""",
             first.GetRawText());
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Single(app.Google.Requests, request => request.Url.Contains("/videos?"));
@@ -439,7 +442,354 @@ public class GoogleSignInTests
         Assert.Single(app.Google.Requests, request => request.Form.GetValueOrDefault("grant_type") == "refresh_token");
     }
 
+    [Fact]
+    public async Task The_page_is_told_to_wait_at_least_five_seconds_whatever_youtube_says()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        app.Google.PollingIntervalMillis = 1000;
+        using var client = app.CreateSignInClient();
+        await SignIn(client);
+
+        var page = await client.GetFromJsonAsync<JsonElement>("/api/chat/abcdefghijk/messages");
+
+        Assert.Equal(GoogleSignInClient.MinPollingIntervalMillis, page.GetProperty("pollingIntervalMillis").GetInt32());
+    }
+
+    [Fact]
+    public void The_chats_owner_and_moderators_are_marked_and_no_one_else()
+    {
+        using var answer = JsonDocument.Parse("""
+            {"items":[
+              {"id":"1","snippet":{"displayMessage":"a"},"authorDetails":{"displayName":"채널","isChatOwner":true,"isChatModerator":false}},
+              {"id":"2","snippet":{"displayMessage":"b"},"authorDetails":{"displayName":"매니저","isChatOwner":false,"isChatModerator":true}},
+              {"id":"3","snippet":{"displayMessage":"c"},"authorDetails":{"displayName":"시청자","isChatSponsor":true}}
+            ]}
+            """);
+
+        var page = GoogleSignInClient.ReadChatPage(answer.RootElement);
+
+        Assert.Equal(["owner", "moderator", null], page.Messages.Select(message => message.Role));
+        Assert.Null(page.PollingIntervalMillis);
+    }
+
+    // --- writing to the chat -------------------------------------------------------
+
+    [Fact]
+    public async Task A_message_is_written_as_the_viewer_and_comes_back_to_join_the_list()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+        await SignIn(client);
+
+        var response = await client.PostAsJsonAsync("/api/chat/abcdefghijk/messages", new { text = "  풀콤 축하해요 🥁  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        var sent = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("sent-1", sent.GetProperty("id").GetString());
+        // Insert does not say who wrote it: the name the viewer signed in with.
+        Assert.Equal("홍길동", sent.GetProperty("author").GetString());
+        Assert.Equal("풀콤 축하해요 🥁", sent.GetProperty("text").GetString());
+        Assert.Equal("2026-10-25T01:02:04+00:00", sent.GetProperty("publishedAt").GetString());
+        Assert.False(sent.TryGetProperty("role", out _));
+
+        var insert = Assert.Single(app.Google.Requests, request => request.Method == "POST" && request.Url.Contains("/liveChat/messages"));
+        Assert.Equal("https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet", insert.Url);
+        Assert.Equal("Bearer " + FakeGoogle.AccessToken, insert.Authorization);
+        var snippet = JsonDocument.Parse(insert.Body).RootElement.GetProperty("snippet");
+        Assert.Equal("chat-1", snippet.GetProperty("liveChatId").GetString());
+        Assert.Equal("textMessageEvent", snippet.GetProperty("type").GetString());
+        // Sent as typed, but for the spaces around it.
+        Assert.Equal("풀콤 축하해요 🥁", snippet.GetProperty("textMessageDetails").GetProperty("messageText").GetString());
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "liveChatEnded", HttpStatusCode.NotFound, "notLive")]
+    [InlineData(HttpStatusCode.Forbidden, "liveChatDisabled", HttpStatusCode.NotFound, "notLive")]
+    [InlineData(HttpStatusCode.NotFound, "liveChatNotFound", HttpStatusCode.NotFound, "notLive")]
+    [InlineData(HttpStatusCode.Forbidden, "forbidden", HttpStatusCode.Forbidden, "forbidden")]
+    [InlineData(HttpStatusCode.Forbidden, "quotaExceeded", HttpStatusCode.ServiceUnavailable, "quotaExceeded")]
+    [InlineData(HttpStatusCode.Forbidden, "rateLimitExceeded", HttpStatusCode.TooManyRequests, "tooFast")]
+    [InlineData(HttpStatusCode.BadRequest, "messageTextInvalid", HttpStatusCode.BadRequest, "invalid")]
+    [InlineData(HttpStatusCode.InternalServerError, "backendError", HttpStatusCode.BadGateway, "failed")]
+    public async Task A_message_youtube_turns_down_says_why_in_a_word_the_page_knows(
+        HttpStatusCode youTubeStatus,
+        string reason,
+        HttpStatusCode expected,
+        string error)
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        app.Google.InsertRefusal = (youTubeStatus, reason);
+        using var client = app.CreateSignInClient();
+        await SignIn(client);
+
+        var response = await client.PostAsJsonAsync("/api/chat/abcdefghijk/messages", new { text = "안녕" });
+
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal($$"""{"error":"{{error}}"}""", await response.Content.ReadAsStringAsync());
+        // Still signed in: only a token Google turns down signs the viewer out.
+        Assert.True((await Me(client)).GetProperty("signedIn").GetBoolean());
+    }
+
+    [Fact]
+    public void On_a_read_rate_limit_exceeded_is_the_quota_and_on_a_write_the_viewer_sending_too_fast()
+    {
+        Assert.Equal(LiveChatFailure.QuotaExceeded, GoogleSignInClient.Classify(HttpStatusCode.Forbidden, "rateLimitExceeded", writing: false));
+        Assert.Equal(LiveChatFailure.TooFast, GoogleSignInClient.Classify(HttpStatusCode.Forbidden, "rateLimitExceeded", writing: true));
+        // A read turned down with 403 is not "not allowed to write".
+        Assert.Equal(LiveChatFailure.Failed, GoogleSignInClient.Classify(HttpStatusCode.Forbidden, "forbidden", writing: false));
+    }
+
+    [Fact]
+    public async Task Writing_signed_out_is_401_and_nothing_goes_to_youtube()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+
+        var response = await client.PostAsJsonAsync("/api/chat/abcdefghijk/messages", new { text = "안녕" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(app.Google.Requests);
+    }
+
+    // Another site's page can post a form, or a script's text/plain, with no preflight; it
+    // cannot post JSON without one. Either way nothing reaches YouTube.
+    [Theory]
+    [InlineData("application/x-www-form-urlencoded", "text=hello")]
+    [InlineData("text/plain", """{"text":"hello"}""")]
+    [InlineData("multipart/form-data; boundary=x", "--x\r\nContent-Disposition: form-data; name=\"text\"\r\n\r\nhello\r\n--x--")]
+    public async Task A_write_that_is_not_json_is_turned_away_even_signed_in(string contentType, string body)
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+        await SignIn(client);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/abcdefghijk/messages")
+        {
+            Content = new StringContent(body, Encoding.UTF8),
+        };
+        request.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(contentType);
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+        Assert.DoesNotContain(app.Google.Requests, sent => sent.Url.Contains("youtube"));
+    }
+
+    [Fact]
+    public async Task An_empty_message_or_one_past_200_characters_is_turned_away_and_200_is_taken()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+        await SignIn(client);
+
+        async Task<(HttpStatusCode Status, string Body)> Send(object body)
+        {
+            var response = await client.PostAsJsonAsync("/api/chat/abcdefghijk/messages", body);
+            return (response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        Assert.Equal((HttpStatusCode.BadRequest, """{"error":"empty"}"""), await Send(new { text = "" }));
+        Assert.Equal((HttpStatusCode.BadRequest, """{"error":"empty"}"""), await Send(new { text = "   \n " }));
+        Assert.Equal((HttpStatusCode.BadRequest, """{"error":"empty"}"""), await Send(new { }));
+        Assert.Equal((HttpStatusCode.BadRequest, """{"error":"tooLong"}"""), await Send(new { text = new string('가', 201) }));
+        Assert.Equal((HttpStatusCode.BadRequest, """{"error":"tooLong"}"""), await Send(new { text = string.Concat(Enumerable.Repeat("🥁", 201)) }));
+        Assert.DoesNotContain(app.Google.Requests, request => request.Method == "POST" && request.Url.Contains("youtube"));
+
+        // An emoji is one character, as the page counts it, though two UTF-16 halves.
+        Assert.Equal(HttpStatusCode.OK, (await Send(new { text = string.Concat(Enumerable.Repeat("🥁", 200)) })).Status);
+        Assert.Equal(HttpStatusCode.OK, (await Send(new { text = new string('가', 200) })).Status);
+
+        using var broken = new StringContent("{\"text\":", Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/chat/abcdefghijk/messages", broken)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Writes_are_held_to_twenty_a_minute_apart_from_reads()
+    {
+        await using var app = new SignInApp("Mock", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+        await client.GetAsync("/api/auth/login");
+
+        for (var i = 0; i < 20; i++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/chat/mock-taikolabs-a1/messages", new { text = $"{i}" })).StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.PostAsJsonAsync("/api/chat/mock-taikolabs-a1/messages", new { text = "21" })).StatusCode);
+        // Reading goes on.
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/chat/mock-taikolabs-a1/messages")).StatusCode);
+    }
+
+    // --- signing out ---------------------------------------------------------------
+
+    // As most sites sign out: this browser only. The grant stays at Google, and the viewer's
+    // other browsers and devices stay signed in.
+    [Fact]
+    public async Task Logout_ends_this_browsers_session_alone_and_asks_google_nothing()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        using var here = app.CreateSignInClient();
+        using var elsewhere = app.CreateSignInClient();
+        await SignIn(here);
+        await SignIn(elsewhere);
+        var before = app.Google.Requests.Count;
+
+        var logout = await here.PostAsync("/api/auth/logout", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        var cleared = Assert.Single(SetCookies(logout), cookie => cookie.StartsWith(GoogleSignInEndpoints.SessionCookieName + "="));
+        Assert.Contains("expires=Thu, 01 Jan 1970", cleared, StringComparison.OrdinalIgnoreCase);
+        Assert.False((await Me(here)).GetProperty("signedIn").GetBoolean());
+        Assert.True((await Me(elsewhere)).GetProperty("signedIn").GetBoolean());
+        Assert.Equal(before, app.Google.Requests.Count);
+        Assert.Equal(HttpStatusCode.OK, (await elsewhere.GetAsync("/api/chat/abcdefghijk/messages")).StatusCode);
+    }
+
+    // --- one read for everyone ---------------------------------------------------------
+
+    [Fact]
+    public async Task Viewers_of_one_broadcast_share_one_read_of_youtube_a_polling_interval()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        var viewers = new[] { app.CreateSignInClient(), app.CreateSignInClient(), app.CreateSignInClient() };
+        foreach (var viewer in viewers)
+        {
+            await SignIn(viewer);
+        }
+
+        int Reads() => app.Google.Requests.Count(request => request.Method == "GET" && request.Url.Contains("/liveChat/messages?"));
+
+        var firsts = new List<JsonElement>();
+        foreach (var viewer in viewers)
+        {
+            firsts.Add(await viewer.GetFromJsonAsync<JsonElement>("/api/chat/abcdefghijk/messages"));
+        }
+
+        Assert.Equal(1, Reads());
+        Assert.All(firsts, first => Assert.Equal("m1", Assert.Single(first.GetProperty("messages").EnumerateArray()).GetProperty("id").GetString()));
+
+        // Within the interval, the next reads are answered from what the server has: nothing new.
+        var cursor = firsts[0].GetProperty("nextPageToken").GetString();
+        var again = await viewers[0].GetFromJsonAsync<JsonElement>($"/api/chat/abcdefghijk/messages?pageToken={cursor}");
+        Assert.Empty(again.GetProperty("messages").EnumerateArray());
+        Assert.Equal(1, Reads());
+
+        // Past it, one more read of YouTube, from where YouTube's paging left off.
+        app.Clock.Advance(TimeSpan.FromMilliseconds(5000));
+        foreach (var viewer in viewers)
+        {
+            await viewer.GetAsync($"/api/chat/abcdefghijk/messages?pageToken={cursor}");
+        }
+
+        Assert.Equal(2, Reads());
+        Assert.Contains("pageToken=page-2", app.Google.Requests.Last(request => request.Url.Contains("/liveChat/messages?")).Url);
+        // The broadcast's chat id was looked up once.
+        Assert.Single(app.Google.Requests, request => request.Url.Contains("/videos?"));
+        foreach (var viewer in viewers)
+        {
+            viewer.Dispose();
+        }
+    }
+
+    // The server's API key is the venue polls': its quota is what keeps the wall's live state
+    // coming. With one configured, the chat - read and written - still goes with the viewer's
+    // token alone, and the fake YouTube turns down anything that carries a key.
+    [Fact]
+    public async Task The_chat_never_goes_with_the_servers_api_key_even_with_one_configured()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret, apiKey: FakeGoogle.ApiKey);
+        using var client = app.CreateSignInClient();
+        await SignIn(client);
+
+        var first = await client.GetAsync("/api/chat/abcdefghijk/messages");
+        app.Clock.Advance(TimeSpan.FromSeconds(5));
+        var second = await client.GetAsync("/api/chat/abcdefghijk/messages");
+        var sent = await client.PostAsJsonAsync("/api/chat/abcdefghijk/messages", new { text = "안녕" });
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        var youTube = app.Google.Requests.Where(request => request.Url.Contains("youtube")).ToList();
+        // videos.list once, liveChatMessages.list twice, liveChatMessages.insert once.
+        Assert.Equal(4, youTube.Count);
+        Assert.All(youTube, request =>
+        {
+            Assert.DoesNotContain("key=", request.Url);
+            Assert.Equal("Bearer " + FakeGoogle.AccessToken, request.Authorization);
+        });
+    }
+
+    [Fact]
+    public async Task A_message_written_is_in_every_viewers_next_read_once_and_youtube_bringing_it_again_adds_nothing()
+    {
+        await using var app = new SignInApp("Auto", ClientId, ClientSecret);
+        app.Google.ListSentMessage = true;
+        using var writer = app.CreateSignInClient();
+        using var reader = app.CreateSignInClient();
+        await SignIn(writer);
+        await SignIn(reader);
+        var cursor = (await reader.GetFromJsonAsync<JsonElement>("/api/chat/abcdefghijk/messages")).GetProperty("nextPageToken").GetString();
+
+        Assert.Equal(HttpStatusCode.OK, (await writer.PostAsJsonAsync("/api/chat/abcdefghijk/messages", new { text = "같이 봐요" })).StatusCode);
+        var next = await reader.GetFromJsonAsync<JsonElement>($"/api/chat/abcdefghijk/messages?pageToken={cursor}");
+        var sent = Assert.Single(next.GetProperty("messages").EnumerateArray());
+        Assert.Equal("sent-1", sent.GetProperty("id").GetString());
+        Assert.Equal("홍길동", sent.GetProperty("author").GetString());
+
+        // YouTube's next page has it under the same id, by the channel's name: one message,
+        // told again as YouTube tells it, to whoever had it.
+        app.Clock.Advance(TimeSpan.FromSeconds(5));
+        cursor = next.GetProperty("nextPageToken").GetString();
+        var later = await reader.GetFromJsonAsync<JsonElement>($"/api/chat/abcdefghijk/messages?pageToken={cursor}");
+        var again = Assert.Single(later.GetProperty("messages").EnumerateArray());
+        Assert.Equal("sent-1", again.GetProperty("id").GetString());
+        Assert.Equal("홍길동 채널", again.GetProperty("author").GetString());
+
+        // A viewer opening now has it once.
+        using var newcomer = app.CreateSignInClient();
+        await SignIn(newcomer);
+        var everything = await newcomer.GetFromJsonAsync<JsonElement>("/api/chat/abcdefghijk/messages");
+        Assert.Single(everything.GetProperty("messages").EnumerateArray(), message => message.GetProperty("id").GetString() == "sent-1");
+    }
+
     // --- Mock mode ---------------------------------------------------------------
+
+    [Fact]
+    public async Task In_mock_mode_a_message_sent_comes_back_once_on_the_next_read_under_the_same_id()
+    {
+        await using var app = new SignInApp("Mock", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+        await client.GetAsync("/api/auth/login");
+        const string Messages = "/api/chat/mock-taikolabs-a1/messages";
+
+        var first = await client.GetFromJsonAsync<JsonElement>(Messages);
+        var sent = await (await client.PostAsJsonAsync(Messages, new { text = "보냅니다" })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("테스트 사용자", sent.GetProperty("author").GetString());
+        Assert.Equal("보냅니다", sent.GetProperty("text").GetString());
+
+        var next = await client.GetFromJsonAsync<JsonElement>($"{Messages}?pageToken={first.GetProperty("nextPageToken").GetString()}");
+        var after = await client.GetFromJsonAsync<JsonElement>($"{Messages}?pageToken={next.GetProperty("nextPageToken").GetString()}");
+
+        var mine = Assert.Single(next.GetProperty("messages").EnumerateArray());
+        Assert.Equal(sent.GetProperty("id").GetString(), mine.GetProperty("id").GetString());
+        Assert.Empty(after.GetProperty("messages").EnumerateArray());
+        // Another broadcast's chat does not have it.
+        var other = await client.GetFromJsonAsync<JsonElement>("/api/chat/mock-taikolabs-a3/messages");
+        Assert.DoesNotContain(other.GetProperty("messages").EnumerateArray(), m => m.GetProperty("text").GetString() == "보냅니다");
+        Assert.Empty(app.Google.Requests);
+    }
+
+    [Fact]
+    public async Task In_mock_mode_logout_asks_google_nothing()
+    {
+        await using var app = new SignInApp("Mock", ClientId, ClientSecret);
+        using var client = app.CreateSignInClient();
+        await client.GetAsync("/api/auth/login");
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync("/api/auth/logout", null)).StatusCode);
+        Assert.False((await Me(client)).GetProperty("signedIn").GetBoolean());
+        Assert.Empty(app.Google.Requests);
+    }
 
     [Fact]
     public async Task In_mock_mode_login_signs_in_a_test_user_without_google_and_the_chat_is_made_up()
@@ -462,6 +812,7 @@ public class GoogleSignInTests
         var first = await client.GetFromJsonAsync<JsonElement>("/api/chat/mock-taikolabs-a1/messages");
         Assert.Equal(3, first.GetProperty("messages").GetArrayLength());
         Assert.Equal(5000, first.GetProperty("pollingIntervalMillis").GetInt32());
+        app.Clock.Advance(TimeSpan.FromSeconds(5));
         var next = await client.GetFromJsonAsync<JsonElement>(
             $"/api/chat/mock-taikolabs-a1/messages?pageToken={first.GetProperty("nextPageToken").GetString()}");
         Assert.Equal("새 메시지 1", Assert.Single(next.GetProperty("messages").EnumerateArray()).GetProperty("text").GetString());
@@ -501,7 +852,7 @@ public class GoogleSignInTests
         public const string IdTokenMarker = "fake-id-token-signature";
         public const string NotLiveVideo = "notlive0001";
 
-        public sealed record Request(string Url, string? Authorization, IReadOnlyDictionary<string, string> Form);
+        public sealed record Request(string Method, string Url, string? Authorization, IReadOnlyDictionary<string, string> Form, string Body);
 
         private readonly ConcurrentQueue<Request> _requests = new();
 
@@ -513,19 +864,38 @@ public class GoogleSignInTests
 
         public bool RevokeFirstAccessToken { get; set; }
 
+        public int PollingIntervalMillis { get; set; } = 5000;
+
+        /// <summary>The server's YouTube API key, as a test configures it: the chat must never send it.</summary>
+        public const string ApiKey = "test-api-key-not-real";
+
+        /// <summary>Once a message is written, the chat's pages bring it, under the channel's name.</summary>
+        public bool ListSentMessage { get; set; }
+
+        private volatile bool _inserted;
+
+        /// <summary>How liveChatMessages.insert turns the message down; null takes it.</summary>
+        public (HttpStatusCode Status, string Reason)? InsertRefusal { get; set; }
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var url = request.RequestUri!.ToString();
-            var form = request.Content is null
-                ? new Dictionary<string, string>()
-                : QueryHelpers.ParseQuery(await request.Content.ReadAsStringAsync(cancellationToken))
-                    .ToDictionary(pair => pair.Key, pair => pair.Value.ToString());
+            var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+            var form = request.Content is FormUrlEncodedContent
+                ? QueryHelpers.ParseQuery(body).ToDictionary(pair => pair.Key, pair => pair.Value.ToString())
+                : new Dictionary<string, string>();
             var authorization = request.Headers.Authorization?.ToString();
-            _requests.Enqueue(new Request(url, authorization, form));
+            _requests.Enqueue(new Request(request.Method.Method, url, authorization, form, body));
 
             if (url == GoogleSignInClient.TokenEndpoint)
             {
                 return Token(form);
+            }
+
+            // A call with a key is one the chat must never make: it would spend the venue polls' quota.
+            if (QueryHelpers.ParseQuery(request.RequestUri.Query).ContainsKey("key"))
+            {
+                return Json(HttpStatusCode.BadRequest, """{"error":{"code":400,"errors":[{"reason":"keyNotExpected"}]}}""");
             }
 
             var valid = RevokeFirstAccessToken ? "Bearer " + RenewedAccessToken : null;
@@ -543,10 +913,36 @@ public class GoogleSignInTests
                     : Json(HttpStatusCode.OK, """{"items":[{"id":"abcdefghijk","liveStreamingDetails":{"activeLiveChatId":"chat-1"}}]}""");
             }
 
+            if (request.Method == HttpMethod.Post
+                && url == "https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet")
+            {
+                if (InsertRefusal is ({ } status, { } reason))
+                {
+                    return Json(status, $$$"""{"error":{"code":{{{(int)status}}},"errors":[{"reason":"{{{reason}}}"}]}}""");
+                }
+
+                var text = JsonDocument.Parse(body).RootElement.GetProperty("snippet").GetProperty("textMessageDetails").GetProperty("messageText").GetString();
+                _inserted = true;
+                return Json(HttpStatusCode.OK, JsonSerializer.Serialize(new
+                {
+                    id = "sent-1",
+                    snippet = new { type = "textMessageEvent", displayMessage = text, publishedAt = "2026-10-25T01:02:04Z" },
+                }));
+            }
+
+            if (url.StartsWith("https://www.googleapis.com/youtube/v3/liveChat/messages?", StringComparison.Ordinal) && ListSentMessage && _inserted)
+            {
+                return Json(HttpStatusCode.OK, $$$"""
+                    {"nextPageToken":"page-3","pollingIntervalMillis":{{{PollingIntervalMillis}}},"items":[
+                      {"id":"sent-1","snippet":{"displayMessage":"같이 봐요","publishedAt":"2026-10-25T01:02:04Z"},"authorDetails":{"displayName":"홍길동 채널"}}
+                    ]}
+                    """);
+            }
+
             if (url.StartsWith("https://www.googleapis.com/youtube/v3/liveChat/messages?", StringComparison.Ordinal))
             {
-                return Json(HttpStatusCode.OK, """
-                    {"nextPageToken":"page-2","pollingIntervalMillis":5000,"items":[
+                return Json(HttpStatusCode.OK, $$$"""
+                    {"nextPageToken":"page-2","pollingIntervalMillis":{{{PollingIntervalMillis}}},"items":[
                       {"id":"m1","snippet":{"displayMessage":"안녕하세요","publishedAt":"2026-10-25T01:02:03Z"},"authorDetails":{"displayName":"동카"}},
                       {"id":"m2","snippet":{"type":"newSponsorEvent"},"authorDetails":{"displayName":"멤버"}}
                     ]}
@@ -601,11 +997,23 @@ public class GoogleSignInTests
             new(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
     }
 
-    private sealed class SignInApp(string youTubeMode, string? clientId, string? clientSecret) : WebApplicationFactory<Program>
+    /// <summary>A clock the tests move on by hand, for the shared chat's polling interval.</summary>
+    internal sealed class ManualClock : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by) => _now += by;
+    }
+
+    private sealed class SignInApp(string youTubeMode, string? clientId, string? clientSecret, string apiKey = "") : WebApplicationFactory<Program>
     {
         private readonly string _scratch = Path.Combine(Path.GetTempPath(), $"taiko-signin-test-{Guid.NewGuid():N}");
 
         public FakeGoogle Google { get; } = new();
+
+        public ManualClock Clock { get; } = new();
 
         public HttpClient CreateSignInClient() =>
             CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
@@ -614,7 +1022,7 @@ public class GoogleSignInTests
         {
             builder.UseEnvironment("Production");
             builder.UseSetting("YouTube:Mode", youTubeMode);
-            builder.UseSetting("YouTube:ApiKey", "");
+            builder.UseSetting("YouTube:ApiKey", apiKey);
             builder.UseSetting("Google:ClientId", clientId ?? "");
             builder.UseSetting("Google:ClientSecret", clientSecret ?? "");
             builder.UseSetting("Venues:ClosureCachePath", Path.Combine(_scratch, "closures.json"));
@@ -624,6 +1032,8 @@ public class GoogleSignInTests
                 // No polling of YouTube or the closure feed while testing the sign-in.
                 services.RemoveAll<IHostedService>();
                 services.AddHttpClient<GoogleSignInClient>().ConfigurePrimaryHttpMessageHandler(() => Google);
+                services.RemoveAll<TimeProvider>();
+                services.AddSingleton<TimeProvider>(Clock);
             });
         }
 

@@ -131,4 +131,15 @@ public sealed record ChatMessagesResponse
     public int? PollingIntervalMillis { get; init; }
 }
 
-public sealed record ChatMessageInfo(string Id, string Author, string Text, DateTimeOffset? PublishedAt);
+/// <summary>
+/// One message of a live chat. <see cref="Role"/> is the author's standing in the chat when it
+/// has one the page shows: the channel's owner, or a moderator; left out for everyone else.
+/// </summary>
+public sealed record ChatMessageInfo(string Id, string Author, string Text, DateTimeOffset? PublishedAt, string? Role = null)
+{
+    public const string OwnerRole = "owner";
+    public const string ModeratorRole = "moderator";
+}
+
+/// <summary>POST /api/chat/{videoId}/messages - a text message to write to the broadcast's chat.</summary>
+public sealed record ChatSendRequest(string? Text);
