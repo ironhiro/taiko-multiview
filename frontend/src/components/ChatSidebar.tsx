@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  CHAT_AUTH_WAIT_MS,
   embeddedChatUrl,
-  readChatView,
   rememberChatForSignIn,
   sessionNotes,
-  storeChatView,
+  sidebarContent,
   watchReturn,
-  type ChatView,
 } from '../lib/chatSidebar';
-import { fetchAuthStatus, signOut, type AuthStatus } from '../lib/googleSignIn';
+import { fetchAuthStatus, knownAuthStatus, primeAuthStatus, rememberAuthStatus, signOut, type AuthStatus } from '../lib/googleSignIn';
 import type { LiveStream } from '../lib/types';
 import { ArcadeButton } from './ArcadeButton';
-import { ChatAccount } from './ChatAccount';
+import { ChatSignIn } from './ChatAccount';
 import { ChatLink } from './ChatLink';
 import { ChatRoom } from './ChatRoom';
 
@@ -27,48 +26,60 @@ interface ChatSidebarProps {
 }
 
 /**
- * Who the server last said was signed in, for the next sidebar this page opens: a sidebar
- * opened again starts with what it showed, rather than with the framed chat for the moment
- * it takes to ask. Asked again on every opening all the same.
- */
-let lastAuthStatus: AuthStatus | null = null;
-
-/**
  * One broadcast's chat down the right of the window, beside the wall (design.md, "Chat
  * sidebar"). Wide browser windows on a computer only (lib/chatSidebar.ts); App closes it
  * once the broadcast's tile leaves the wall.
  *
- * A viewer signed in to this page (lib/googleSignIn.ts) gets our own chat, the whole sidebar
- * under the header (ChatRoom), with YouTube's framed chat a choice away under it. Everyone
- * else - signed out, or a server without the sign-in - gets the framed chat, as before it.
+ * Where the server offers Google sign-in (lib/googleSignIn.ts) the sidebar is ours alone:
+ * signed in, our own chat under the header (ChatRoom); signed out, the way to sign in
+ * (ChatSignIn). Where it does not, the sidebar is YouTube's chat in a frame, as it was before
+ * there was a sign-in. Which one is the server's answer, known from the page's first moments
+ * (App asks as it loads) and asked again here; until there is one the sidebar holds its
+ * header alone, so a frame is never put up only to be taken down (`sidebarContent`).
  *
  * Whether the framed chat can be written to is the browser's call, which the page cannot
  * see: a Chrome signed in to YouTube gets the chat's input; a browser that keeps
  * youtube.com's cookies from other sites' frames (Safari and Firefox by default, private
  * windows) only the chat to read. Nor can the framed chat sign anyone in: its own "채팅하려면
- * 로그인" would take the whole window away, which the sandbox stops. So wherever the chat is
- * framed, "로그인하고 채팅" is there, with a line over the chat pointing to it: Google's
- * sign-in in a window of its own, arriving at YouTube's pop-out chat, where writing always
- * works. Back from that window, the framed chat is loaded once more, so a sign-in the browser
- * does pass to the frame shows its input without a reload of the page.
+ * 로그인" would take the whole window away, which the sandbox stops. So with the frame,
+ * "로그인하고 채팅" is there, with a line over the chat pointing to it: Google's sign-in in a
+ * window of its own, arriving at YouTube's pop-out chat, where writing always works. Back
+ * from that window, the framed chat is loaded once more, so a sign-in the browser does pass
+ * to the frame shows its input without a reload of the page.
  */
 export function ChatSidebar({ tileId, label, stream, signInFailed, onClose }: ChatSidebarProps) {
-  const [status, setStatusState] = useState<AuthStatus | null>(lastAuthStatus);
+  const [status, setStatusState] = useState<AuthStatus | null>(knownAuthStatus);
   const setStatus = useCallback((next: AuthStatus) => {
-    lastAuthStatus = next;
+    rememberAuthStatus(next);
     setStatusState(next);
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    fetchAuthStatus(controller.signal).then(setStatus, () => {});
+    // The page's own question, asked as it loaded, is likely answered first: taken until this
+    // sidebar's own answer is in, which then stands.
+    let answered = false;
+    primeAuthStatus().then(
+      (status) => !answered && !controller.signal.aborted && setStatusState((current) => current ?? status),
+      () => {},
+    );
+    fetchAuthStatus(controller.signal).then((status) => {
+      answered = true;
+      setStatus(status);
+    }, () => {});
     return () => controller.abort();
   }, [setStatus]);
 
-  const [view, setView] = useState<ChatView>(() => readChatView(sessionNotes()));
-  const choose = (next: ChatView) => {
-    storeChatView(sessionNotes(), next);
-    setView(next);
-  };
+  // An answer slower than this, and the sidebar frames the chat rather than stay empty.
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
+  useEffect(() => {
+    if (status) {
+      return;
+    }
+    const timer = window.setTimeout(() => setWaitedTooLong(true), CHAT_AUTH_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [status]);
+
+  const content = sidebarContent(status, waitedTooLong);
 
   const signedOut = useCallback(() => setStatus({ enabled: true, signedIn: false }), [setStatus]);
   const handleSignOut = () => {
@@ -77,8 +88,6 @@ export function ChatSidebar({ tileId, label, stream, signInFailed, onClose }: Ch
       .finally(signedOut);
   };
   const handleSignIn = () => rememberChatForSignIn(sessionNotes(), { tileId, videoId: stream.videoId }, Date.now());
-
-  const ours = status?.enabled === true && status.signedIn && view === 'ours';
 
   // Counts the reloads after a sign-in; part of the frame's key.
   const [signInReloads, setSignInReloads] = useState(0);
@@ -102,8 +111,8 @@ export function ChatSidebar({ tileId, label, stream, signInFailed, onClose }: Ch
           </span>{' '}
           채팅
         </h2>
-        {/* For the framed chat alone: our own chat writes with this page's sign-in. */}
-        {!ours && (
+        {/* For the framed chat alone: our own chat signs in with this page's sign-in. */}
+        {content === 'framed' && (
           <ChatLink
             className="chat-sidebar__signin"
             label="로그인하고 채팅"
@@ -126,31 +135,19 @@ export function ChatSidebar({ tileId, label, stream, signInFailed, onClose }: Ch
         />
       </header>
 
-      {ours && status ? (
+      {content === 'ours' && status && (
         // Keyed by broadcast: another tile's chat starts its own list from the beginning.
-        <ChatRoom
-          key={stream.videoId}
-          videoId={stream.videoId}
-          status={status}
-          onSignOut={handleSignOut}
-          onSignedOut={signedOut}
-          onShowYouTube={() => choose('youtube')}
-        />
-      ) : (
+        <ChatRoom key={stream.videoId} videoId={stream.videoId} status={status} onSignOut={handleSignOut} onSignedOut={signedOut} />
+      )}
+
+      {content === 'signIn' && <ChatSignIn signInFailed={signInFailed} onSignIn={handleSignIn} />}
+
+      {content === 'framed' && (
         <>
           <p className="chat-sidebar__hint" data-testid="chat-sidebar-hint">
             입력란이 없거나 채팅 안의 로그인 버튼이 반응하지 않으면{' '}
             <span className="chat-sidebar__hint-name">‘로그인하고 채팅’을</span> 누르세요.
           </p>
-
-          {/* Google sign-in, where the server offers it; nothing otherwise. */}
-          <ChatAccount
-            status={status}
-            signInFailed={signInFailed}
-            onSignIn={handleSignIn}
-            onSignOut={handleSignOut}
-            onShowOurs={() => choose('ours')}
-          />
 
           <div className="chat-sidebar__frame">
             {/* Keyed by broadcast: another tile's chat is a new frame, not this one sent

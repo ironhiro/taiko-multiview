@@ -13,8 +13,11 @@ import type { WallTile } from './wallTiles';
  * which case it is in: the frame is another origin's, and in the messages it sends this
  * page (signed out, one `!_{"h":""}` handshake in ten seconds) nothing names the viewer. So
  * wherever the sidebar frames the chat it offers Google's sign-in in a window of its own,
- * arriving at YouTube's pop-out chat. A viewer signed in to this page (lib/googleSignIn.ts)
- * gets our own chat instead, written to through the server, with the frame a choice away.
+ * arriving at YouTube's pop-out chat.
+ *
+ * The frame is only where the server offers no sign-in of its own. Where it does
+ * (lib/googleSignIn.ts), the sidebar is our own chat, read and written through the server,
+ * and signed out it is the way to sign in - no frame at all (`sidebarContent`).
  */
 
 /**
@@ -63,6 +66,33 @@ export function embeddedChatUrl(videoId: string, hostname: string = window.locat
   return `https://www.youtube.com/live_chat?${params}`;
 }
 
+/**
+ * What the sidebar holds under its header, by what the server says of the sign-in:
+ * - `framed`: YouTube's chat in a frame, with 로그인하고 채팅 and the hint over it. Where the
+ *   server offers no sign-in - as it was before there was one.
+ * - `signIn`: the sign-in alone. Where it is offered and the viewer is signed out: no frame.
+ * - `ours`: our own chat, signed in.
+ * - `asking`: the header alone, while the server has not said. Not for long: the page asks as
+ *   it loads, and past `CHAT_AUTH_WAIT_MS` without an answer the sidebar frames the chat as a
+ *   server without the sign-in would, rather than stay empty.
+ */
+export type SidebarContent = 'asking' | 'framed' | 'signIn' | 'ours';
+
+export const CHAT_AUTH_WAIT_MS = 1_500;
+
+export function sidebarContent(
+  status: { enabled: boolean; signedIn: boolean } | null,
+  waitedTooLong: boolean,
+): SidebarContent {
+  if (!status) {
+    return waitedTooLong ? 'framed' : 'asking';
+  }
+  if (!status.enabled) {
+    return 'framed';
+  }
+  return status.signedIn ? 'ours' : 'signIn';
+}
+
 /** The chat the sidebar shows: a tile's, and the broadcast it had on air when it was opened. */
 export interface OpenChat {
   tileId: string;
@@ -85,9 +115,9 @@ export function chatTileOf(tiles: readonly WallTile[], chat: OpenChat | null): W
 // --------------------------------------------------------------- across the sign-in
 
 /**
- * The sessionStorage the sidebar keeps its two notes in, or none where the browser will not
- * give it (storage turned off, some private windows): the notes are a convenience, and the
- * sidebar works the same without them.
+ * The sessionStorage the sidebar keeps its note in, or none where the browser will not
+ * give it (storage turned off, some private windows): the note is a convenience, and the
+ * sidebar works the same without it.
  */
 export function sessionNotes(): Storage | undefined {
   try {
@@ -97,29 +127,6 @@ export function sessionNotes(): Storage | undefined {
   }
 }
 
-/**
- * Signed in, the sidebar shows our own chat - the list and a box to write in - or, chosen
- * from under it, YouTube's framed chat as before. The choice lasts the browser tab's session.
- */
-export type ChatView = 'ours' | 'youtube';
-
-export const CHAT_VIEW_KEY = 'taiko.chat.view';
-
-export function readChatView(storage: Storage | undefined): ChatView {
-  try {
-    return storage?.getItem(CHAT_VIEW_KEY) === 'youtube' ? 'youtube' : 'ours';
-  } catch {
-    return 'ours';
-  }
-}
-
-export function storeChatView(storage: Storage | undefined, view: ChatView): void {
-  try {
-    storage?.setItem(CHAT_VIEW_KEY, view);
-  } catch {
-    // Not kept: the next sidebar starts at ours again.
-  }
-}
 
 /**
  * The sidebar a sign-in started from. The sign-in is a whole-page visit to Google, and the

@@ -173,43 +173,53 @@ bounces, glows or lifts.
   built again.
 
 ## Chat sidebar
-- A computer's browser window 1024px wide or more opens a tile's chat beside the wall:
-  one broadcast's YouTube chat (its embedded chat, dark theme) in a column down the right,
-  between the marquee and the credit strip, which keep the full width. One chat at a time;
-  another tile's 채팅 moves it there, pressing the same 채팅 again leaves it as it is.
+- A computer's browser window 1024px wide or more opens a tile's chat beside the wall: one
+  broadcast's chat in a column down the right, between the marquee and the credit strip,
+  which keep the full width. One chat at a time; another tile's 채팅 moves it there, pressing
+  the same 채팅 again leaves it as it is.
+- What the column holds is the server's to say. Where it offers Google sign-in, the chat is
+  our own - read and written through the server - and nothing of YouTube's is framed: no
+  embedded chat, no 로그인하고 채팅, no hint. Where it does not (production today), the column
+  is YouTube's embedded chat, as it always was. The page asks as it loads, so the column opens
+  straight to the one or the other; until the answer is in it holds the header alone, and an
+  answer slower than 1.5 seconds gets the embedded chat.
 - Width `clamp(20rem, 25vw, 25rem)` (320-400px), about YouTube's own pop-out chat (420px).
   Up to 1920x1080 the wall is sized by the window's height and the sidebar takes the room
   beside it, so the tiles keep their size; at 1024px a 3×3 wall's tiles stay above 188px.
 - A panel like the marquee: `--color-paper-2`, a `--rule-mark` `--color-rule` edge on its
   left, a header with the cabinet (data face, `--color-ink`) and "채팅" (`--color-ink-2`),
-  then 로그인하고 채팅 (a link: Google's sign-in for YouTube in a window of its own, arriving
-  at YouTube's pop-out chat; signed in, straight to the chat) and 닫기 (an icon-only arcade
-  button). Its words say what a viewer gets, not how: "팝아웃" told nobody it was the way to
-  sign in.
+  and 닫기 (an icon-only arcade button) at its end.
+
+### Without Google sign-in on the server
+- The embedded chat (dark theme), and in the header, before 닫기, 로그인하고 채팅 (a link:
+  Google's sign-in for YouTube in a window of its own, arriving at YouTube's pop-out chat;
+  signed in, straight to the chat). Its words say what a viewer gets, not how: "팝아웃" told
+  nobody it was the way to sign in.
 - Over the chat, under the header, a hint in `--color-ink-2` (words kept whole,
   `keep-all`): "입력란이 없거나 채팅 안의 로그인 버튼이 반응하지 않으면 ‘로그인하고 채팅’을
   누르세요." The chat's own "채팅하려면 로그인" takes the whole window to Google, so the
   frame's sandbox stops it, and the hint sends the viewer to the header instead.
-- 로그인하고 채팅 is there wherever the chat is framed: whether the viewer is signed in to
-  YouTube, and whether the browser lets that reach the framed chat (a Chrome signed in to
-  YouTube did, measured; Safari, Firefox and private windows keep youtube.com's cookies from
-  other sites' frames), cannot be seen from the page. Back from that window, the chat is
-  loaded once more, so a sign-in the frame does get shows its input.
-- Where the server offers Google sign-in, "Google로 로그인" sits under the hint, over the
-  framed chat (an arcade link: a whole-page visit to Google, back to the same page with the
-  same tile's chat open). A sign-in that came back failed says so under it, in `--color-warn`.
-  Without the sign-in on the server, nothing of it shows and the sidebar is as above.
-- Signed in, our own chat takes the whole sidebar under the header, in place of the framed
-  one, and the header's 로그인하고 채팅 and the hint go - writing here is this page's
-  sign-in, through the server. Top to bottom: who is signed in (name, `--color-ink`, cut
-  short on one line) and 로그아웃; the messages, filling what is left (author in
-  `--color-ink` 700, a pill word beside the channel's 소유자 and its 운영자 in
-  `--color-ink-2` on a `--color-rule-strong` hairline, text in `--color-ink`, long words
-  broken rather than widening the column, the newest 200 kept); the box to write in, with
-  보내기 and a count to 200 (data face, `--color-ink-3`, `--color-warn` past it); a short
-  line in `--color-warn` when a message does not go, the words left in the box; and
-  "유튜브 채팅으로 보기" at the foot. The list is read, not chosen: nothing in it is 카, and
-  nothing but on air is 돈.
+- 로그인하고 채팅 is always there with the frame: whether the viewer is signed in to YouTube,
+  and whether the browser lets that reach the framed chat (a Chrome signed in to YouTube did,
+  measured; Safari, Firefox and private windows keep youtube.com's cookies from other sites'
+  frames), cannot be seen from the page. Back from that window, the chat is loaded once more,
+  so a sign-in the frame does get shows its input.
+
+### With Google sign-in on the server
+- Signed out, the column under the header is the way in, in its middle: a line in
+  `--color-ink-2`, `--text-sm`, words kept whole - "로그인하면 이 방송의 채팅을 보고 쓸 수
+  있습니다." - and under it "Google로 로그인", an arcade link a size up from the header's
+  (`--text-sm`, 2.5rem high): a whole-page visit to Google, back to the same page with the
+  same tile's chat open. A sign-in that came back failed says so under it, in `--color-warn`.
+- Signed in, our own chat takes the whole column under the header. Top to bottom: who is
+  signed in (name, `--color-ink`, cut short on one line) and 로그아웃; the messages, filling
+  what is left (author in `--color-ink` 700, a pill word beside the channel's 소유자 and its
+  운영자 in `--color-ink-2` on a `--color-rule-strong` hairline, text in `--color-ink`, long
+  words broken rather than widening the column, the newest 200 kept); and at the foot the
+  box to write in, with 보내기 and a count to 200 (data face, `--color-ink-3`,
+  `--color-warn` past it), and a short line in `--color-warn` when a message does not go,
+  the words left in the box. The list is read, not chosen: nothing in it is 카, and nothing
+  but on air is 돈.
 - The list follows new messages while the viewer is at its bottom. Scrolled up to read, it
   stays where it is, and "새 메시지 N" (an arcade button over the bottom of the list, an
   arrow and the count) takes them back down. A message they send takes them down too. The
@@ -218,10 +228,9 @@ bounces, glows or lifts.
 - A note under the box goes as soon as the words change. A message turned down locks
   nothing; only the chat ending (the reads stop) closes the box.
 - 로그아웃 signs this browser out, nothing more: the viewer's other browsers and devices stay
-  signed in, as on most sites.
-- 유튜브 채팅으로 보기 brings the framed chat back as it is signed out, 로그인하고 채팅 and the
-  hint with it, and the account row over it with "채팅 목록으로 보기" for the way back; the
-  choice lasts the browser tab's session. Neither way signs anyone out.
+  signed in, as on most sites. Signed out, the column is the way in again.
+
+### Either way
 - The tile whose chat it is shows it on its 채팅 alone (카, chosen) - not on its bezel,
   which is the sound's.
 - It closes when its broadcast leaves the wall (ended, another venue or view) and when the
@@ -283,5 +292,5 @@ load there; this file and `tokens.css` win wherever the two differ.
 | Tile | `frontend/src/components/PlayerTile.tsx` (`.grid-view .tile`) | device desktop/phone = the phone media block in `styles.css`, not a prop |
 | ChatLink | `frontend/src/components/ChatLink.tsx` (`ChatLink`, an `ArcadeLink`) | in tab (the broadcast's page) / popup (YouTube's pop-out chat) = `inTab`; popup starting at the sign-in = `signIn`; Label = `label`, Icon = `icon`, accessible name = `name` |
 | TileChatButton (sidebar) | `frontend/src/components/PlayerTile.tsx` (`SidebarChatButton`, `.tile__control--chat`, `data-testid="tile-chat"`) | chosen = sidebar shows this tile's chat (`aria-pressed`, 카) |
-| ChatSidebar | `frontend/src/components/ChatSidebar.tsx` (`.chat-sidebar`, `data-testid="chat-sidebar"`); when it shows, `lib/chatSidebar.ts` | Cabinet = `label`, the broadcast = `stream`; 로그인하고 채팅 = `ChatLink` with `signIn`, 닫기 = icon-only `ArcadeButton`; signed in = `ChatRoom` (`.chat-room`, `ChatRoom.tsx`) in place of the frame, or `ChatAccount` over it with the framed chat chosen |
+| ChatSidebar | `frontend/src/components/ChatSidebar.tsx` (`.chat-sidebar`, `data-testid="chat-sidebar"`); when it shows, `lib/chatSidebar.ts` | Cabinet = `label`, the broadcast = `stream`; 로그인하고 채팅 = `ChatLink` with `signIn`, 닫기 = icon-only `ArcadeButton`; what the column holds = `sidebarContent` (`lib/chatSidebar.ts`): the frame without the server's sign-in, `ChatSignIn` (`.chat-account`, `ChatAccount.tsx`) signed out and `ChatRoom` (`.chat-room`) signed in with it |
 | VenueTab, ViewChip, LayoutChip (header) | `VenueTabs.tsx` (`.venue-tab`), `ViewPicker.tsx` (`.choice`), `LayoutPicker.tsx` (`.layout-picker__option`) | names only for now; they already share the arcade button rules in `styles.css` |

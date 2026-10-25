@@ -21,6 +21,7 @@ import {
   type OpenChat,
 } from './lib/chatSidebar';
 import { isDesktopShell } from './lib/shell';
+import { primeAuthStatus } from './lib/googleSignIn';
 import { soundTileAfterPlayer } from './lib/tilePlayer';
 import { ChatSidebar } from './components/ChatSidebar';
 import { GridView } from './components/GridView';
@@ -51,6 +52,15 @@ export default function App() {
   const isWideEnoughForChat = useWideEnoughForChatSidebar();
   const chatGoesInSidebar =
     chatPlacement({ compact: isCompactDevice, desktopShell: isDesktopShell, wide: isWideEnoughForChat }) === 'sidebar';
+
+  // Whether the server offers Google sign-in decides what the sidebar holds - our own chat or
+  // YouTube's in a frame - so the page asks as it loads, wherever there can be a sidebar: by
+  // the time a chat is opened the answer is in, and nothing is framed only to be taken away.
+  useEffect(() => {
+    if (chatGoesInSidebar) {
+      void primeAuthStatus();
+    }
+  }, [chatGoesInSidebar]);
 
   // The chat open in the sidebar beside the wall, if any.
   const [openChat, setOpenChat] = useState<OpenChat | null>(null);

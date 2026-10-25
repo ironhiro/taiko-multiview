@@ -135,10 +135,14 @@ test.describe('desktop', () => {
 test.describe('the chat sidebar', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop layout');
 
+  // Where the server offers no Google sign-in (production today), the sidebar is YouTube's chat
+  // in a frame, exactly as before there was a sign-in.
   test('opens beside the wall on a tile, stays as it is on a second press, moves to another tile and closes', async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
+    await withoutSignIn(page);
+    const askedAtLoad = page.waitForResponse('**/api/auth/me');
     const openCalls = await recordWindowOpen(page, 'window');
     await answerYouTube(context);
     const chatRequests: string[] = [];
@@ -157,10 +161,21 @@ test.describe('the chat sidebar', () => {
     const chatA1 = page.getByRole('button', { name: 'A1 유튜브 채팅 열기' });
     const chatA3 = page.getByRole('button', { name: 'A3 유튜브 채팅 열기' });
     await expect(chatA1).toHaveAttribute('aria-pressed', 'false');
+    // The page asked whether there is a sign-in as it loaded, so the frame is up at once.
+    await askedAtLoad;
+    const pressed = Date.now();
     await chatA1.click();
     await expect(sidebar).toBeVisible();
     await expect(sidebar).toHaveAttribute('aria-label', 'A1 채팅');
     await expect(frame).toHaveCount(1);
+    testInfo.annotations.push({ type: 'frame after press (ms)', description: String(Date.now() - pressed) });
+    // Header, hint, frame: the sidebar as it was.
+    expect(await sidebar.evaluate((aside) => [...aside.children].map((child) => child.className))).toEqual([
+      'chat-sidebar__header',
+      'chat-sidebar__hint',
+      'chat-sidebar__frame',
+    ]);
+    await expect(page.getByTestId('chat-account')).toHaveCount(0);
     await expect(frame).toHaveAttribute('src', embeddedChatUrl(a1));
     await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(1);
     // The tile whose chat it is: 카, as a choice the wall keeps; no other.
@@ -210,6 +225,7 @@ test.describe('the chat sidebar', () => {
   });
 
   test('loads the chat once more when the viewer comes back from signing in, and only once', async ({ page }) => {
+    await withoutSignIn(page);
     await recordWindowOpen(page, 'window');
     const chatRequests: string[] = [];
     page.on('request', (request) => {
@@ -259,12 +275,17 @@ test.describe('the chat sidebar', () => {
   // runs in Mock mode, whose stand-in signs a test user in without Google and serves made-up
   // chat: three messages, then one more a read, every 5 seconds, and what was sent to the
   // video's chat since the last read (GoogleSignInEndpoints.MockChatPage).
-  test('signs in to our own chat in place of the framed one, writes to it, goes to YouTube and back, and signs out', async ({
+  test('with sign-in offered, signs in from a sidebar without the frame, writes to our own chat, and signs out', async ({
     page,
   }, testInfo) => {
     // Three 5-second reads are waited for.
     test.setTimeout(60_000);
     const chatReads: number[] = [];
+    // YouTube's chat page is never asked for, signed in or out: no frame is put up, not even for a moment.
+    const framedChat: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/live_chat?')) framedChat.push(request.url());
+    });
     // Reads answered, not asked: in development React mounts the sidebar twice, and the first
     // mount's read is dropped as it starts.
     page.on('requestfinished', (request) => {
@@ -279,12 +300,24 @@ test.describe('the chat sidebar', () => {
     await chatA1.click();
     await expect(signIn).toHaveText('Google로 로그인');
     await expect(signIn).toHaveAttribute('href', '/api/auth/login');
-    // Signed out, the sidebar is as it was before the sign-in: the header with 로그인하고 채팅,
-    // the hint, the sign-in, the framed chat - and nothing reads the chat.
+    // Signed out: the header, and the sign-in in the middle of the column - no frame, no
+    // 로그인하고 채팅, no hint - and nothing reads the chat.
     expect(
       await sidebar.evaluate((aside) => [...aside.children].map((child) => child.className)),
-    ).toEqual(['chat-sidebar__header', 'chat-sidebar__hint', 'chat-account', 'chat-sidebar__frame']);
-    await expect(page.getByTestId('chat-sidebar-signin')).toBeVisible();
+    ).toEqual(['chat-sidebar__header', 'chat-account']);
+    await expect(page.getByTestId('chat-account-lead')).toHaveText('로그인하면 이 방송의 채팅을 보고 쓸 수 있습니다.');
+    await expect(frame).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar-signin')).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar-hint')).toHaveCount(0);
+    const [asideBox, promptBox, buttonBox] = [
+      await sidebar.boundingBox(),
+      await page.getByTestId('chat-account').boundingBox(),
+      await signIn.boundingBox(),
+    ];
+    // The prompt fills the column under the header, with the button about its middle.
+    expect(Math.abs(promptBox!.y + promptBox!.height - (asideBox!.y + asideBox!.height))).toBeLessThanOrEqual(1);
+    expect(Math.abs(buttonBox!.y + buttonBox!.height / 2 - (promptBox!.y + promptBox!.height / 2))).toBeLessThan(60);
+    expect(await sidebar.evaluate((aside) => aside.scrollWidth - aside.clientWidth)).toBe(0);
     expect(chatReads).toHaveLength(0);
 
     // A whole-page visit, and back to the page it started from, with the same tile's chat open.
@@ -293,7 +326,7 @@ test.describe('the chat sidebar', () => {
     await expect(sidebar).toHaveAttribute('aria-label', 'A1 채팅');
     await expect(chatA1).toHaveAttribute('aria-pressed', 'true');
 
-    // Our own chat, the whole sidebar under the header, in place of the framed one.
+    // Our own chat, the whole sidebar under the header.
     const room = page.getByTestId('chat-room');
     await expect(page.getByTestId('chat-account-name')).toHaveText('테스트 사용자');
     await expect(page.locator('iframe[src*="live_chat"]')).toHaveCount(0);
@@ -306,9 +339,11 @@ test.describe('the chat sidebar', () => {
     // The channel's owner and its moderators are marked.
     await expect(messages.filter({ hasText: '이 곡 풀콤 가나요' }).locator('.chat-room__role')).toHaveText('운영자');
     await expect(messages.filter({ hasText: '곧 다음 곡 갑니다' }).locator('.chat-room__role')).toHaveText('소유자');
-    for (const id of ['chat-room-input', 'chat-room-send', 'chat-room-youtube']) {
+    for (const id of ['chat-room-input', 'chat-room-send']) {
       await expect(page.getByTestId(id)).toBeVisible();
     }
+    // Nothing leads to YouTube's framed chat any more.
+    await expect(page.getByText('유튜브 채팅으로 보기')).toHaveCount(0);
     const [sidebarBox, roomBox] = [await sidebar.boundingBox(), await room.boundingBox()];
     expect(Math.abs(roomBox!.y + roomBox!.height - (sidebarBox!.y + sidebarBox!.height))).toBeLessThanOrEqual(1);
     expect(await sidebar.evaluate((aside) => aside.scrollWidth - aside.clientWidth)).toBe(0);
@@ -365,35 +400,22 @@ test.describe('the chat sidebar', () => {
     await page.unroute('**/api/chat/*/messages');
     await expect(page.getByTestId('chat-room-send')).toBeEnabled();
 
-    // YouTube's framed chat, as before the sign-in, still signed in - and kept for the session.
-    await page.getByTestId('chat-room-youtube').click();
-    await expect(frame).toHaveCount(1);
-    await expect(room).toHaveCount(0);
-    await expect(page.getByTestId('chat-sidebar-signin')).toBeVisible();
-    await expect(page.getByTestId('chat-account-name')).toHaveText('테스트 사용자');
-    await page.getByTestId('chat-sidebar-close').click();
-    await chatA1.click();
-    await expect(frame).toHaveCount(1);
-    await expect(page.getByTestId('chat-account-ours')).toBeVisible();
-
-    // And back to ours.
-    await page.getByTestId('chat-account-ours').click();
-    await expect(room).toBeVisible();
-    await expect(frame).toHaveCount(0);
-
     // Closed, it reads no more.
     await page.getByTestId('chat-sidebar-close').click();
     const readsAtClose = chatReads.length;
     await page.waitForTimeout(6_000);
     expect(chatReads).toHaveLength(readsAtClose);
 
+    // Opened again, straight to our chat: the answer from before stands until the new one is in.
     await chatA1.click();
+    await expect(room).toBeVisible();
     await page.getByTestId('chat-account-signout').click();
     await expect(signIn).toBeVisible();
-    await expect(frame).toHaveCount(1);
-    await expect(page.getByTestId('chat-sidebar-hint')).toBeVisible();
+    await expect(frame).toHaveCount(0);
+    await expect(page.getByTestId('chat-sidebar-hint')).toHaveCount(0);
     await expect(page.getByTestId('chat-account-name')).toHaveCount(0);
     expect((await (await page.request.get('/api/auth/me')).json()).signedIn).toBe(false);
+    expect(framedChat).toEqual([]);
   });
 
   test('follows new messages at the bottom, and counts them while the viewer reads further up', async ({ page }) => {
@@ -521,6 +543,7 @@ test.describe('the chat sidebar', () => {
   });
 
   test('opens on a cabinet the settings do not list too, and closes when a view without it comes up', async ({ page }) => {
+    await withoutSignIn(page);
     await playUnlistedCabinet(page, 'taikolabs', 'base2', 'THE BASE 2');
     await page.goto('/?venue=taikolabs&view=all-grid');
     const sidebar = page.getByTestId('chat-sidebar');
@@ -1646,6 +1669,15 @@ async function recordWindowOpen(page: Page, answer: 'window' | 'blocked'): Promi
   return () => page.evaluate(() => ((window as { openCalls?: WindowOpenCall[] }).openCalls ?? []) as WindowOpenCall[]);
 }
 
+
+/**
+ * A server without Google sign-in, as production runs today: /api/auth/me says so. The e2e
+ * server runs in Mock mode, which offers the stand-in sign-in; the chat sidebar frames
+ * YouTube's chat only where there is none.
+ */
+async function withoutSignIn(page: Page) {
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: { enabled: false, signedIn: false } }));
+}
 
 /** A tab the page opens is outside offline(): answer youtube.com there without the network. */
 async function answerYouTube(context: BrowserContext) {

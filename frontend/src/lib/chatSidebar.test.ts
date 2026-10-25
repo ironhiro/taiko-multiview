@@ -9,10 +9,9 @@ import {
   chatTileOf,
   embeddedChatUrl,
   forgetChatAfterSignIn,
-  readChatView,
   rememberChatForSignIn,
+  sidebarContent,
   signInFailedIn,
-  storeChatView,
   watchReturn,
   withoutSignInFailed,
 } from './chatSidebar';
@@ -188,20 +187,21 @@ const refusing: Storage = {
   },
 };
 
-describe('the chat view', () => {
-  it('is ours until YouTube is chosen, and kept for the session', () => {
-    const storage = memoryStorage();
-    expect(readChatView(storage)).toBe('ours');
-    storeChatView(storage, 'youtube');
-    expect(readChatView(storage)).toBe('youtube');
-    storeChatView(storage, 'ours');
-    expect(readChatView(storage)).toBe('ours');
+describe('sidebarContent', () => {
+  it('frames the chat where the server offers no sign-in, as before there was one', () => {
+    expect(sidebarContent({ enabled: false, signedIn: false }, false)).toBe('framed');
   });
 
-  it('is ours where there is no storage to keep it in', () => {
-    expect(readChatView(undefined)).toBe('ours');
-    expect(() => storeChatView(refusing, 'youtube')).not.toThrow();
-    expect(readChatView(refusing)).toBe('ours');
+  it('where it offers one, is the sign-in signed out and our own chat signed in - never the frame', () => {
+    expect(sidebarContent({ enabled: true, signedIn: false }, false)).toBe('signIn');
+    expect(sidebarContent({ enabled: true, signedIn: true }, false)).toBe('ours');
+    // However long the answer took.
+    expect(sidebarContent({ enabled: true, signedIn: false }, true)).toBe('signIn');
+  });
+
+  it('holds the header alone until the server says, and frames the chat if it says nothing for too long', () => {
+    expect(sidebarContent(null, false)).toBe('asking');
+    expect(sidebarContent(null, true)).toBe('framed');
   });
 });
 

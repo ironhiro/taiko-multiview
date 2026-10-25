@@ -1584,18 +1584,29 @@ input {
   white-space: nowrap;
 }
 
-/* Google sign-in over the framed chat (ChatAccount), between the hint and the frame. Only
-   where the server offers the sign-in: signed out, the button; signed in with the framed
-   chat chosen, who is signed in and the way back to our own chat. */
+/* Signed out where the server offers Google sign-in (ChatSignIn): the whole column under the
+   header, with what signing in gives and the button in the middle of it, so the panel reads
+   as waiting for a sign-in rather than as something missing. */
 .chat-account {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1;
   flex-direction: column;
-  gap: var(--space-2xs);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
   min-height: 0;
-  max-height: 40%;
-  padding: var(--space-2xs) var(--space-xs);
-  border-bottom: var(--rule-hair) solid var(--color-rule);
+  padding: var(--space-md) var(--space-sm);
+  text-align: center;
+}
+
+.chat-account__lead {
+  margin: 0;
+  max-width: 16rem;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  /* Breaks between words, not inside them. */
+  word-break: keep-all;
 }
 
 .chat-account__row {
@@ -1615,17 +1626,19 @@ input {
   color: var(--color-ink);
 }
 
-.chat-account__signin,
-.chat-account__signout,
-.chat-account__ours {
+.chat-account__signout {
   flex: none;
   min-height: 2rem;
   padding: 0 var(--space-2xs);
   font-size: var(--text-xs);
 }
 
+/* The one thing to do here, so a size up from the header's buttons. */
 .chat-account__signin {
-  align-self: flex-start;
+  flex: none;
+  min-height: 2.5rem;
+  padding: 0 var(--space-sm);
+  font-size: var(--text-sm);
 }
 
 /* A sign-in that came back failed (?signin=failed), under the button that tries again. */
@@ -1637,9 +1650,9 @@ input {
 }
 
 /* Our own chat (ChatRoom), for a viewer signed in to this page: the whole column under the
-   header. Who is signed in, the list filling what is left, the box to write in, and the
-   way to YouTube's framed chat at the foot. Ink and rules of the panel alone - the list is
-   read, not chosen, so nothing in it is 카, and nothing but on air is 돈. */
+   header. Who is signed in, the list filling what is left, and the box to write in at the
+   foot. Ink and rules of the panel alone - the list is read, not chosen, so nothing in it is
+   카, and nothing but on air is 돈. */
 .chat-room {
   display: flex;
   flex: 1;
@@ -1795,15 +1808,6 @@ input {
   color: var(--color-warn);
 }
 
-.chat-room__footer {
-  padding: 0 var(--space-xs) calc(var(--space-2xs) + var(--press-depth));
-}
-
-.chat-room__youtube {
-  min-height: 2rem;
-  padding: 0 var(--space-2xs);
-  font-size: var(--text-xs);
-}
 
 /* ----------------------------------------------------------------- mobile */
 
