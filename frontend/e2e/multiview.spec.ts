@@ -319,6 +319,21 @@ test.describe('the chat sidebar', () => {
     expect(Math.abs(buttonBox!.y + buttonBox!.height / 2 - (promptBox!.y + promptBox!.height / 2))).toBeLessThan(60);
     expect(await sidebar.evaluate((aside) => aside.scrollWidth - aside.clientWidth)).toBe(0);
     expect(chatReads).toHaveLength(0);
+    // The line breaks into two of about the same length, not one word left on the second.
+    const leadLines = await page.getByTestId('chat-account-lead').evaluate((lead) => {
+      const range = document.createRange();
+      range.selectNodeContents(lead);
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+    });
+    expect(leadLines).toBeLessThanOrEqual(2);
+    expect(
+      await page.getByTestId('chat-account-lead').evaluate((lead) => getComputedStyle(lead).textWrap),
+    ).toBe('balance');
+    // From 닫기, Tab reaches the sign-in in WebKit too, whose Safari leaves links out of the Tab
+    // order unless they name a tabindex.
+    await page.getByTestId('chat-sidebar-close').focus();
+    await page.keyboard.press('Tab');
+    await expect(signIn).toBeFocused();
 
     // A whole-page visit, and back to the page it started from, with the same tile's chat open.
     await signIn.click();

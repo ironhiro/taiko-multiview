@@ -222,10 +222,12 @@ bounces, glows or lifts.
 
 ### With Google sign-in on the server
 - Signed out, the column under the header is the way in, in its middle: a line in
-  `--color-ink-2`, `--text-sm`, words kept whole - "로그인하면 이 방송의 채팅을 보고 쓸 수
+  `--color-ink-2`, `--text-sm`, words kept whole, at most 16rem wide and in lines of about the
+  same length (no last line of one word) - "로그인하면 이 방송의 채팅을 보고 쓸 수
   있습니다." - and under it "Google로 로그인", an arcade link a size up from the header's
   (`--text-sm`, 2.5rem high): a whole-page visit to Google, back to the same page with the
-  same tile's chat open. A sign-in that came back failed says so under it, in `--color-warn`.
+  same tile's chat open. It names `tabindex="0"`, so Tab from 닫기 reaches it in Safari too.
+  A sign-in that came back failed says so under it, in `--color-warn`.
 - Signed in, our own chat takes the whole column under the header. Top to bottom: who is
   signed in (name, `--color-ink`, cut short on one line) and 로그아웃; the messages, filling
   what is left (author in `--color-ink` 700, a pill word beside the channel's 소유자 and its

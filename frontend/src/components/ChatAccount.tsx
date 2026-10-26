@@ -19,11 +19,15 @@ export function ChatSignIn({ signInFailed, onSignIn }: ChatSignInProps) {
       <p className="chat-account__lead" data-testid="chat-account-lead">
         로그인하면 이 방송의 채팅을 보고 쓸 수 있습니다.
       </p>
-      {/* A whole-page visit: Google's consent page cannot be framed, and comes back here. */}
+      {/* A whole-page visit: Google's consent page cannot be framed, and comes back here.
+          A link, so it opens in a new tab the way links do; the explicit tabIndex keeps it in
+          Safari's Tab order, which leaves links out unless "Press Tab to highlight each item"
+          is on - and this is the one thing to do in the column. */}
       <ArcadeLink
         className="chat-account__signin"
         label="Google로 로그인"
         href={signInUrl()}
+        tabIndex={0}
         onClick={onSignIn}
         data-testid="chat-account-signin"
       />

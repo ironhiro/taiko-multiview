@@ -1632,8 +1632,10 @@ input {
   color: var(--color-ink-2);
   font-size: var(--text-sm);
   line-height: 1.5;
-  /* Breaks between words, not inside them. */
+  /* Breaks between words, not inside them, and into lines of about the same length, so the
+     last line is not one word left over. An engine without balance wraps as before. */
   word-break: keep-all;
+  text-wrap: balance;
 }
 
 .chat-account__row {
