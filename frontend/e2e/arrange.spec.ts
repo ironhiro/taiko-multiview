@@ -212,9 +212,10 @@ test.describe('arranging the wall, phone', () => {
 
     const earlier = tileOf(page, 'A3').getByTestId('tile-earlier');
     for (const button of [earlier, tileOf(page, 'A3').getByTestId('tile-later'), tileOf(page, 'A3').getByTestId('tile-hide')]) {
+      // Rounded: Linux WebKit lays the 2.75rem out at 43.9999px.
       const box = (await button.boundingBox())!;
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(Math.round(box.width)).toBeGreaterThanOrEqual(44);
+      expect(Math.round(box.height)).toBeGreaterThanOrEqual(44);
     }
     await earlier.click();
     await earlier.click();
