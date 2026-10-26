@@ -10,6 +10,18 @@ import { defaultViewFor, isValidView, viewOptionsFor, type ViewMode } from './li
 import { liveCountOf } from './lib/venueRow';
 import { wallTilesFor } from './lib/wallTiles';
 import {
+  mergedOrder,
+  moveInOrder,
+  NO_ARRANGEMENT,
+  readArrangements,
+  tilesOnWall,
+  withHidden,
+  withVenueArrangement,
+  writeArrangements,
+  type VenueArrangement,
+  type WallArrangements,
+} from './lib/wallArrangement';
+import {
   chatAfterSignIn,
   chatPlacement,
   chatTileOf,
@@ -23,29 +35,39 @@ import {
 import { isDesktopShell } from './lib/shell';
 import { primeAuthStatus } from './lib/googleSignIn';
 import { ChatSidebar } from './components/ChatSidebar';
-import { GridView } from './components/GridView';
+import { GridView, type WallEditing } from './components/GridView';
+import { WallEditBar, WallEditToggle } from './components/WallEdit';
 import { VenueTabs } from './components/VenueTabs';
 import { VenueMark } from './components/VenueMark';
 import { ViewPicker } from './components/ViewPicker';
-import { GRID_DEFAULT, GRID_SIZES, LayoutPicker, type GridSize } from './components/LayoutPicker';
+import {
+  GRID_DEFAULT,
+  GRID_SIZES,
+  LayoutPicker,
+  readStoredGridSize,
+  storeGridSize,
+  type GridSize,
+} from './components/LayoutPicker';
 import { ModeSwitch } from './components/ModeSwitch';
 import { ReplayView } from './components/ReplayView';
 import { parseRoute, routeHref, type AppMode, type AppRoute, type ReplayRoute } from './lib/replayRoute';
-
-// v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
-const GRID_STORAGE_KEY = 'taiko-multiview:grid';
 
 export default function App() {
   const [venues, setVenues] = useState<Venue[]>([]);
   const [live, setLive] = useState<LiveResponse | null>(null);
   const [activeVenueId, setActiveVenueId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode | null>(null);
-  const [gridSize, setGridSize] = useState<GridSize>(readStoredGridSize);
+  const [gridSize, setGridSize] = useState<GridSize>(() => readStoredGridSize(storageOrNull()));
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Only one tile may hold the audio at a time.
   const [audioTileId, setAudioTileId] = useState<string | null>(null);
+
+  // The viewer's order and hidden cabinets, per venue, in this browser alone
+  // (lib/wallArrangement.ts); and whether the wall is being arranged right now.
+  const [arrangements, setArrangements] = useState<WallArrangements>(() => readArrangements(storageOrNull()));
+  const [isEditing, setIsEditing] = useState(false);
 
   const isCompactDevice = useCompactDevice();
   const isWideEnoughForChat = useWideEnoughForChatSidebar();
@@ -306,7 +328,7 @@ export default function App() {
   }, [load, live?.pollIntervalSeconds]);
 
   useEffect(() => {
-    window.localStorage.setItem(GRID_STORAGE_KEY, String(gridSize));
+    storeGridSize(storageOrNull(), gridSize);
   }, [gridSize]);
 
   useEffect(() => {
@@ -370,10 +392,17 @@ export default function App() {
   const activeLive = activeVenueId ? liveByVenue.get(activeVenueId) : undefined;
 
   const viewOptions = useMemo(() => viewOptionsFor(activeVenue), [activeVenue]);
-  const tiles = useMemo(
+  // Every cabinet of the view in the venue's own order, hidden ones too: the wall places and
+  // leaves them out itself (GridView), so arranging it never rebuilds a player.
+  const allTiles = useMemo(
     () => wallTilesFor(activeVenue, view ?? 'all-grid', activeLive),
     [activeVenue, view, activeLive],
   );
+  const arrangement = (activeVenueId ? arrangements[activeVenueId] : undefined) ?? NO_ARRANGEMENT;
+  const hiddenIds = useMemo(() => new Set(arrangement.hidden), [arrangement]);
+  // What is on the wall for everything else - the chat beside it, the chat to open again after
+  // a sign-in: a hidden cabinet has no tile to hang either on.
+  const tiles = useMemo(() => tilesOnWall(allTiles, hiddenIds, false).shown, [allTiles, hiddenIds]);
   // The sidebar's tile. Gone once its broadcast has ended, the wall has moved to a venue or
   // view without it, or the window has become too narrow for the sidebar: the sidebar then
   // closes for good, rather than keep a chat for a tile no longer there or come back later.
@@ -437,6 +466,78 @@ export default function App() {
     setView(next);
   }, []);
 
+  // --- arranging the wall ----------------------------------------------------
+
+  const updateArrangement = useCallback(
+    (change: (current: VenueArrangement) => VenueArrangement) => {
+      if (!activeVenueId) {
+        return;
+      }
+      setArrangements((current) => {
+        const next = withVenueArrangement(
+          current,
+          activeVenueId,
+          change(current[activeVenueId] ?? NO_ARRANGEMENT),
+        );
+        writeArrangements(storageOrNull(), next);
+        return next;
+      });
+    },
+    [activeVenueId],
+  );
+
+  // The whole venue's order, not the view's: a zone view's move is a move in the one order every
+  // view of the venue follows.
+  const venueTileIds = useMemo(
+    () => wallTilesFor(activeVenue, 'all-grid', activeLive).map((tile) => tile.id),
+    [activeVenue, activeLive],
+  );
+
+  const wallEditing = useMemo<WallEditing>(
+    () => ({
+      onMove: (tileId, targetId, side) =>
+        updateArrangement((current) => ({
+          order: moveInOrder(mergedOrder(venueTileIds, current.order), tileId, targetId, side),
+          hidden: current.hidden,
+        })),
+      onSetHidden: (tileId, hidden) => {
+        updateArrangement((current) => withHidden(current, tileId, hidden));
+        // A hidden tile's sound goes with it, and stays off: it does not move to another tile.
+        if (hidden) {
+          setAudioTileId((current) => (current === tileId ? null : current));
+        }
+      },
+    }),
+    [updateArrangement, venueTileIds],
+  );
+
+  const resetArrangement = useCallback(() => updateArrangement(() => NO_ARRANGEMENT), [updateArrangement]);
+  const startEditing = useCallback(() => setIsEditing(true), []);
+  const stopEditing = useCallback(() => setIsEditing(false), []);
+
+  // 다시보기 has no wall to arrange; the arranging ends there rather than wait for the way back.
+  useEffect(() => {
+    if (isReplay) {
+      setIsEditing(false);
+    }
+  }, [isReplay]);
+
+  // Escape ends the arranging, as 완료 does.
+  useEffect(() => {
+    if (!isEditing) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsEditing(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isEditing]);
+
+  const editingShown = isEditing && !isReplay;
+
   const handleRequestAudio = useCallback((tileId: string) => {
     setAudioTileId((current) => (current === tileId ? null : tileId));
   }, []);
@@ -487,6 +588,10 @@ export default function App() {
           {!isReplay && <LayoutPicker size={gridSize} onChange={setGridSize} />}
           {/* Phones only (the stylesheet hides it elsewhere), and only beside views. */}
           {viewOptions.length > 1 && <ModeSwitch mode={route.mode} onChange={changeMode} placement="marquee" />}
+          {/* Phones only too, at the end of the views' row: the sticky bar gains no row. */}
+          {!isReplay && viewOptions.length > 1 && (
+            <WallEditToggle editing={editingShown} onChange={setIsEditing} placement="marquee" />
+          )}
         </div>
       </header>
 
@@ -501,6 +606,15 @@ export default function App() {
               {error}
             </div>
           )
+        )}
+
+        {editingShown && (
+          <WallEditBar
+            canDrag={!isCompactDevice}
+            canReset={arrangement !== NO_ARRANGEMENT}
+            onReset={resetArrangement}
+            onDone={stopEditing}
+          />
         )}
 
         <main className="stage__main">
@@ -518,7 +632,11 @@ export default function App() {
             )
           ) : (
             <GridView
-              tiles={tiles}
+              tiles={allTiles}
+              order={arrangement.order}
+              hidden={hiddenIds}
+              editing={editingShown ? wallEditing : undefined}
+              onEdit={startEditing}
               audioTileId={audioTileId}
               onRequestAudio={handleRequestAudio}
               gridSize={gridSize}
@@ -593,7 +711,9 @@ export default function App() {
           )}
         </div>
 
-        <ModeSwitch mode={route.mode} onChange={changeMode} placement="credit" onPhone={viewOptions.length <= 1} />
+        <ModeSwitch mode={route.mode} onChange={changeMode} placement="credit" onPhone={viewOptions.length <= 1}>
+          {!isReplay && <WallEditToggle editing={editingShown} onChange={setIsEditing} placement="credit" />}
+        </ModeSwitch>
 
         <button
           type="button"
@@ -609,9 +729,13 @@ export default function App() {
   );
 }
 
-function readStoredGridSize(): GridSize {
-  const stored = Number(window.localStorage.getItem(GRID_STORAGE_KEY));
-  return (GRID_SIZES as readonly number[]).includes(stored) ? (stored as GridSize) : GRID_DEFAULT;
+/** localStorage, or nothing where the browser will not give it (site data blocked). */
+function storageOrNull(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function stepGridSize(current: GridSize, step: number): GridSize {

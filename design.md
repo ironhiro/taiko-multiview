@@ -141,6 +141,55 @@ bounces, glows or lifts.
 - The layout picker (1×1-4×4) and the automatic column shrink count tiles, which are the
   cabinets on air: 3×3 with two on air is two columns.
 
+## Arranging the wall
+- **편집** puts the viewer's own order on a venue's wall and takes cabinets off it. One
+  arrangement per venue, in this browser alone (localStorage `taiko-multiview:wall-arrangement`,
+  lib/wallArrangement.ts): every view of the venue (통합, each zone) puts its own cabinets in
+  that one order, and a cabinet hidden in one is hidden in all.
+- **Where 편집 is**: where 라이브 | 다시보기 is, for the same reason - on a computer in the credit
+  strip, after the switch and before 새로고침, 2rem tall like them; on a phone at the end of the
+  sticky bar's views' row (the views give it room and scroll; under 390px it keeps its icon
+  alone), or for a venue with no views at the end of the switch's line in the credit strip. A
+  phone held sideways keeps its one-line bar as it was: there the toggle would take its width
+  from the venue tabs (an SE's went to nothing and stacked), so it sits in the credit strip just
+  under the bar, its icon alone, before 새로고침. On a phone its touch area reaches 44px past its
+  2.25rem face. No bar gains a row or a pixel, and the venue tabs keep their width. Not in 다시보기, which has no wall to arrange. An icon+text arcade
+  button, chosen (카) while the wall is being arranged: a choice the wall keeps while it lasts.
+- **While arranging**, a panel like the credit strip opens over the wall (`--color-paper-2`, a
+  `--rule-hair` `--color-rule` edge under it): what to do in `--color-ink-2` and where it is kept
+  in `--color-ink-3` (phones drop that second sentence), then 기본값으로 (forgets the venue's
+  arrangement; not pressable while there is none) and 완료. Escape and 편집 again end it too.
+- Each tile's row under its picture gives way to an edit row: the label, then 앞으로, 뒤로 and
+  숨기기 as square icon-only arcade buttons, each named in full ("A3 앞으로"). The arrows point
+  back and forward on a computer and up and down on a phone, whose wall is one column; there each
+  button is 2.75rem (44px), within the row's 3.25rem. An arrow with nowhere to go keeps its place,
+  unpressable. The eye is open while the cabinet is on the wall and struck through while hidden,
+  as a layer list draws it.
+- A mouse or a pen picks a tile up anywhere but its buttons and the others make room as it
+  passes; the tile in hand takes a 카 bezel (the viewer's choice) and the `grab` cursor. A finger
+  does not drag: a thumb on a tile scrolls the page as ever, and the arrows move it.
+- The players carry on as they were - playing, muted or with the sound - under their shields,
+  which keep every press and drag off the frames. Starting or ending the arrangement builds no
+  player, and neither does moving a tile: the page keeps the tiles in the venue's order and the
+  grid places them (`order`), since a frame moved in the page loads afresh.
+- **A hidden cabinet** has no tile and no player on the wall, and no chip in "방송 없음"; its sound,
+  if it had it, goes off and stays off. While arranging it shows in its place, dimmed: its
+  thumbnail under `--color-scrim` with "숨김", a dashed `--color-rule-strong` bezel, its label in
+  `--color-ink-3`, and the eye to show it again. In the "방송 없음" strip each chip hides or shows its
+  cabinet instead of opening 다시보기, hidden ones on `--color-paper-2` in `--color-ink-3`.
+- **So nothing simply goes missing**, the strip's line ends in "숨긴 기체 N" (`--color-ink-3`, the
+  count in the data face) and 편집, a chip like the strip's others, while the view has hidden
+  cabinets - the strip alone when nothing else is idle. Neutral throughout: hiding is neither on
+  air nor a state of the wall's to mark in 카, and the venue colour marks no state.
+- The order merges with what changes later: a cabinet the viewer's order does not know (added to
+  the settings, or an unlisted one on air for the first time) goes straight after the cabinet
+  before it in the venue's own order, wherever that one was moved - first, when nothing comes
+  before it. A cabinet that leaves keeps its place in the order for when it comes back.
+- Links still reach a hidden cabinet where it is not the wall: a 다시보기 link
+  (`?mode=replay&cabinet=`) opens its broadcast as before. Only the wall leaves it out; the
+  credit strip's "N개 송출 중" and the venue tabs still count it, since they say what the venue
+  has on air.
+
 ## 다시보기 (past broadcasts)
 - **Mode switch** `라이브 | 다시보기`: two view-chip buttons, the chosen one 카. It is not a
   view - a view is part of the venue's wall, and 다시보기 is not the wall - so it never joins
@@ -310,4 +359,8 @@ load there; this file and `tokens.css` win wherever the two differ.
 | ChatLink | `frontend/src/components/ChatLink.tsx` (`ChatLink`, an `ArcadeLink`) | in tab (the broadcast's page) / popup (YouTube's pop-out chat) = `inTab`; popup starting at the sign-in = `signIn`; Label = `label`, Icon = `icon`, accessible name = `name` |
 | TileChatButton (sidebar) | `frontend/src/components/PlayerTile.tsx` (`SidebarChatButton`, `.tile__control--chat`, `data-testid="tile-chat"`) | chosen = sidebar shows this tile's chat (`aria-pressed`, 카) |
 | ChatSidebar | `frontend/src/components/ChatSidebar.tsx` (`.chat-sidebar`, `data-testid="chat-sidebar"`); when it shows, `lib/chatSidebar.ts` | Cabinet = `label`, the broadcast = `stream`; 로그인하고 채팅 = `ChatLink` with `signIn`, 닫기 = icon-only `ArcadeButton`; what the column holds = `sidebarContent` (`lib/chatSidebar.ts`): the frame without the server's sign-in, `ChatSignIn` (`.chat-account`, `ChatAccount.tsx`) signed out and `ChatRoom` (`.chat-room`) signed in with it |
+| WallEditToggle | `frontend/src/components/WallEdit.tsx` (`WallEditToggle`, `.wall-edit-toggle`, `data-testid="wall-edit-credit"` / `"wall-edit-marquee"`) | chosen = arranging (`aria-pressed`, 카); where = `placement` credit (computer; phone with no views, inside `ModeSwitch`) / marquee (phone views' row) |
+| WallEditBar | `frontend/src/components/WallEdit.tsx` (`.wall-editbar`, `data-testid="wall-editbar"`) | drag hint = `canDrag`; 기본값으로 (`wall-edit-reset`, disabled = nothing arranged), 완료 (`wall-edit-done`) |
+| TileEditRow, HiddenTile | `frontend/src/components/WallEdit.tsx` (`.tile-edit`, `.tile--hidden`, `.tile--dragging`) | `controls` = `TileEditControls` (`tile-earlier`, `tile-later`, `tile-hide`); hidden = `controls.hidden` |
+| HiddenNote | `frontend/src/components/IdleStrip.tsx` (`.idle-strip__hidden`, `data-testid="wall-hidden-note"`) | count = `hidden.count`; 편집 = `hidden.onEdit`; edit chips = `editing` |
 | VenueTab, ViewChip, LayoutChip (header) | `VenueTabs.tsx` (`.venue-tab`), `ViewPicker.tsx` (`.choice`), `LayoutPicker.tsx` (`.layout-picker__option`) | names only for now; they already share the arcade button rules in `styles.css` |

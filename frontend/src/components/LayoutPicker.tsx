@@ -2,6 +2,32 @@ export const GRID_SIZES = [1, 2, 3, 4] as const;
 export type GridSize = (typeof GRID_SIZES)[number];
 export const GRID_DEFAULT: GridSize = 3;
 
+// v2: 100% now means a larger floor plan, so an old saved zoom would overshoot.
+export const GRID_STORAGE_KEY = 'taiko-multiview:grid';
+
+/**
+ * The layout this browser chose last, or the default where none was kept - or where the
+ * storage will not answer at all (site data blocked): the wall still comes up.
+ */
+export function readStoredGridSize(storage: Pick<Storage, 'getItem'> | null | undefined): GridSize {
+  let stored: number;
+  try {
+    stored = Number(storage?.getItem(GRID_STORAGE_KEY));
+  } catch {
+    return GRID_DEFAULT;
+  }
+  return (GRID_SIZES as readonly number[]).includes(stored) ? (stored as GridSize) : GRID_DEFAULT;
+}
+
+/** Keeps the layout for the next visit; a storage that refuses keeps it for this page alone. */
+export function storeGridSize(storage: Pick<Storage, 'setItem'> | null | undefined, size: GridSize) {
+  try {
+    storage?.setItem(GRID_STORAGE_KEY, String(size));
+  } catch {
+    // Storage refused: the layout lasts as long as the page does.
+  }
+}
+
 /**
  * Columns for a chosen N×N layout. Never more than there are tiles - a 3×3 wall with
  * one tile would be one small tile in a corner - but otherwise the choice stands: 4×4

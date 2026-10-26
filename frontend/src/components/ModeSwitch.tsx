@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import type { AppMode } from '../lib/replayRoute';
 
 const MODES: { value: AppMode; label: string }[] = [
@@ -23,12 +23,15 @@ export function ModeSwitch({
   onChange,
   placement,
   onPhone = false,
+  children,
 }: {
   mode: AppMode;
   onChange: (mode: AppMode) => void;
   placement: 'marquee' | 'credit';
   /** The credit strip's switch shows on phones too: the venue has no views' row for it. */
   onPhone?: boolean;
+  /** What else goes where the switch does, after it: the wall's 편집 (WallEditToggle). */
+  children?: ReactNode;
 }) {
   const labelId = useId();
   const classes = ['control-group', 'control-group--mode', `control-group--mode-${placement}`];
@@ -55,6 +58,7 @@ export function ModeSwitch({
           </button>
         ))}
       </div>
+      {children}
     </div>
   );
 }
