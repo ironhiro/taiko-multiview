@@ -38,6 +38,42 @@ describe('IdleStrip', () => {
   });
 });
 
+describe('IdleStrip, with cabinets hidden from the wall', () => {
+  it('counts them at the end of the line, with 편집 to bring them back', () => {
+    const html = renderToStaticMarkup(
+      createElement(IdleStrip, { cabinets: named('B3'), hidden: { count: 2, onEdit: () => {} } }),
+    );
+    expect(html).toContain('숨긴 기체 <span class="idle-strip__count">2</span>');
+    expect(html).toContain('aria-label="숨긴 기체 2대 편집"');
+    // The count's 편집 is no cabinet: it is not one of the chips.
+    expect(chipsOf(html)).toEqual(['B3']);
+  });
+
+  it('stands alone when every cabinet is on air', () => {
+    const html = renderToStaticMarkup(createElement(IdleStrip, { cabinets: [], hidden: { count: 1, onEdit: () => {} } }));
+    expect(html).toContain('aria-label="숨긴 기체 1대"');
+    expect(html).not.toContain('방송 없음');
+  });
+
+  it('says nothing of a count of none', () => {
+    expect(renderToStaticMarkup(createElement(IdleStrip, { cabinets: [], hidden: { count: 0, onEdit: () => {} } }))).toBe('');
+  });
+
+  it('while the wall is arranged, each chip hides or shows its cabinet, hidden ones dimmed', () => {
+    const html = renderToStaticMarkup(
+      createElement(IdleStrip, {
+        cabinets: named('B3', 'C1'),
+        onOpenReplay: () => {},
+        editing: { isHidden: (id: string) => id === 'c1', onToggleHidden: () => {} },
+      }),
+    );
+    expect(html).toContain('aria-label="B3 숨기기"');
+    expect(html).toContain('aria-label="C1 다시 보이기"');
+    expect(html.match(/idle-chip--hidden/g)).toHaveLength(1);
+    expect(html).not.toContain('지난 방송 보기');
+  });
+});
+
 describe('TagChip and LiveBadge', () => {
   it('reads 미등록 unless told otherwise', () => {
     expect(renderToStaticMarkup(createElement(TagChip))).toContain('>미등록</span>');

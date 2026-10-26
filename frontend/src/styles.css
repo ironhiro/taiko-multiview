@@ -971,7 +971,8 @@ input {
 }
 
 /* The edge is a shadow, as the 미등록 tag's is, so a chip is as tall as its text. */
-.idle-chip {
+.idle-chip,
+.idle-strip__edit {
   max-width: 100%;
   overflow: hidden;
   padding: 0 var(--space-2xs);
@@ -997,7 +998,8 @@ input {
   padding-bottom: 2px;
 }
 
-.idle-chip--replay {
+.idle-chip--replay,
+.idle-strip__edit {
   display: inline-flex;
   align-items: center;
   gap: var(--space-3xs);
@@ -1013,14 +1015,16 @@ input {
     color var(--dur-micro) var(--ease-out);
 }
 
-.idle-chip--replay:hover {
+.idle-chip--replay:hover,
+.idle-strip__edit:hover {
   color: var(--color-ink);
   box-shadow:
     inset 0 0 0 1px var(--color-ink-3),
     0 2px 0 var(--color-button-base);
 }
 
-.idle-chip--replay:active {
+.idle-chip--replay:active,
+.idle-strip__edit:active {
   transform: translateY(2px);
   box-shadow: inset 0 0 0 1px var(--color-ink-3);
 }
@@ -1034,6 +1038,148 @@ input {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* "숨긴 기체 N · 편집" at the end of the strip's line, when the viewer has hidden cabinets
+   from this view (design.md, "Arranging the wall"): neutral like the rest of the strip - a
+   hidden cabinet is neither on air nor chosen - and the way back to them. */
+.idle-strip__hidden {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  margin-left: auto;
+}
+
+.idle-strip__count {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.idle-chip--replay .tile__control-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--color-ink-3);
+}
+
+/* A cabinet hidden from the wall, while it is arranged: dimmed, with no base to sink into
+   until it is pressed to show again. */
+.idle-chip--hidden {
+  background: var(--color-paper-2);
+  color: var(--color-ink-3);
+}
+
+/* -------------------------------------------------------- arranging the wall */
+
+/* 편집 (WallEditToggle): beside 라이브 | 다시보기 in the credit strip on a computer, as tall as
+   새로고침 so the strip keeps its height; the phone block moves it to the views' row. */
+.control-group--mode-credit {
+  gap: var(--space-xs);
+}
+
+.wall-edit-toggle {
+  flex: none;
+}
+
+.control-group--mode-credit .wall-edit-toggle {
+  min-height: 2rem;
+}
+
+.wall-edit-toggle--marquee {
+  display: none;
+}
+
+/* Over the wall while it is arranged: a panel like the credit strip, what can be done on the
+   left, 기본값으로 and 완료 on the right. */
+.wall-editbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs) var(--space-md);
+  padding: var(--space-2xs) var(--space-md) calc(var(--space-2xs) + var(--press-depth));
+  background: var(--color-paper-2);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+
+.wall-editbar__hint {
+  flex: 1 1 20rem;
+  min-width: 0;
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  word-break: keep-all;
+}
+
+.wall-editbar__scope {
+  color: var(--color-ink-3);
+}
+
+.wall-editbar__actions {
+  display: flex;
+  flex: none;
+  gap: var(--space-xs);
+  margin-left: auto;
+}
+
+.wall-editbar__button {
+  min-height: 2rem;
+}
+
+/* A tile's row while the wall is arranged (TileEditRow): square icon buttons that stay where
+   they are when there is nothing to pass - only their base goes. */
+.tile-edit__button {
+  justify-content: center;
+  min-width: var(--tile-control);
+  min-height: var(--tile-control);
+  padding: 0;
+}
+
+.grid-view .tile-edit .tile__controls {
+  display: flex;
+  gap: var(--space-3xs);
+}
+
+/* Nothing in a player answers while its wall is arranged: the shield covers it already, and
+   a drag must never lose the pointer to a frame. */
+.grid-view--editing .tile__player {
+  pointer-events: none;
+}
+
+.grid-view--editing {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* A mouse or a pen picks a tile up anywhere but its buttons. */
+@media (pointer: fine) {
+  .grid-view--editing .tile__body {
+    cursor: grab;
+  }
+
+  .grid-view--dragging,
+  .grid-view--dragging .tile__body {
+    cursor: grabbing;
+  }
+}
+
+/* The tile in hand: the viewer's choice, so 카, drawn over its neighbours. */
+.grid-view .tile--dragging {
+  z-index: 1;
+  border-color: var(--color-ka);
+}
+
+/* A hidden cabinet while the wall is arranged: its thumbnail under the scrim, "숨김", a dashed
+   bezel, and its label a step quieter. */
+.tile--hidden {
+  border-style: dashed;
+  border-color: var(--color-rule-strong);
+}
+
+.tile--hidden .tile__label {
+  color: var(--color-ink-3);
+}
+
+.tile-hidden__note {
+  z-index: 1;
+  padding: var(--space-2xs);
 }
 
 /* ---------------------------------------------------------------- 다시보기 */
@@ -2028,12 +2174,14 @@ input {
   }
 
   .idle-strip__title,
-  .idle-chip {
+  .idle-chip,
+  .idle-strip__edit {
     font-size: var(--text-sm);
   }
 
   /* A thumb's worth to press. */
-  .idle-chip--replay {
+  .idle-chip--replay,
+  .idle-strip__edit {
     min-height: 2.25rem;
     padding-inline: var(--space-xs);
   }
@@ -2134,6 +2282,77 @@ input {
     align-self: flex-start;
   }
 
+  /* 편집 ends the views' row, which scrolls beside it: the bar gains no row. */
+  .wall-edit-toggle--marquee {
+    display: inline-flex;
+    min-height: 2.25rem;
+    margin-left: auto;
+    font-size: var(--text-sm);
+  }
+
+  /* 44px to a thumb whatever the face shows, reaching past the 2.25rem button - and its 1px
+     edge, which the box below starts inside - into the bar's padding and the gap beside it
+     rather than growing the row. */
+  .wall-edit-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+  }
+
+  /* Under 390px (an iPhone SE) the views would keep less than one chip beside the word: the
+     icon alone, its name still 편집. */
+  @media (max-width: 389px) {
+    .wall-edit-toggle--marquee {
+      min-width: 2.25rem;
+      padding: 0;
+    }
+
+    .wall-edit-toggle--marquee .arcade-button__text {
+      display: none;
+    }
+  }
+
+  /* A venue with no views: 편집 shares the credit strip's 라이브 | 다시보기 line, at its end. */
+  .control-group--mode-on-phone .wall-edit-toggle {
+    min-height: 2.25rem;
+    margin-left: auto;
+    font-size: var(--text-sm);
+  }
+
+  .wall-editbar {
+    padding: var(--space-2xs) var(--space-xs) calc(var(--space-2xs) + var(--press-depth));
+    padding-left: max(var(--space-xs), env(safe-area-inset-left));
+    padding-right: max(var(--space-xs), env(safe-area-inset-right));
+  }
+
+  /* One line of what to do beside 기본값으로 and 완료; where it is kept goes, for the room. */
+  .wall-editbar {
+    flex-wrap: nowrap;
+    column-gap: var(--space-xs);
+  }
+
+  .wall-editbar__hint {
+    flex: 1 1 0;
+  }
+
+  .wall-editbar__scope {
+    display: none;
+  }
+
+  .wall-editbar__button {
+    min-height: 2.75rem;
+  }
+
+  /* One column: the arrows point up and down, and each button is a thumb's 44px. */
+  .tile-edit__arrow {
+    transform: rotate(90deg);
+  }
+
+  .grid-view .tile-edit .tile__controls .tile-edit__button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
   /* Up to a row 390px wide inside the bezel - an iPhone SE's, a 15 Pro's and a Pixel 7's
      (384px) held upright; not a phone held sideways - both buttons keep only their icons:
      the row's narrow form on a phone. With the words, the label of a cabinet with a tag,
@@ -2177,6 +2396,32 @@ input {
   .marquee__controls {
     flex: 0 1 auto;
     margin-left: 0;
+  }
+
+  /* 편집 leaves the one-line bar here: in it, it took its width from the venues - down to
+     nothing on an SE, which stacked the tabs and tripled the bar. It goes to the credit strip
+     right under the bar instead, beside 새로고침, as its icon alone; 라이브 | 다시보기 stays in
+     the bar, so only the toggle shows there. A venue with no views has it there already. */
+  .wall-edit-toggle--marquee {
+    display: none;
+  }
+
+  .control-group--mode-credit:not(.control-group--mode-on-phone):has(.wall-edit-toggle) {
+    display: flex;
+  }
+
+  .control-group--mode-credit:not(.control-group--mode-on-phone) .mode-switch {
+    display: none;
+  }
+
+  .control-group--mode-credit:not(.control-group--mode-on-phone) .wall-edit-toggle {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0;
+  }
+
+  .control-group--mode-credit:not(.control-group--mode-on-phone) .wall-edit-toggle .arcade-button__text {
+    display: none;
   }
 
   .grid-view {

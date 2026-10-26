@@ -18,6 +18,7 @@ import { useCoveredTop } from '../lib/stickyCover';
 import { ArcadeButton } from './ArcadeButton';
 import { ChatLink } from './ChatLink';
 import { ChatIcon, TileLabelRow } from './TileLabelRow';
+import { TileEditRow, type TileEditControls } from './WallEdit';
 import { loadYouTubeApi, playerOrigin, PlayerState, type YTPlayer } from '../lib/youtube';
 
 interface PlayerTileProps {
@@ -58,6 +59,17 @@ interface PlayerTileProps {
   chatSidebar?: { isOpen: boolean; onOpen: () => void };
   /** What to show when this cabinet has no stream - depends on whether the venue is open. */
   idle: IdleMessage;
+  /** The wall's key for this tile (lib/wallTiles.ts), which arranging the wall finds it by. */
+  tileId?: string;
+  /**
+   * Its place in the wall's grid. The wall keeps its tiles in one order in the page and
+   * places them by this (GridView), since moving a player's frame in the page loads it anew.
+   */
+  order?: number;
+  /** The wall is being arranged: the row under the picture moves and hides this tile instead. */
+  edit?: TileEditControls;
+  /** Being dragged to a new place while the wall is arranged. */
+  dragging?: boolean;
 }
 
 export function PlayerTile({
@@ -72,6 +84,10 @@ export function PlayerTile({
   opensChatInTab,
   chatSidebar,
   idle,
+  tileId,
+  order,
+  edit,
+  dragging,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -401,12 +417,13 @@ export function PlayerTile({
     compact ? 'tile--compact' : '',
     isAudioActive ? 'tile--audio' : '',
     stream ? '' : 'tile--idle',
+    dragging ? 'tile--dragging' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <div className={className} ref={tileRef}>
+    <div className={className} ref={tileRef} data-tile-id={tileId} style={order === undefined ? undefined : { order }}>
       <div className="tile__body">
         {/* The player's host is part of the tile, not of the player: React removing it
             would detach the iframe before the effect above could destroy it, and every
@@ -449,34 +466,39 @@ export function PlayerTile({
         )}
       </div>
 
-      <TileLabelRow
-        cabinet={label}
-        tag={unregistered}
-        live={Boolean(stream)}
-        behindLive={showsPlayer && lagSeconds !== null ? { seconds: lagSeconds, onBackToLive: backToLive } : undefined}
-        viewers={stream?.concurrentViewers}
-        sound={isAudioActive ? 'on' : 'off'}
-        soundDisabled={!mountedId}
-        onToggleSound={onRequestAudio}
-        // The chat has nothing to do with the embed, so a tile that cannot play still
-        // offers it; only a cabinet with no broadcast has no chat.
-        chat={
-          stream &&
-          (chatSidebar ? (
-            <SidebarChatButton label={label} isOpen={chatSidebar.isOpen} onOpen={chatSidebar.onOpen} />
-          ) : (
-            <ChatLink
-              className="tile__control tile__control--chat"
-              label="채팅"
-              icon={<ChatIcon />}
-              name={`${label} 유튜브 채팅 열기`}
-              stream={stream}
-              inTab={Boolean(opensChatInTab)}
-              data-testid="tile-chat"
-            />
-          ))
-        }
-      />
+      {/* Arranging the wall swaps the row alone: the player above it carries on as it was. */}
+      {edit ? (
+        <TileEditRow cabinet={label} tag={unregistered} controls={edit} />
+      ) : (
+        <TileLabelRow
+          cabinet={label}
+          tag={unregistered}
+          live={Boolean(stream)}
+          behindLive={showsPlayer && lagSeconds !== null ? { seconds: lagSeconds, onBackToLive: backToLive } : undefined}
+          viewers={stream?.concurrentViewers}
+          sound={isAudioActive ? 'on' : 'off'}
+          soundDisabled={!mountedId}
+          onToggleSound={onRequestAudio}
+          // The chat has nothing to do with the embed, so a tile that cannot play still
+          // offers it; only a cabinet with no broadcast has no chat.
+          chat={
+            stream &&
+            (chatSidebar ? (
+              <SidebarChatButton label={label} isOpen={chatSidebar.isOpen} onOpen={chatSidebar.onOpen} />
+            ) : (
+              <ChatLink
+                className="tile__control tile__control--chat"
+                label="채팅"
+                icon={<ChatIcon />}
+                name={`${label} 유튜브 채팅 열기`}
+                stream={stream}
+                inTab={Boolean(opensChatInTab)}
+                data-testid="tile-chat"
+              />
+            ))
+          }
+        />
+      )}
     </div>
   );
 }
