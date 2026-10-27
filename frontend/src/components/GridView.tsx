@@ -1,6 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { IdleMessage } from '../lib/venue';
 import { splitWall } from '../lib/idleCabinets';
+import { compactPlaybackSlots } from '../lib/playbackSlots';
+import { IDLE_STRIP_RESERVE, spotlightGrid, spotlightTileId } from '../lib/spotlight';
+import { useCoveredTop } from '../lib/stickyCover';
+import { PHONE_LANDSCAPE_QUERY } from '../lib/venueRow';
 import { arrangeTiles, tilesOnWall } from '../lib/wallArrangement';
 import type { WallTile } from '../lib/wallTiles';
 import { IdleStrip } from './IdleStrip';
@@ -31,6 +35,11 @@ interface GridViewProps {
   onRequestAudio: (tileId: string) => void;
   /** The chosen N×N layout; fewer columns are used when fewer cabinets are on air. */
   gridSize: number;
+  /**
+   * 크게 보기 is chosen: the tile with the sound large, the rest small (lib/spotlight.ts). The
+   * N×N grid again while the wall is being arranged, whose order it then shows as it is.
+   */
+  spotlight?: boolean;
   lazy?: boolean;
   /**
    * Opens a broadcast's chat in the sidebar beside the wall; left out where the chat opens
@@ -68,6 +77,7 @@ export function GridView({
   audioTileId,
   onRequestAudio,
   gridSize,
+  spotlight = false,
   lazy,
   onOpenChat,
   chatTileId,
@@ -81,11 +91,39 @@ export function GridView({
   const hasStrip = wall.idle.length > 0 || hiddenHere > 0;
   // The tiles decide the columns. When the strip is the whole wall it takes the chosen
   // layout's width rather than one tile's; with nothing at all (no venues yet) it stays one.
-  const columns = wall.tiles.length === 0 && hasStrip ? gridSize : gridColumns(gridSize, wall.tiles.length);
+  const plainColumns = wall.tiles.length === 0 && hasStrip ? gridSize : gridColumns(gridSize, wall.tiles.length);
 
   const { gridRef, dragId, dragHandlers } = useDragToArrange(editing, wall.tiles);
-  // Outside the arranging only the columns relay the wall, as before; within it, a new order too.
-  const layout = editing ? `${columns}|${wall.tiles.map((tile) => tile.id).join(' ')}` : String(columns);
+
+  // 크게 보기: which tile is large, and the grid that fits them all to the wall's box.
+  const spotlit = spotlight && !editing && wall.tiles.length > 1;
+  const largeId = spotlit ? spotlightTileId(wall.tiles.map((tile) => tile.id), audioTileId) : null;
+  const room = useRoomOf(gridRef, spotlit);
+  const spot = spotlightGrid(wall.tiles.length, {
+    width: room.width,
+    height: room.height - (hasStrip ? IDLE_STRIP_RESERVE : 0),
+  });
+  const columns = spotlit ? spot.columns : plainColumns;
+  // Where the large tile sticks on a phone (under the sticky marquee), and how much of the
+  // screen it covers for the small tiles scrolling under it.
+  const stickyTop = useCoveredTop(spotlit);
+  const largeCover = useLargeTileCover(gridRef, spotlit && Boolean(lazy), largeId);
+  // The two tiles of a row report a scroll together: the phone's slots weigh them so.
+  useEffect(() => {
+    if (!spotlit || !lazy) {
+      return;
+    }
+    compactPlaybackSlots.batchSightings(true);
+    return () => compactPlaybackSlots.batchSightings(false);
+  }, [spotlit, lazy]);
+
+  // Outside the arranging only the columns relay the wall, as before; within it, a new order
+  // too; and in 크게 보기 the grid and which tile is large.
+  const layout = editing
+    ? `${columns}|${wall.tiles.map((tile) => tile.id).join(' ')}`
+    : spotlit
+      ? `${columns}|${spot.rows}|${spot.span}|${largeId}`
+      : String(columns);
   useGlideOnRelayout(gridRef, layout, dragId !== null);
 
   const controlsOf = (tile: WallTile, index: number): TileEditControls | undefined => {
@@ -113,14 +151,22 @@ export function GridView({
   if (dragId !== null) {
     classes.push('grid-view--dragging');
   }
+  if (spotlit) {
+    classes.push('grid-view--spotlight');
+  }
+
+  const style = spotlit
+    ? {
+        '--grid-columns': columns,
+        '--grid-rows': spot.rows,
+        '--spotlight-span': spot.span,
+        '--spotlight-rows': wall.tiles.length - 1,
+        '--spotlight-top': `${stickyTop}px`,
+      }
+    : { '--grid-columns': columns };
 
   return (
-    <div
-      ref={gridRef}
-      className={classes.join(' ')}
-      style={{ '--grid-columns': columns } as React.CSSProperties}
-      {...dragHandlers}
-    >
+    <div ref={gridRef} className={classes.join(' ')} style={style as React.CSSProperties} {...dragHandlers}>
       {/* In the venue's order, each placed by the viewer's (see above). */}
       {tiles.map((tile) => {
         const place = placeOf.get(tile.id);
@@ -149,6 +195,8 @@ export function GridView({
             order={place}
             edit={controls}
             dragging={dragId === tile.id}
+            spotlight={tile.id === largeId}
+            coveredBelowBar={largeId !== null && tile.id !== largeId ? largeCover : 0}
             label={tile.label}
             unregistered={tile.unregistered}
             stream={tile.stream}
@@ -180,6 +228,65 @@ export function GridView({
       />
     </div>
   );
+}
+
+/**
+ * The wall's box - the scrolling area its grid sits in, which the stylesheet sizes tiles
+ * against on a computer - followed while 크게 보기 needs it to pick its grid.
+ */
+function useRoomOf(gridRef: React.RefObject<HTMLDivElement>, active: boolean) {
+  const [room, setRoom] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    const area = gridRef.current?.parentElement;
+    if (!active || !area) {
+      return;
+    }
+    const measure = () => {
+      const next = { width: area.clientWidth, height: area.clientHeight };
+      setRoom((current) => (current.width === next.width && current.height === next.height ? current : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, [gridRef, active]);
+
+  return room;
+}
+
+/**
+ * How much of the screen under the marquee 크게 보기's large tile covers when it sticks above
+ * the small tiles (a phone held upright): its height and the gap under it. Nothing where it
+ * sticks beside them instead (a phone held sideways) or does not stick at all (a computer).
+ */
+function useLargeTileCover(gridRef: React.RefObject<HTMLDivElement>, active: boolean, largeId: string | null) {
+  const [cover, setCover] = useState(0);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    const large = grid?.querySelector<HTMLElement>(':scope > .tile--spotlight');
+    if (!active || !grid || !large) {
+      setCover(0);
+      return;
+    }
+    const sideways = window.matchMedia(PHONE_LANDSCAPE_QUERY);
+    const measure = () => {
+      const above = getComputedStyle(large).position === 'sticky' && !sideways.matches;
+      const gap = parseFloat(getComputedStyle(grid).rowGap) || 0;
+      setCover(above ? Math.round(large.offsetHeight + gap) : 0);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(large);
+    sideways.addEventListener('change', measure);
+    return () => {
+      observer.disconnect();
+      sideways.removeEventListener('change', measure);
+    };
+  }, [gridRef, active, largeId]);
+
+  return cover;
 }
 
 function openChatOf(tileId: string, videoId: string, onOpenChat: (tileId: string, videoId: string) => void) {

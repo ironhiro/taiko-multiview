@@ -190,6 +190,56 @@ bounces, glows or lifts.
   credit strip's "N개 송출 중" and the venue tabs still count it, since they say what the venue
   has on air.
 
+## 크게 보기 (one large tile)
+- **One tile large, the rest small**, for watching one game closely and the others at a glance.
+  A layout like 1×1-4×4, kept like them in this browser alone (localStorage
+  `taiko-multiview:spotlight`, `on`/`off`; lib/spotlight.ts); choosing an N×N layout (or Ctrl +, -,
+  0) ends it. A storage that will not answer brings up the N×N grid.
+- **Which tile is large follows the sound**: the tile holding it, and with nobody holding it the
+  first tile in the wall's order (the viewer's, "Arranging the wall"). A hidden cabinet has no
+  tile and is never large; hiding the large one takes its sound, so the first tile is large next.
+  The large tile carries no mark of its own: its 카 bezel is the sound's, as on any tile.
+- **Nothing is built to move it.** The page keeps every tile where it is and the grid places the
+  large one (`grid-area`), as it places the viewer's order (`order`); the tiles glide there as
+  they do between layouts.
+- **Where 크게 보기 is**: nowhere it would change the screen of someone who never chooses it,
+  whatever the credit strip says. After 편집 in the credit strip only where the strip has room for
+  it beside the longest thing it says - one line of 오늘 휴무 · 12. 25. 10:00 오픈, 지난 방송 보기,
+  API 키 없음 · 공개 페이지로 확인 and the time: a computer 70rem (1,120px) wide and up, an
+  icon+text arcade button 2rem tall like 편집 (that line takes the strip to 1,104px with it, 996px
+  without; the marquee has 31px to spare on a 1280px laptop, so it is not there); a phone held
+  sideways with 48rem inside the strip, measured inside its padding so the notch counts, its icon
+  alone (2.25rem, a 44px touch area; the line needs 768px with it); a phone's line of its own for a
+  venue with no views. Elsewhere only while 편집 is on: after the layouts in the marquee on a
+  narrower computer (two or three rows there, the layouts' row with room to spare), after 편집 in
+  the views' row on a phone held upright (the row gives up 44px only while the wall is arranged;
+  the edit bar has none to give on a 360-380px phone without a third line), in the bar 편집 opens,
+  before 기본값으로, on a phone held sideways whose strip is too narrow. No bar gains a row or a
+  pixel, editing or not. Chosen while arranging, it changes nothing in sight until 완료, so the
+  edit bar's hint says what 완료 will do instead (완료하면 크게 보기로 바뀝니다 / 가 꺼집니다).
+  Chosen (카) while the wall is laid out so. Not in 다시보기. The icon is the layout drawn: one
+  large square top left, small ones down its right and along the bottom.
+- **A computer** (lib/spotlight.ts, `spotlightGrid`): the small tiles keep the grid's own sizing
+  (each a 16:9 picture over its row, `--tile-width` from the wall's box); the large tile covers
+  2×2 or 3×3 of their places in the top left corner, so its picture is at least four small ones,
+  and the small ones fill the places to its right and then the rows under it, in the wall's
+  order. Every row fits the screen; of the layouts that do, the wall takes the one showing the
+  most picture, large and small together - more columns on a wide window, fewer beside the chat.
+  From four small tiles on it is an L (a row under the large tile as well as a column beside it);
+  up to three sit beside it alone. Nine on a 1440×900 or 1280×720 screen: the large tile 2×2 in
+  four columns, two columns of two beside it and a row of four under it. The large tile's place is
+  taller than it by the small rows' extra label rows, and it keeps to the top of it.
+- **A phone held upright**: the large tile across the top, sticking under the sticky marquee while
+  the small ones scroll by under it two to a row; `--color-paper` spreads `--space-xs` round it so
+  nothing shows past its edges. A small tile under it counts as unseen, as one under the marquee
+  does, so the two playing slots go to the large tile and the small one most in sight; the four
+  players and the slots are the phone's as ever.
+- **Held sideways**: across the top it would be the whole screen, so the large tile takes the left
+  two thirds - no taller than the screen at 16:9 - and sticks at the top while the small ones
+  scroll by in one column beside it.
+- **While arranging** the wall is the plain N×N grid, so the order is read as it is moved; 완료
+  brings 크게 보기 back. With one tile on the wall there is nothing to make large.
+
 ## 다시보기 (past broadcasts)
 - **Mode switch** `라이브 | 다시보기`: two view-chip buttons, the chosen one 카. It is not a
   view - a view is part of the venue's wall, and 다시보기 is not the wall - so it never joins
@@ -360,7 +410,9 @@ load there; this file and `tokens.css` win wherever the two differ.
 | TileChatButton (sidebar) | `frontend/src/components/PlayerTile.tsx` (`SidebarChatButton`, `.tile__control--chat`, `data-testid="tile-chat"`) | chosen = sidebar shows this tile's chat (`aria-pressed`, 카) |
 | ChatSidebar | `frontend/src/components/ChatSidebar.tsx` (`.chat-sidebar`, `data-testid="chat-sidebar"`); when it shows, `lib/chatSidebar.ts` | Cabinet = `label`, the broadcast = `stream`; 로그인하고 채팅 = `ChatLink` with `signIn`, 닫기 = icon-only `ArcadeButton`; what the column holds = `sidebarContent` (`lib/chatSidebar.ts`): the frame without the server's sign-in, `ChatSignIn` (`.chat-account`, `ChatAccount.tsx`) signed out and `ChatRoom` (`.chat-room`) signed in with it |
 | WallEditToggle | `frontend/src/components/WallEdit.tsx` (`WallEditToggle`, `.wall-edit-toggle`, `data-testid="wall-edit-credit"` / `"wall-edit-marquee"`) | chosen = arranging (`aria-pressed`, 카); where = `placement` credit (computer; phone with no views, inside `ModeSwitch`) / marquee (phone views' row) |
-| WallEditBar | `frontend/src/components/WallEdit.tsx` (`.wall-editbar`, `data-testid="wall-editbar"`) | drag hint = `canDrag`; 기본값으로 (`wall-edit-reset`, disabled = nothing arranged), 완료 (`wall-edit-done`) |
+| WallEditBar | `frontend/src/components/WallEdit.tsx` (`.wall-editbar`, `data-testid="wall-editbar"`) | drag hint = `canDrag`; `children` before 기본값으로 (크게 보기 on a narrow phone held sideways); hint = what 완료 does to 크게 보기 once it was chosen there (`spotlight`, `wall-edit-hint`); 기본값으로 (`wall-edit-reset`, disabled = nothing arranged), 완료 (`wall-edit-done`) |
 | TileEditRow, HiddenTile | `frontend/src/components/WallEdit.tsx` (`.tile-edit`, `.tile--hidden`, `.tile--dragging`) | `controls` = `TileEditControls` (`tile-earlier`, `tile-later`, `tile-hide`); hidden = `controls.hidden` |
+| SpotlightToggle | `frontend/src/components/LayoutPicker.tsx` (`SpotlightToggle`, `.spotlight-toggle`, `data-testid="spotlight-credit"` / `"spotlight-marquee"` / `"spotlight-editbar"`) | chosen = 크게 보기 (`aria-pressed`, 카); where = `placement` credit (computer ≥ 70rem: icon+text; phone sideways with room, or no views: icon-only) / marquee (while 편집 is on: narrower computer, icon+text; phone held upright, icon-only) / editbar (phone sideways without room, `WallEditBar`'s children) |
+| Tile (large) | `frontend/src/components/PlayerTile.tsx` (`spotlight` → `.tile--spotlight`), placed by `GridView` (`.grid-view--spotlight`, `--spotlight-span`, `--grid-rows`) | which = `lib/spotlight.ts` `spotlightTileId`; grid = `spotlightGrid` |
 | HiddenNote | `frontend/src/components/IdleStrip.tsx` (`.idle-strip__hidden`, `data-testid="wall-hidden-note"`) | count = `hidden.count`; 편집 = `hidden.onEdit`; edit chips = `editing` |
 | VenueTab, ViewChip, LayoutChip (header) | `VenueTabs.tsx` (`.venue-tab`), `ViewPicker.tsx` (`.choice`), `LayoutPicker.tsx` (`.layout-picker__option`) | names only for now; they already share the arcade button rules in `styles.css` |

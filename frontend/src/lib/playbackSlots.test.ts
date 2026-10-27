@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PageAway, PageAwayStore } from './pageAway';
 import { choosePlaying, createPlaybackSlots, type Sighting } from './playbackSlots';
 
@@ -31,6 +31,31 @@ describe('choosePlaying', () => {
   it('settles a tie by what already plays, then by what is higher on the page', () => {
     expect(choose({ a: 1, b: 1, c: 1 })).toEqual(['a', 'b']);
     expect(choose({ a: 1, b: 1, c: 1 }, { playing: ['c'] })).toEqual(['a', 'c']);
+  });
+
+  it('gives a tie between two tiles in a row to the one with a player already', () => {
+    // 크게 보기's two columns: as visible as each other, as high on the page.
+    const row = new Map<string, Sighting>([
+      ['left', { ratio: 1, pageTop: 445 }],
+      ['right', { ratio: 1, pageTop: 445 }],
+    ]);
+    const pick = (built?: string[]) => [
+      ...choosePlaying({ sightings: row, taps: [], slots: 1, autoplay: true, playing: new Set(), built: built && new Set(built) }),
+    ];
+    expect(pick()).toEqual(['left']);
+    expect(pick(['right'])).toEqual(['right']);
+    expect(pick(['left', 'right'])).toEqual(['left']);
+  });
+
+  it('still puts the tile higher on the page first, player or not', () => {
+    // One column: no two tiles level, so what holds a player decides nothing.
+    const column = new Map<string, Sighting>([
+      ['upper', { ratio: 1, pageTop: 0 }],
+      ['lower', { ratio: 1, pageTop: 300 }],
+    ]);
+    expect([
+      ...choosePlaying({ sightings: column, taps: [], slots: 1, autoplay: true, playing: new Set(), built: new Set(['lower']) }),
+    ]).toEqual(['upper']);
   });
 
   it('ranks by quarters, so a small change in view does not swap tiles', () => {
@@ -145,5 +170,85 @@ describe('createPlaybackSlots', () => {
     slots.leave('a');
     expect(has.b).toBe(true);
     expect(slots.playing()).toEqual(['b']);
+  });
+});
+
+describe('createPlaybackSlots, weighing sightings that arrive together', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // A row of 크게 보기 scrolled out from under the playing tile: the left one held the slot,
+  // the right one said "on screen" a scroll ago, and both say "gone" in the same moment, one
+  // task apart. The row under them is half in sight.
+  const scrollRowAway = (batchSightings: boolean) => {
+    vi.useFakeTimers();
+    const slots = createPlaybackSlots({ slots: 1, autoplay: true, batchSightings });
+    const heard: string[] = [];
+    for (const key of ['left', 'right', 'below']) {
+      slots.join(key, (hasSlot) => heard.push(`${key} ${hasSlot}`));
+    }
+    slots.sight('left', { ratio: 1, pageTop: 445 });
+    slots.sight('right', { ratio: 1, pageTop: 445 });
+    slots.sight('below', { ratio: 0.5, pageTop: 614 });
+    vi.runAllTimers();
+    heard.length = 0;
+
+    slots.sight('left', { ratio: 0, pageTop: 445 });
+    slots.sight('right', { ratio: 0, pageTop: 445 });
+    vi.runAllTimers();
+    return { heard, playing: slots.playing() };
+  };
+
+  it('hands the slot straight to the tile still in sight, never for a moment to the one leaving with it', () => {
+    expect(scrollRowAway(true)).toEqual({ heard: ['left false', 'below true'], playing: ['below'] });
+  });
+
+  it('decided after each, gave it to the tile leaving too, for long enough to build a player', () => {
+    expect(scrollRowAway(false)).toEqual({ heard: ['left false', 'right true', 'right false', 'below true'], playing: ['below'] });
+  });
+
+  it('decides after each again once the wall is one column', () => {
+    vi.useFakeTimers();
+    const slots = createPlaybackSlots({ slots: 1, autoplay: true, batchSightings: true });
+    const has: Record<string, boolean> = {};
+    slots.join('a', (hasSlot) => (has.a = hasSlot));
+    slots.sight('a', { ratio: 1, pageTop: 0 });
+    expect(has.a).toBe(false);
+    // Turned off with a decision pending: made at once.
+    slots.batchSightings(false);
+    expect(has.a).toBe(true);
+    slots.sight('a', { ratio: 0, pageTop: 0 });
+    expect(has.a).toBe(false);
+  });
+
+  it('waits for the other of a row that falls due a few milliseconds later', () => {
+    vi.useFakeTimers();
+    const built = new Set(['right']);
+    const slots = createPlaybackSlots({ slots: 1, autoplay: true, batchSightings: true, built: () => built });
+    const has: Record<string, boolean> = {};
+    for (const key of ['left', 'right']) {
+      slots.join(key, (hasSlot) => (has[key] = hasSlot));
+    }
+    slots.sight('left', { ratio: 1, pageTop: 445 });
+    vi.advanceTimersByTime(3);
+    slots.sight('right', { ratio: 1, pageTop: 445 });
+    vi.runAllTimers();
+    expect(has).toEqual({ left: false, right: true });
+  });
+
+  it('keeps the tile with a player through the tie', () => {
+    vi.useFakeTimers();
+    const built = new Set(['right']);
+    const slots = createPlaybackSlots({ slots: 1, autoplay: true, batchSightings: true, built: () => built });
+    const has: Record<string, boolean> = {};
+    for (const key of ['left', 'right']) {
+      slots.join(key, (hasSlot) => (has[key] = hasSlot));
+    }
+    // The row comes back into sight, the left tile's report first.
+    slots.sight('left', { ratio: 1, pageTop: 445 });
+    slots.sight('right', { ratio: 1, pageTop: 445 });
+    vi.runAllTimers();
+    expect(has).toEqual({ left: false, right: true });
   });
 });
