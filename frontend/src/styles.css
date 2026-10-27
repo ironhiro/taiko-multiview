@@ -587,11 +587,13 @@ input {
   --idle-strip-height: 2.5rem;
   --wall-reserve: 0px;
   --tile-frame: calc(2 * var(--rule-mark));
+  /* N rows to a screen, as many as the columns; 크게 보기 sets its own (GridView). */
+  --grid-rows: var(--grid-columns);
   --tile-width: min(
     calc((100cqw - 2 * var(--grid-pad) - (var(--grid-columns) - 1) * var(--grid-gap)) / var(--grid-columns)),
     calc(
-      ((100cqh - var(--wall-reserve) - 2 * var(--grid-pad) - (var(--grid-columns) - 1) * var(--grid-gap)) /
-        var(--grid-columns) - var(--tile-bar) - var(--tile-frame)) * 16 / 9 + var(--tile-frame)
+      ((100cqh - var(--wall-reserve) - 2 * var(--grid-pad) - (var(--grid-rows) - 1) * var(--grid-gap)) /
+        var(--grid-rows) - var(--tile-bar) - var(--tile-frame)) * 16 / 9 + var(--tile-frame)
     )
   );
 
@@ -605,6 +607,19 @@ input {
 
 .grid-view--idle-strip {
   --wall-reserve: calc(var(--idle-strip-height) + var(--grid-gap));
+}
+
+/* 크게 보기 (design.md, "크게 보기"): the tile with the sound covers span × span small tiles'
+   places in the top left corner, and the small ones fill the places to its right and then
+   whole rows under it, in the wall's order. Columns and rows are the ones that show the most
+   picture with every row on the screen (lib/spotlight.ts). The page keeps every tile where
+   it is and only the grid moves the large one, so moving the sound builds no player.
+   Its picture is as wide as its columns; the rows beside it are a little taller, each with
+   its own row under the picture, so the large tile keeps to the top of its place. */
+.grid-view--spotlight .tile--spotlight {
+  grid-row: 1 / span var(--spotlight-span);
+  grid-column: 1 / span var(--spotlight-span);
+  align-self: start;
 }
 
 /* ------------------------------------------------------------------ tiles */
@@ -1086,6 +1101,35 @@ input {
 
 .wall-edit-toggle--marquee {
   display: none;
+}
+
+/* 크게 보기 (SpotlightToggle) after 편집 in the credit strip, as tall - where the strip has room
+   for it beside the longest thing it says: one line of 오늘 휴무 · 12. 25. 10:00 오픈, 지난 방송
+   보기, the public-page note and the time takes it to 1,104px wide. Narrower, the strip keeps its
+   width for what it says, and 크게 보기 is after the layouts in the marquee while 편집 is on: the
+   marquee is two or three rows there, the layouts' row with room to spare. The phone blocks
+   decide for themselves. */
+.spotlight-toggle {
+  flex: none;
+}
+
+.control-group--mode-credit .spotlight-toggle {
+  min-height: 2rem;
+}
+
+.spotlight-toggle--editbar,
+.spotlight-toggle--marquee {
+  display: none;
+}
+
+@media (max-width: 69.99rem) {
+  .control-group--mode-credit .spotlight-toggle {
+    display: none;
+  }
+
+  .spotlight-toggle--marquee {
+    display: inline-flex;
+  }
 }
 
 /* Over the wall while it is arranged: a panel like the credit strip, what can be done on the
@@ -2282,6 +2326,64 @@ input {
     align-self: flex-start;
   }
 
+  /* 크게 보기 on a phone: the large tile across the top, sticking under the marquee while the
+     small ones scroll by under it two to a row. Paper all round it, so a small tile passing
+     under its edges does not show in the gaps. */
+  .grid-view--spotlight {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .grid-view--spotlight .tile--spotlight {
+    grid-row: 1;
+    grid-column: 1 / -1;
+    position: sticky;
+    top: var(--spotlight-top, 0px);
+    z-index: 3;
+    box-shadow: 0 0 0 var(--space-xs) var(--color-paper);
+  }
+
+  /* 크게 보기 is its icon alone, a thumb's 44px reaching past its 2.25rem face as 편집's does.
+     Held upright: after 편집 on the line of its own a venue with no views gives 라이브 |
+     다시보기; beside views, after 편집 in the views' row while 편집 is on (App renders it then
+     only), so the row keeps its width the rest of the time - the edit bar has none to give it
+     on a 360-380px phone without a third line of its hint, nor the credit strip beside a long
+     note. Held sideways, the block below. */
+  .app:has(.control-group--mode-on-phone) .spotlight-toggle--marquee {
+    display: none;
+  }
+
+  .spotlight-toggle,
+  .control-group--mode-credit .spotlight-toggle {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0;
+  }
+
+  .control-group--mode-credit .spotlight-toggle,
+  .spotlight-toggle--editbar {
+    display: none;
+  }
+
+  .control-group--mode-on-phone .spotlight-toggle,
+  .spotlight-toggle--marquee {
+    display: inline-flex;
+  }
+
+  .spotlight-toggle .arcade-button__text {
+    display: none;
+  }
+
+  .spotlight-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+  }
+
+  .wall-editbar .spotlight-toggle {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
   /* 편집 ends the views' row, which scrolls beside it: the bar gains no row. */
   .wall-edit-toggle--marquee {
     display: inline-flex;
@@ -2406,6 +2508,44 @@ input {
     display: none;
   }
 
+  /* 크게 보기 after 편집 in the credit strip where 48rem inside it leave room beside the longest
+     thing the strip says (792px wide on a phone with no notch), in the edit bar narrower. Both are
+     measured inside their padding, which takes in the notch (viewport-fit=cover): the width of
+     the window would put it in the strip of an iPhone 15 Pro held sideways (852px, 734px
+     inside). The bar is as wide as the strip, so one of the two shows. A venue with no views
+     has it on the strip's line of its own. */
+  .spotlight-toggle--marquee {
+    display: none;
+  }
+
+  .credit {
+    container: credit / inline-size;
+  }
+
+  .wall-editbar {
+    container: editbar / inline-size;
+  }
+
+  @container credit (min-width: 48rem) {
+    .control-group--mode-credit .spotlight-toggle {
+      display: inline-flex;
+    }
+  }
+
+  .wall-editbar .spotlight-toggle--editbar {
+    display: inline-flex;
+  }
+
+  @container editbar (min-width: 48rem) {
+    .wall-editbar .spotlight-toggle--editbar {
+      display: none;
+    }
+  }
+
+  .app:has(.control-group--mode-on-phone) .wall-editbar .spotlight-toggle--editbar {
+    display: none;
+  }
+
   .control-group--mode-credit:not(.control-group--mode-on-phone):has(.wall-edit-toggle) {
     display: flex;
   }
@@ -2426,6 +2566,26 @@ input {
 
   .grid-view {
     grid-template-columns: minmax(0, calc((100dvh - 2 * var(--space-xs) - var(--tile-bar, 0px)) * 16 / 9)) !important;
+  }
+
+  /* 크게 보기 held sideways: across the top, the large tile would be the whole screen. It
+     takes the left two thirds instead - no more than the screen is tall at 16:9 - and sticks
+     at the top while the small ones scroll by in the column beside it. */
+  .grid-view--spotlight {
+    grid-template-columns:
+      minmax(
+        0,
+        min(
+          calc((100% - var(--space-sm)) * 2 / 3),
+          calc((100dvh - 2 * var(--space-xs) - var(--tile-bar) - 2 * var(--rule-mark)) * 16 / 9 + 2 * var(--rule-mark))
+        )
+      )
+      minmax(0, 1fr) !important;
+  }
+
+  .grid-view--spotlight .tile--spotlight {
+    grid-row: 1 / span var(--spotlight-rows);
+    grid-column: 1;
   }
 
   /* The playing picture and its header fill one screen: the player scrolls itself to the top

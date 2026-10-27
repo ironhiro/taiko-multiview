@@ -70,6 +70,14 @@ interface PlayerTileProps {
   edit?: TileEditControls;
   /** Being dragged to a new place while the wall is arranged. */
   dragging?: boolean;
+  /** The large tile of 크게 보기 (lib/spotlight.ts); the grid gives it its place and size. */
+  spotlight?: boolean;
+  /**
+   * How much of the screen under the sticky marquee the large tile of 크게 보기 covers too,
+   * where it sticks above the small ones (a phone held upright): a small tile scrolled under
+   * it is not seen, and must not keep a playing slot from one that is.
+   */
+  coveredBelowBar?: number;
 }
 
 export function PlayerTile({
@@ -88,6 +96,8 @@ export function PlayerTile({
   order,
   edit,
   dragging,
+  spotlight,
+  coveredBelowBar = 0,
 }: PlayerTileProps) {
   const tileRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -151,10 +161,11 @@ export function PlayerTile({
     };
   }, [joinsSlots, tileKey]);
 
-  // The part of the screen under the sticky marquee does not count as seen. The observer
+  // The part of the screen under the sticky marquee - and under 크게 보기's large tile where it
+  // sticks below the marquee - does not count as seen. The observer
   // is rebuilt when the marquee changes height; the tile keeps its slot meanwhile, since
   // the new observer reports at once.
-  const coveredTop = useCoveredTop(Boolean(lazy));
+  const coveredTop = useCoveredTop(Boolean(lazy)) + coveredBelowBar;
 
   useEffect(() => {
     const tile = tileRef.current;
@@ -418,6 +429,7 @@ export function PlayerTile({
     isAudioActive ? 'tile--audio' : '',
     stream ? '' : 'tile--idle',
     dragging ? 'tile--dragging' : '',
+    spotlight ? 'tile--spotlight' : '',
   ]
     .filter(Boolean)
     .join(' ');

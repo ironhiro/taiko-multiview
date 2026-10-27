@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react';
 import type { LiveStream } from '../lib/types';
 import { ArcadeButton } from './ArcadeButton';
 import { TagChip } from './TagChip';
@@ -43,20 +44,40 @@ export function WallEditBar({
   onReset,
   canReset,
   onDone,
+  spotlight,
+  children,
 }: {
   /** A mouse or a pen can drag tiles; a finger uses the buttons. */
   canDrag: boolean;
   onReset: () => void;
   canReset: boolean;
   onDone: () => void;
+  /**
+   * 크게 보기 as chosen now. The wall is the plain grid while it is arranged, so choosing it
+   * here changes nothing in sight until 완료: once it differs from what it was when the bar
+   * opened, the hint says what 완료 will do instead of how to arrange - shorter, so the bar
+   * keeps its height.
+   */
+  spotlight?: boolean;
+  /** Before 기본값으로: what else there is to choose about the wall here (크게 보기 where the bars have no room for it). */
+  children?: ReactNode;
 }) {
+  const [spotlightAtStart] = useState(spotlight);
+  const spotlightNote =
+    spotlight === undefined || spotlight === spotlightAtStart
+      ? null
+      : spotlight
+        ? '완료하면 크게 보기로 바뀝니다.'
+        : '완료하면 크게 보기가 꺼집니다.';
   return (
     <div className="wall-editbar" role="region" aria-label="타일 편집" data-testid="wall-editbar">
-      <p className="wall-editbar__hint">
-        {canDrag ? '타일을 끌거나 화살표로 순서를 바꾸고, 눈 버튼으로 숨깁니다.' : '화살표로 순서를 바꾸고, 눈 버튼으로 숨깁니다.'}
+      <p className="wall-editbar__hint" aria-live="polite" data-testid="wall-edit-hint">
+        {spotlightNote ??
+          (canDrag ? '타일을 끌거나 화살표로 순서를 바꾸고, 눈 버튼으로 숨깁니다.' : '화살표로 순서를 바꾸고, 눈 버튼으로 숨깁니다.')}
         <span className="wall-editbar__scope"> 이 매장의 모든 보기에 적용되고 이 브라우저에만 저장됩니다.</span>
       </p>
       <div className="wall-editbar__actions">
+        {children}
         <ArcadeButton
           className="wall-editbar__button"
           label="기본값으로"

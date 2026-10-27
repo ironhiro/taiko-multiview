@@ -45,9 +45,11 @@ import {
   GRID_SIZES,
   LayoutPicker,
   readStoredGridSize,
+  SpotlightToggle,
   storeGridSize,
   type GridSize,
 } from './components/LayoutPicker';
+import { readStoredSpotlight, storeSpotlight } from './lib/spotlight';
 import { ModeSwitch } from './components/ModeSwitch';
 import { ReplayView } from './components/ReplayView';
 import { parseRoute, routeHref, type AppMode, type AppRoute, type ReplayRoute } from './lib/replayRoute';
@@ -58,6 +60,8 @@ export default function App() {
   const [activeVenueId, setActiveVenueId] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode | null>(null);
   const [gridSize, setGridSize] = useState<GridSize>(() => readStoredGridSize(storageOrNull()));
+  // 크게 보기 in place of the N×N grid, which is kept for when the viewer goes back to it.
+  const [spotlight, setSpotlight] = useState(() => readStoredSpotlight(storageOrNull()));
   const [error, setError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -332,6 +336,10 @@ export default function App() {
   }, [gridSize]);
 
   useEffect(() => {
+    storeSpotlight(storageOrNull(), spotlight);
+  }, [spotlight]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.ctrlKey && !event.metaKey) {
         return;
@@ -348,6 +356,8 @@ export default function App() {
         return;
       }
 
+      // The shortcuts choose an N×N layout, as the picker's N×N buttons do.
+      setSpotlight(false);
       event.preventDefault();
     };
 
@@ -585,13 +595,18 @@ export default function App() {
 
         <div className="marquee__controls">
           {!isReplay && viewOptions.length > 1 && <ViewPicker options={viewOptions} value={view} onChange={selectView} />}
-          {!isReplay && <LayoutPicker size={gridSize} onChange={setGridSize} />}
+          {!isReplay && (
+            <LayoutPicker size={gridSize} onChange={setGridSize} spotlight={spotlight} onSpotlightChange={setSpotlight} />
+          )}
           {/* Phones only (the stylesheet hides it elsewhere), and only beside views. */}
           {viewOptions.length > 1 && <ModeSwitch mode={route.mode} onChange={changeMode} placement="marquee" />}
           {/* Phones only too, at the end of the views' row: the sticky bar gains no row. */}
           {!isReplay && viewOptions.length > 1 && (
             <WallEditToggle editing={editingShown} onChange={setIsEditing} placement="marquee" />
           )}
+          {/* While 편집 is on, where the credit strip has no room for it: after the layouts on a
+              narrow computer, after 편집 in the views' row on a phone held upright (SpotlightToggle). */}
+          {editingShown && <SpotlightToggle on={spotlight} onChange={setSpotlight} placement="marquee" />}
         </div>
       </header>
 
@@ -614,7 +629,11 @@ export default function App() {
             canReset={arrangement !== NO_ARRANGEMENT}
             onReset={resetArrangement}
             onDone={stopEditing}
-          />
+            spotlight={spotlight}
+          >
+            {/* A phone held sideways whose credit strip has no room for it (SpotlightToggle). */}
+            <SpotlightToggle on={spotlight} onChange={setSpotlight} placement="editbar" />
+          </WallEditBar>
         )}
 
         <main className="stage__main">
@@ -640,6 +659,7 @@ export default function App() {
               audioTileId={audioTileId}
               onRequestAudio={handleRequestAudio}
               gridSize={gridSize}
+              spotlight={spotlight}
               lazy={isCompactDevice}
               onOpenChat={chatGoesInSidebar ? handleOpenChat : undefined}
               chatTileId={chatTile?.id ?? null}
@@ -713,6 +733,8 @@ export default function App() {
 
         <ModeSwitch mode={route.mode} onChange={changeMode} placement="credit" onPhone={viewOptions.length <= 1}>
           {!isReplay && <WallEditToggle editing={editingShown} onChange={setIsEditing} placement="credit" />}
+          {/* After 편집 where the strip has room for it whatever it says (SpotlightToggle). */}
+          {!isReplay && <SpotlightToggle on={spotlight} onChange={setSpotlight} placement="credit" />}
         </ModeSwitch>
 
         <button

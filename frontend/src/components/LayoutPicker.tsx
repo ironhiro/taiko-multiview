@@ -1,3 +1,5 @@
+import { ArcadeButton } from './ArcadeButton';
+
 export const GRID_SIZES = [1, 2, 3, 4] as const;
 export type GridSize = (typeof GRID_SIZES)[number];
 export const GRID_DEFAULT: GridSize = 3;
@@ -41,6 +43,12 @@ export function gridColumns(size: number, tiles: number): number {
 interface LayoutPickerProps {
   size: GridSize;
   onChange: (size: GridSize) => void;
+  /**
+   * 크게 보기 is chosen (lib/spotlight.ts): no N×N layout is in use then, and choosing one ends
+   * it. 크게 보기 itself is chosen where 편집 is (SpotlightToggle).
+   */
+  spotlight: boolean;
+  onSpotlightChange: (on: boolean) => void;
 }
 
 /**
@@ -48,7 +56,7 @@ interface LayoutPickerProps {
  * handful of fixed layouts rather than a continuous zoom, because "3×3" says what the
  * screen will look like and "140%" does not.
  */
-export function LayoutPicker({ size, onChange }: LayoutPickerProps) {
+export function LayoutPicker({ size, onChange, spotlight, onSpotlightChange }: LayoutPickerProps) {
   return (
     <div className="control-group control-group--layout">
       <span className="control-group__label" id="layout-picker-label">
@@ -60,8 +68,11 @@ export function LayoutPicker({ size, onChange }: LayoutPickerProps) {
             key={option}
             type="button"
             className="layout-picker__option"
-            aria-pressed={option === size}
-            onClick={() => onChange(option)}
+            aria-pressed={!spotlight && option === size}
+            onClick={() => {
+              onChange(option);
+              onSpotlightChange(false);
+            }}
             title={`${option}×${option} (Ctrl +/−로 전환)`}
           >
             <LayoutIcon size={option} />
@@ -72,6 +83,57 @@ export function LayoutPicker({ size, onChange }: LayoutPickerProps) {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * 크게 보기: the tile with the sound large, the rest small (lib/spotlight.ts). Wherever it goes,
+ * the screen of someone who never chooses it stays as it was, whatever the credit strip says
+ * (design.md, "크게 보기"):
+ * - After 편집 in the credit strip where it has room beside the longest thing the strip says
+ *   (closed for a holiday, 지난 방송 보기, the public-page note and the time on one line): a
+ *   computer 70rem wide and up, icon and words; a phone held sideways with 48rem inside the
+ *   strip, its icon alone; a phone's line of its own for a venue with no views.
+ * - Otherwise only while 편집 is on (`marquee`): after the layouts on a narrower computer, after
+ *   편집 in the views' row on a phone held upright. A phone held sideways has no room there
+ *   either: in the bar 편집 opens, before 기본값으로 (`editbar`).
+ * The stylesheet shows the one that applies. Chosen (카) while the wall is laid out so.
+ */
+export function SpotlightToggle({
+  on,
+  onChange,
+  placement,
+}: {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  placement: 'credit' | 'editbar' | 'marquee';
+}) {
+  return (
+    <ArcadeButton
+      className={`spotlight-toggle spotlight-toggle--${placement}`}
+      label="크게 보기"
+      // Its name where the face shows the icon alone (the stylesheet hides the words on a phone).
+      aria-label="크게 보기"
+      icon={<SpotlightIcon />}
+      chosen={on}
+      onClick={() => onChange(!on)}
+      title="소리를 켠 타일을 크게, 나머지는 작게"
+      data-testid={`spotlight-${placement}`}
+    />
+  );
+}
+
+/** One large square in the top left, small ones down its right and along the bottom. */
+function SpotlightIcon() {
+  return (
+    <svg className="tile__control-icon" viewBox="0 0 12 12" width="14" height="14" aria-hidden="true">
+      <rect x="0.5" y="0.5" width="7" height="7" rx="0.5" fill="currentColor" />
+      <rect x="8.5" y="0.5" width="3" height="3" rx="0.5" fill="currentColor" />
+      <rect x="8.5" y="4.5" width="3" height="3" rx="0.5" fill="currentColor" />
+      <rect x="0.5" y="8.5" width="3" height="3" rx="0.5" fill="currentColor" />
+      <rect x="4.5" y="8.5" width="3" height="3" rx="0.5" fill="currentColor" />
+      <rect x="8.5" y="8.5" width="3" height="3" rx="0.5" fill="currentColor" />
+    </svg>
   );
 }
 
