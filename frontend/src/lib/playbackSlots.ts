@@ -1,5 +1,6 @@
 import { compactLimits } from './deviceProfile';
 import { pageAway, type PageAwayStore } from './pageAway';
+import { compactPlayerBudget } from './playerBudget';
 
 /**
  * Which of a phone's tiles actually play.
@@ -26,6 +27,13 @@ export interface Sighting {
 /** The ratios IntersectionObserver reports at. Quarters are enough to rank tiles. */
 export const SIGHTING_THRESHOLDS = [0, 0.25, 0.5, 0.75, 1];
 
+/**
+ * How long sightings are gathered before one decision while they are weighed together
+ * (`batchSightings`): the first of a row's two reports waits this long for the other. Short
+ * beside the 300ms a sighting already waits to settle (PlayerTile).
+ */
+export const SIGHTING_BATCH_MS = 50;
+
 /** Less than half on screen never starts on its own, as before the slots existed. */
 export const AUTOPLAY_MIN_RATIO = 0.5;
 
@@ -38,14 +46,22 @@ export interface SlotChoice {
   autoplay: boolean;
   /** Playing now; they keep their slot against an equally visible tile, so it does not flap. */
   playing: ReadonlySet<string>;
+  /**
+   * Holding a player (lib/playerBudget.ts), paused or not. Two tiles side by side in a row
+   * (크게 보기's two columns) are as visible as each other and as high on the page: the one
+   * with a player already takes the slot, rather than the other building a second.
+   */
+  built?: ReadonlySet<string>;
 }
 
 /**
  * Tapped tiles still on screen come first, newest tap first: a tap is the viewer saying
  * which one they want, so it takes a slot from the least visible tile playing. Then the
- * most visible tiles, by quarter of their area on screen.
+ * most visible tiles, by quarter of their area on screen; between equals, the one playing,
+ * then the one higher on the page, then - level with it, in the same row - the one with a
+ * player already.
  */
-export function choosePlaying({ sightings, taps, slots, autoplay, playing }: SlotChoice): Set<string> {
+export function choosePlaying({ sightings, taps, slots, autoplay, playing, built }: SlotChoice): Set<string> {
   const ratioOf = (key: string) => sightings.get(key)?.ratio ?? 0;
   const tapped = taps.filter((key) => ratioOf(key) > 0);
   const chosen = [...new Set(tapped)];
@@ -59,7 +75,8 @@ export function choosePlaying({ sightings, taps, slots, autoplay, playing }: Slo
         (a, b) =>
           quarter(b) - quarter(a) ||
           Number(playing.has(b)) - Number(playing.has(a)) ||
-          pageTop(a) - pageTop(b),
+          pageTop(a) - pageTop(b) ||
+          Number(built?.has(b) ?? false) - Number(built?.has(a) ?? false),
       );
     chosen.push(...rest);
   }
@@ -76,6 +93,18 @@ export interface PlaybackSlots {
   tap: (key: string, sighting?: Sighting) => void;
   /** The tile cannot play any more (unmounted, or no stream). */
   leave: (key: string) => void;
+  /**
+   * Weigh sightings that arrive together as one, while the wall is in two columns (크게 보기 on
+   * a phone held upright). Tiles are seen through observers of their own, each settling on a
+   * timer of its own, so the two tiles of a row report the same scroll one task apart:
+   * decided after the first, the slot went to the second on what it had said before - in
+   * sight, though it was leaving with the first - and a tile given a slot for that one task
+   * built a player. Two a round trip of a gentle scroll, 23-24 in 20 seconds where 4 do.
+   * Decided once both are in, nothing changes hands in between. One column keeps deciding
+   * after each, as it always has: there the order the tiles lose their slots in decides which
+   * parked player goes first, and weighing them together would change it.
+   */
+  batchSightings: (on: boolean) => void;
   /** Tiles holding a slot, for tests. */
   playing: () => string[];
 }
@@ -85,6 +114,10 @@ export function createPlaybackSlots(options: {
   autoplay: boolean;
   /** Nobody holds a slot while the page is away; listened to while any tile has joined. */
   away?: PageAwayStore;
+  /** Tiles holding a player now, to settle a tie between two in a row (choosePlaying). */
+  built?: () => Iterable<string>;
+  /** Where `batchSightings` starts. */
+  batchSightings?: boolean;
 }): PlaybackSlots {
   const listeners = new Map<string, (hasSlot: boolean) => void>();
   const sightings = new Map<string, Sighting>();
@@ -92,11 +125,24 @@ export function createPlaybackSlots(options: {
   let playing = new Set<string>();
   let paused = false;
   let stopListening: (() => void) | undefined;
+  let pendingSettle: ReturnType<typeof setTimeout> | undefined;
+  let batching = Boolean(options.batchSightings);
 
   const settle = () => {
+    if (pendingSettle !== undefined) {
+      clearTimeout(pendingSettle);
+      pendingSettle = undefined;
+    }
     const next = paused
       ? new Set<string>()
-      : choosePlaying({ sightings, taps, slots: options.slots, autoplay: options.autoplay, playing });
+      : choosePlaying({
+          sightings,
+          taps,
+          slots: options.slots,
+          autoplay: options.autoplay,
+          playing,
+          built: options.built ? new Set(options.built()) : undefined,
+        });
     const before = playing;
     playing = next;
     // Everyone affected hears in the same task, so the pause of the tile losing a slot
@@ -112,6 +158,16 @@ export function createPlaybackSlots(options: {
       if (!before.has(key)) {
         listeners.get(key)?.(true);
       }
+    }
+  };
+
+  // The two tiles of a row set their settle timers in the same task, but they fall due up
+  // to a millisecond apart (a busy page, more): the decision waits a little past the first.
+  const settleSoon = () => {
+    if (!batching) {
+      settle();
+    } else if (pendingSettle === undefined) {
+      pendingSettle = setTimeout(settle, SIGHTING_BATCH_MS);
     }
   };
 
@@ -143,7 +199,7 @@ export function createPlaybackSlots(options: {
       if (sighting.ratio <= 0) {
         taps = taps.filter((tapped) => tapped !== key);
       }
-      settle();
+      settleSoon();
     },
     tap(key, sighting) {
       if (!listeners.has(key)) {
@@ -168,6 +224,12 @@ export function createPlaybackSlots(options: {
       }
       settle();
     },
+    batchSightings(on) {
+      batching = on;
+      if (!on && pendingSettle !== undefined) {
+        settle();
+      }
+    },
     playing: () => [...playing],
   };
 }
@@ -176,4 +238,5 @@ export const compactPlaybackSlots = createPlaybackSlots({
   slots: compactLimits.playingSlots,
   autoplay: compactLimits.autoplay,
   away: pageAway,
+  built: () => compactPlayerBudget.holders(),
 });
