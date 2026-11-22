@@ -36,13 +36,13 @@ internal static class TestVenues
         return venue;
     }
 
-    public static VenuesOptions Options(params VenueDefinition[] venues) => new()
+    /// <summary>The global settings; the venues go to <see cref="Registry"/> on their own.</summary>
+    public static VenuesOptions Options() => new()
     {
         TimeZone = "Asia/Seoul",
         // Somewhere harmless: the stores read and write these.
         ClosureCachePath = Path.Combine(Path.GetTempPath(), $"taiko-closures-{Guid.NewGuid():N}.json"),
         LiveCachePath = Path.Combine(Path.GetTempPath(), $"taiko-live-{Guid.NewGuid():N}.json"),
-        Items = [.. venues],
     };
 
     public static VenueClosureStore Closures(VenuesOptions options) =>
@@ -51,8 +51,8 @@ internal static class TestVenues
     /// <summary>A host rooted somewhere harmless, for the stores that resolve a relative cache path.</summary>
     public static IHostEnvironment Host() => new FakeHost();
 
-    public static VenueRegistry Registry(VenuesOptions options) =>
-        new(new TestOptionsMonitor<VenuesOptions>(options), NullLogger<VenueRegistry>.Instance);
+    public static VenueRegistry Registry(VenuesOptions options, params VenueDefinition[] venues) =>
+        new(new TestVenueSource(venues), new TestOptionsMonitor<VenuesOptions>(options), NullLogger<VenueRegistry>.Instance);
 
     private sealed class FakeHost : IHostEnvironment
     {
@@ -61,6 +61,35 @@ internal static class TestVenues
         public string ContentRootPath { get; set; } = Path.GetTempPath();
         public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
             new Microsoft.Extensions.FileProviders.NullFileProvider();
+    }
+}
+
+/// <summary>A venue list the test changes, as a saved venue file would.</summary>
+internal sealed class TestVenueSource(params VenueDefinition[] venues) : IVenueSource
+{
+    private readonly List<Action> _listeners = [];
+    private IReadOnlyList<VenueDefinition> _venues = venues;
+
+    public IReadOnlyList<VenueDefinition> Load() => _venues;
+
+    public IDisposable OnChange(Action listener)
+    {
+        _listeners.Add(listener);
+        return new Unsubscribe(() => _listeners.Remove(listener));
+    }
+
+    public void Set(params VenueDefinition[] venues)
+    {
+        _venues = venues;
+        foreach (var listener in _listeners.ToList())
+        {
+            listener();
+        }
+    }
+
+    private sealed class Unsubscribe(Action action) : IDisposable
+    {
+        public void Dispose() => action();
     }
 }
 

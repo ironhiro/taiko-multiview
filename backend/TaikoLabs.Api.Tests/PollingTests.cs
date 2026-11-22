@@ -12,8 +12,8 @@ public class PollingTests
 
     private static Rig Build(string seoulNow)
     {
-        var options = TestVenues.Options(TestVenues.TaikoLabs());
-        var registry = new VenueRegistry(new TestOptionsMonitor<VenuesOptions>(options), NullLogger<VenueRegistry>.Instance);
+        var options = TestVenues.Options();
+        var registry = TestVenues.Registry(options, TestVenues.TaikoLabs());
         var clock = new TestClock(DateTimeOffset.Parse(seoulNow + "+09:00"));
         var schedule = new VenueScheduleProvider(registry, TestVenues.Closures(options), clock);
         var store = new LiveStreamStore();

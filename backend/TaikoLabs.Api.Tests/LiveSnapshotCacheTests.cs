@@ -13,19 +13,16 @@ public class LiveSnapshotCacheTests : IDisposable
 {
     private static readonly DateTimeOffset Polled = DateTimeOffset.Parse("2026-09-28T11:47:13+00:00");
 
-    private readonly VenuesOptions _options = TestVenues.Options(TestVenues.TaikoLabs());
+    private readonly VenuesOptions _options = TestVenues.Options();
 
     public void Dispose() => File.Delete(_options.LiveCachePath);
 
-    private LiveSnapshotCache Cache(VenuesOptions? options = null)
-    {
-        options ??= _options;
-        return new LiveSnapshotCache(
-            Options.Create(options),
-            TestVenues.Registry(options),
+    private LiveSnapshotCache Cache(VenueDefinition? venue = null) =>
+        new(
+            Options.Create(_options),
+            TestVenues.Registry(_options, venue ?? TestVenues.TaikoLabs()),
             TestVenues.Host(),
             NullLogger<LiveSnapshotCache>.Instance);
-    }
 
     private static LiveSnapshot Snapshot() => new()
     {
@@ -100,10 +97,7 @@ public class LiveSnapshotCacheTests : IDisposable
         var definition = TestVenues.TaikoLabs();
         definition.Stations.Add(new StationDefinition { Id = "a2", Label = "A2" });
 
-        var moved = TestVenues.Options(definition);
-        moved.LiveCachePath = _options.LiveCachePath;
-
-        Assert.Empty(Cache(moved).Restore());
+        Assert.Empty(Cache(definition).Restore());
     }
 
     [Fact]

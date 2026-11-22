@@ -87,13 +87,12 @@ builder.Services.AddRateLimiter(limiter =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromMinutes(1) }));
 });
 
-// The venue list lives in a file of its own, apart from the app's settings: it is data
-// that changes as venues come and go, edited with the venue editor and reviewed in git,
-// while appsettings.json holds how the app runs. Both bind into the one "Venues"
-// section, and edits are picked up while running (VenueRegistry rebuilds on change).
-// Venues:File swaps in another list - the generated mock venues for local load tests
-// (scripts/mock-venues.mjs) - without touching the real one.
-builder.Configuration.AddJsonFile(builder.Configuration["Venues:File"] ?? "venues.json", optional: false, reloadOnChange: true);
+// The venue list lives in a file of its own, apart from the app's settings (FileVenueSource).
+// Both still sit in the one "Venues" section - the list as Venues:Items, the global settings
+// beside it in VenuesOptions - and edits are picked up while running (VenueRegistry rebuilds
+// when the source changes). Venues:File swaps in another list - the generated mock venues
+// for local load tests (scripts/mock-venues.mjs) - without touching the real one.
+FileVenueSource.AddFile(builder.Configuration);
 
 builder.Services.Configure<YouTubeOptions>(builder.Configuration.GetSection(YouTubeOptions.SectionName));
 builder.Services.Configure<VenuesOptions>(builder.Configuration.GetSection(VenuesOptions.SectionName));
@@ -137,6 +136,7 @@ builder.Services.AddHttpClient<NaverClosureFeed>(client =>
     client.DefaultRequestHeaders.Referrer = new Uri("https://map.naver.com/");
 });
 
+builder.Services.AddSingleton<IVenueSource, FileVenueSource>();
 builder.Services.AddSingleton<VenueRegistry>();
 builder.Services.AddSingleton<EndedBroadcastCache>();
 builder.Services.AddSingleton<VenueClosureStore>();

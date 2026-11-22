@@ -533,7 +533,7 @@ public class ReplayTests
 
     private static ReplayArchive Archive(string? path, TestClock clock, int backfillPages = 6)
     {
-        var venues = TestVenues.Options(TestVenues.TaikoLabs());
+        var venues = TestVenues.Options();
         venues.ReplayCachePath = path ?? string.Empty;
         var youtube = new YouTubeOptions { Mode = LiveSourceMode.Api, ApiKey = "test", ReplayBackfillPages = backfillPages };
 
