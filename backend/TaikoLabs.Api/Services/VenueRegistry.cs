@@ -5,42 +5,57 @@ using TaikoLabs.Api.Models;
 namespace TaikoLabs.Api.Services;
 
 /// <summary>
-/// Builds the venue list from configuration, dropping any entry that cannot work rather
-/// than letting it fail later on every poll - and builds it again whenever the settings
-/// file changes, so the venue editor's saves show up without restarting the API.
+/// Builds the venue list from its source, dropping any entry that cannot work rather
+/// than letting it fail later on every poll - and builds it again whenever the source
+/// changes, so the venue editor's saves show up without restarting the API.
 ///
 /// Each build is a complete snapshot swapped in at once: a poll that is halfway through
 /// the old list never sees a half-built new one.
 /// </summary>
 public sealed class VenueRegistry : IDisposable
 {
+    private readonly IVenueSource _source;
+    private readonly IOptionsMonitor<VenuesOptions> _settings;
     private readonly ILogger<VenueRegistry> _logger;
-    private readonly IDisposable? _subscription;
+    private readonly IDisposable? _sourceSubscription;
+    private readonly IDisposable? _settingsSubscription;
     private Snapshot _current;
 
     private sealed record Snapshot(
-        VenuesOptions Options,
         IReadOnlyList<Venue> All,
         Dictionary<string, Venue> ById,
+        string TimeZoneId,
         TimeZoneInfo TimeZone,
         int Version);
 
-    public VenueRegistry(IOptionsMonitor<VenuesOptions> options, ILogger<VenueRegistry> logger)
+    public VenueRegistry(IVenueSource source, IOptionsMonitor<VenuesOptions> settings, ILogger<VenueRegistry> logger)
     {
+        _source = source;
+        _settings = settings;
         _logger = logger;
-        _current = Build(options.CurrentValue, version: 1);
+        _current = Build(source.Load(), settings.CurrentValue, version: 1);
 
         // The file watcher can fire more than once for a single save; rebuilding is cheap
         // and gives the same result, so every notification simply rebuilds.
-        _subscription = options.OnChange(next =>
+        _sourceSubscription = source.OnChange(() => Rebuild(_settings.CurrentValue));
+
+        // The time zone is a global setting, but opening hours are worked out in it, so a
+        // new one has to reach the list too. With the venue file it arrives in the same
+        // reload as the list, and the two notifications run in no fixed order: when the
+        // source's runs first it may still read the old settings, and this one catches the
+        // difference. Comparing first keeps the usual reload, time zone unchanged, at one
+        // rebuild.
+        _settingsSubscription = settings.OnChange(next =>
         {
-            var rebuilt = Build(next, _current.Version + 1);
-            _current = rebuilt;
-            _logger.LogInformation("Venue settings reloaded: {Count} venue(s), version {Version}", rebuilt.All.Count, rebuilt.Version);
+            if (!string.Equals(next.TimeZone, _current.TimeZoneId, StringComparison.Ordinal))
+            {
+                Rebuild(next);
+            }
         });
     }
 
-    public VenuesOptions Options => _current.Options;
+    /// <summary>The global settings as they are now, shared by every venue.</summary>
+    public VenuesOptions Options => _settings.CurrentValue;
 
     public IReadOnlyList<Venue> All => _current.All;
 
@@ -51,13 +66,24 @@ public sealed class VenueRegistry : IDisposable
 
     public Venue? Find(string id) => _current.ById.GetValueOrDefault(id);
 
-    public void Dispose() => _subscription?.Dispose();
+    public void Dispose()
+    {
+        _sourceSubscription?.Dispose();
+        _settingsSubscription?.Dispose();
+    }
 
-    private Snapshot Build(VenuesOptions options, int version)
+    private void Rebuild(VenuesOptions settings)
+    {
+        var rebuilt = Build(_source.Load(), settings, _current.Version + 1);
+        _current = rebuilt;
+        _logger.LogInformation("Venue settings reloaded: {Count} venue(s), version {Version}", rebuilt.All.Count, rebuilt.Version);
+    }
+
+    private Snapshot Build(IReadOnlyList<VenueDefinition> definitions, VenuesOptions settings, int version)
     {
         var venues = new List<Venue>();
 
-        foreach (var definition in options.Items)
+        foreach (var definition in definitions)
         {
             if (!Validate(definition, _logger, out var reason))
             {
@@ -82,15 +108,15 @@ public sealed class VenueRegistry : IDisposable
             _logger.LogError("No usable venues are configured; the app will show nothing.");
         }
 
-        if (!options.TryResolveTimeZone(out var timeZone, out var error))
+        if (!settings.TryResolveTimeZone(out var timeZone, out var error))
         {
             _logger.LogError("{Error} Opening hours will be wrong until this is fixed.", error);
         }
 
         return new Snapshot(
-            options,
             venues,
             venues.ToDictionary(venue => venue.Id, StringComparer.OrdinalIgnoreCase),
+            settings.TimeZone,
             timeZone,
             version);
     }

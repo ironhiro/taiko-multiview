@@ -135,7 +135,12 @@ public sealed class LayoutDecoration
     public RectDefinition Outline { get; set; } = new();
 }
 
-/// <summary>Global settings shared by every venue.</summary>
+/// <summary>
+/// Global settings shared by every venue. The venues themselves are not here: they come from
+/// an <see cref="Services.IVenueSource"/>, so the list can live somewhere other than the
+/// app's configuration without these settings moving with it. Both still sit under the one
+/// "Venues" section today, the list as <c>Venues:Items</c>.
+/// </summary>
 public sealed class VenuesOptions
 {
     public const string SectionName = "Venues";
@@ -159,8 +164,6 @@ public sealed class VenuesOptions
     /// than the newest uploads a poll reads, and filling those back in costs quota.
     /// </summary>
     public string ReplayCachePath { get; set; } = "replay.cache.json";
-
-    public List<VenueDefinition> Items { get; set; } = [];
 
     /// <summary>
     /// Resolves the configured zone. Falling back to UTC would silently shift every

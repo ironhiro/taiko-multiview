@@ -19,6 +19,11 @@ appsettings.Local.json
 APIKey.txt
 apikey.txt
 *.key
+# Env files. Vite bakes every VITE_* value into the public bundle, so a secret never
+# belongs in one; this only stops a stray .env from being committed. The template stays.
+.env
+.env.*
+!.env.example
 
 # Runtime caches, regenerated on startup
 closures.cache.json
